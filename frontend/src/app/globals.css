@@ -1008,3 +1008,351 @@ body {
   .shell-topbar-title { display: none; }
   .stat-grid { grid-template-columns: 1fr; }
 }
+
+/* ════════════════════════════════════════════════════════════════════════
+   Milestone 3 — Worklist Foundation (UI)
+   ════════════════════════════════════════════════════════════════════════ */
+
+.wl-page {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+/* ── Toolbar (title + chips + actions) ── */
+.wl-toolbar {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.wl-toolbar-row {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.wl-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.wl-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  background: #fff;
+  border: 1px solid var(--bd);
+  border-radius: 9px;
+  padding: 8px 13px;
+  font-size: 12px;
+  font-weight: 600;
+  color: #374151;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: all 0.15s;
+}
+
+.wl-btn:hover:not(:disabled) {
+  background: #f4f8f5;
+  border-color: #c0d4c2;
+}
+
+.wl-btn:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+
+.wl-btn-primary {
+  background: var(--p);
+  border-color: var(--p);
+  color: #fff;
+  box-shadow: 0 1px 4px rgba(36, 161, 72, 0.25);
+}
+
+.wl-btn-primary:hover:not(:disabled) {
+  background: var(--ps);
+  border-color: var(--ps);
+}
+
+.wl-btn-soft {
+  background: var(--pl);
+  border-color: #b6e6c2;
+  color: var(--ps);
+}
+
+.wl-btn-soft:hover:not(:disabled) {
+  background: #cdeed6;
+}
+
+.wl-chips {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.wl-chip {
+  background: #fff;
+  border: 1px solid var(--bd);
+  border-radius: 11px;
+  padding: 9px 16px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  min-width: 84px;
+}
+
+.wl-chip-value {
+  font-size: 19px;
+  font-weight: 800;
+  line-height: 1;
+}
+
+.wl-chip-label {
+  font-size: 10.5px;
+  color: var(--ts);
+  margin-top: 3px;
+  font-weight: 500;
+}
+
+/* ── Filter toolbar ── */
+.wl-filters {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  flex-wrap: wrap;
+  background: #fff;
+  border: 1px solid var(--bd);
+  border-radius: 12px;
+  padding: 11px 14px;
+}
+
+.wl-filter-search {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  background: #f4f8f5;
+  border: 1px solid var(--bd);
+  border-radius: 9px;
+  padding: 7px 11px;
+  flex: 1;
+  min-width: 180px;
+}
+
+.wl-filter-search-icon {
+  font-size: 12px;
+  opacity: 0.6;
+}
+
+.wl-filter-search-input {
+  border: none;
+  background: transparent;
+  outline: none;
+  font-size: 12px;
+  color: var(--tp);
+  width: 100%;
+}
+
+.wl-select {
+  appearance: none;
+  background: #fff
+    url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='10' height='6'><path d='M1 1l4 4 4-4' fill='none' stroke='%236b7280' stroke-width='1.5'/></svg>")
+    no-repeat right 10px center;
+  border: 1px solid var(--bd);
+  border-radius: 9px;
+  padding: 8px 28px 8px 11px;
+  font-size: 12px;
+  font-weight: 600;
+  color: #374151;
+  cursor: pointer;
+  max-width: 170px;
+}
+
+.wl-select:focus {
+  outline: none;
+  border-color: var(--p);
+  box-shadow: 0 0 0 3px rgba(36, 161, 72, 0.12);
+}
+
+/* ── Team monitoring ── */
+.wl-monitoring {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.wl-monitoring-label {
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--ts);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.wl-monitoring-chips {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.wl-monitor-chip {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  background: #fff;
+  border: 1px solid var(--bd);
+  border-radius: 99px;
+  padding: 4px 11px 4px 4px;
+}
+
+.wl-monitor-avatar {
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  background: var(--pl);
+  color: var(--ps);
+  font-size: 10px;
+  font-weight: 800;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.wl-monitor-name {
+  font-size: 11.5px;
+  font-weight: 600;
+  color: var(--tp);
+}
+
+.wl-monitor-count {
+  font-size: 10px;
+  font-weight: 700;
+  color: var(--ps);
+  background: var(--pl);
+  border-radius: 99px;
+  padding: 1px 7px;
+}
+
+.wl-monitoring-empty {
+  font-size: 12px;
+  color: var(--ts);
+}
+
+/* ── Table ── */
+.wl-table-wrap {
+  background: #fff;
+  border: 1px solid var(--bd);
+  border-radius: 14px;
+  overflow-x: auto;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.03);
+}
+
+.wl-table {
+  min-width: 1100px;
+}
+
+.wl-table thead th {
+  padding: 11px 12px;
+  white-space: nowrap;
+  position: sticky;
+  top: 0;
+  background: #fafdfb;
+  z-index: 1;
+}
+
+.wl-table tbody td {
+  padding: 11px 12px;
+  white-space: nowrap;
+  vertical-align: middle;
+}
+
+.wl-table tbody tr:hover {
+  background: #fafdfb;
+}
+
+.wl-col-check {
+  width: 36px;
+  text-align: center;
+}
+
+.wl-col-actions {
+  text-align: right;
+}
+
+.wl-reminder {
+  font-size: 11px;
+  color: var(--ts);
+}
+
+.wl-row-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  justify-content: flex-end;
+}
+
+.wl-icon-btn {
+  width: 27px;
+  height: 27px;
+  border-radius: 7px;
+  border: 1px solid transparent;
+  background: transparent;
+  font-size: 13px;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: #6b7280;
+  transition: all 0.13s;
+}
+
+.wl-icon-btn:hover {
+  background: #edf8f0;
+  border-color: #b6e6c2;
+  color: var(--ps);
+}
+
+/* ── Footer / pagination ── */
+.wl-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 12px;
+  color: var(--ts);
+  padding: 4px 2px;
+}
+
+.wl-pagination {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.wl-page-btn {
+  width: 30px;
+  height: 30px;
+  border-radius: 8px;
+  border: 1px solid var(--bd);
+  background: #fff;
+  cursor: pointer;
+  font-size: 14px;
+  color: #374151;
+}
+
+.wl-page-btn:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.wl-page-current {
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--tp);
+  min-width: 22px;
+  text-align: center;
+}

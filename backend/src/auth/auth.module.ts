@@ -20,5 +20,8 @@ import { JwtAuthGuard } from './jwt-auth.guard';
   ],
   controllers: [AuthController],
   providers: [AuthService, JwtAuthGuard],
+  // Exported so other feature modules (e.g. DashboardModule) can reuse the existing
+  // JWT verification without re-declaring it. Login/auth behaviour is unchanged.
+  exports: [JwtModule, JwtAuthGuard],
 })
 export class AuthModule {}

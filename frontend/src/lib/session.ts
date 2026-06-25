@@ -50,6 +50,22 @@ export function isGuest(): boolean {
   return window.sessionStorage.getItem(GUEST_KEY) === 'true';
 }
 
+/** Static identity used to represent an unauthenticated guest session in the UI. */
+export const GUEST_USER: AuthUser = {
+  username: 'guest',
+  full_name: 'Guest',
+  role: 'Guest',
+};
+
+/**
+ * The user to display in the application shell: the stored authenticated user,
+ * or the guest identity when browsing as a guest, otherwise null.
+ */
+export function getCurrentUser(): AuthUser | null {
+  if (isGuest()) return GUEST_USER;
+  return getStoredUser();
+}
+
 export function clearSession(): void {
   for (const store of stores()) {
     store.removeItem(TOKEN_KEY);

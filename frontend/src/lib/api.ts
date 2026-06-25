@@ -33,3 +33,65 @@ export async function fetchMe(token: string): Promise<AuthUser> {
   }
   return res.json() as Promise<AuthUser>;
 }
+
+// ── Dashboard ──────────────────────────────────────────────────────────────
+
+export interface DashboardStats {
+  registeredCitizens: number | null;
+  activeEnrollments: number | null;
+  totalEnrollments: number | null;
+  programs: number | null;
+  subPrograms: number | null;
+  knowledgeAssets: number | null;
+  cphcServices: number | null;
+  pendingNotifications: number | null;
+  pendingTasks: number | null;
+  overdueTasks: number | null;
+}
+
+export interface WorklistBreakdown {
+  pending: number | null;
+  overdue: number | null;
+  completed: number | null;
+}
+
+export interface ServiceItem {
+  name: string;
+  icon: string | null;
+  color: string | null;
+}
+
+export interface ActivityItem {
+  kind: string;
+  title: string;
+  subtitle: string;
+  at: string;
+}
+
+export interface WorklistRow {
+  uhid: string | null;
+  citizen: string | null;
+  activity: string | null;
+  dueDate: string | null;
+  priority: string;
+  status: string;
+}
+
+export interface AdminDashboardSummary {
+  stats: DashboardStats;
+  worklist: WorklistBreakdown;
+  services: ServiceItem[];
+  recentActivity: ActivityItem[];
+  recentWorklist: WorklistRow[];
+}
+
+export async function fetchAdminDashboard(token: string): Promise<AdminDashboardSummary> {
+  const res = await fetch(`${API_BASE}/api/dashboard/admin/summary`, {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+
+  if (!res.ok) {
+    throw new Error('Unable to load dashboard data');
+  }
+  return res.json() as Promise<AdminDashboardSummary>;
+}

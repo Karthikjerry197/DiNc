@@ -158,3 +158,83 @@ export async function fetchWorklistOverview(token: string): Promise<WorklistOver
   }
   return res.json() as Promise<WorklistOverview>;
 }
+
+// ── Citizen Workspace ────────────────────────────────────────────────────────
+
+export interface CitizenListItem {
+  id: string;
+  uhid: string;
+  fullName: string | null;
+  age: number | null;
+  gender: string | null;
+  district: string | null;
+}
+
+export interface ProgramChip {
+  id: string;
+  name: string;
+}
+
+export interface EnrollmentInfo {
+  service: string | null;
+  event: string | null;
+  condition: string | null;
+  assignee: string | null;
+  priority: string | null;
+  status: string | null;
+  reviewStatus: string | null;
+  remarks: string | null;
+}
+
+export interface ActivityEntry {
+  id: string;
+  activity: string | null;
+  program: string | null;
+  status: string;
+  priority: string;
+  dueDate: string | null;
+}
+
+export interface CompletionStats {
+  total: number;
+  completed: number;
+  pending: number;
+}
+
+export interface CitizenDetail {
+  citizen: {
+    id: string;
+    uhid: string;
+    fullName: string | null;
+    age: number | null;
+    gender: string | null;
+    phone: string | null;
+    district: string | null;
+  };
+  programs: ProgramChip[];
+  enrollment: EnrollmentInfo | null;
+  activities: ActivityEntry[];
+  stats: CompletionStats;
+}
+
+export async function fetchCitizensList(token: string): Promise<CitizenListItem[]> {
+  const res = await fetch(`${API_BASE}/api/citizens/list`, {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+
+  if (!res.ok) {
+    throw new Error('Unable to load citizens');
+  }
+  return res.json() as Promise<CitizenListItem[]>;
+}
+
+export async function fetchCitizenDetail(token: string, id: string): Promise<CitizenDetail> {
+  const res = await fetch(`${API_BASE}/api/citizens/${id}`, {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+
+  if (!res.ok) {
+    throw new Error('Unable to load citizen detail');
+  }
+  return res.json() as Promise<CitizenDetail>;
+}

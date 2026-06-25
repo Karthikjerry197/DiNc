@@ -1,5 +1,6 @@
 'use client';
 
+import Link from 'next/link';
 import type { WorklistItem } from '@/lib/api';
 
 interface WorklistTableProps {
@@ -92,17 +93,30 @@ export default function WorklistTable({ items }: WorklistTableProps) {
               </td>
               <td className="wl-col-actions">
                 <div className="wl-row-actions">
-                  {ROW_ACTIONS.map((action) => (
-                    <button
-                      key={action.key}
-                      type="button"
-                      className="wl-icon-btn"
-                      title={action.label}
-                      aria-label={action.label}
-                    >
-                      {action.icon}
-                    </button>
-                  ))}
+                  {ROW_ACTIONS.map((action) =>
+                    action.key === 'open' ? (
+                      // Open navigates into the Citizen Workspace (Milestone 4).
+                      <Link
+                        key={action.key}
+                        href="/citizens"
+                        className="wl-icon-btn"
+                        title={action.label}
+                        aria-label={action.label}
+                      >
+                        {action.icon}
+                      </Link>
+                    ) : (
+                      <button
+                        key={action.key}
+                        type="button"
+                        className="wl-icon-btn"
+                        title={action.label}
+                        aria-label={action.label}
+                      >
+                        {action.icon}
+                      </button>
+                    ),
+                  )}
                 </div>
               </td>
             </tr>

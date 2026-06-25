@@ -1,0 +1,7 @@
+{
+  "permissions": {
+    "allow": [
+      "PowerShell(cd \"C:\\\\Users\\\\TMDL DiNC Assam\\\\Desktop\\\\New method\\\\DiNC\\\\backend\"; node -e \"const b=require\\('bcrypt'\\);const h={admin:'$2b$10$qlG6B0SMA9cyRq8CRnYumuxM87jciUSjjpBieVkU7q084D9r2FSI.',clinician1:'$2b$10$qBEpQnE/nbVYyeyTC.YdF.sK9JtROrsEcLQRZWm5Iw2llVn6irhWi',caremanager1:'$2b$10$f03EKTMsuUacD7r4lU3S.OOY4kXb0BHLoXXmQJu6Kr/pnyIFbkVmW',caremanager2:'$2b$10$v1dUGqOqnYBl7ZEaExKdtug74xl93brofx4mrnjNiUxrudY4j9PTa'};const p={admin:'Admin@123',clinician1:'Clinician@123',caremanager1:'CareManager1@123',caremanager2:'CareManager2@123'};Object.keys\\(h\\).forEach\\(u=>console.log\\(u+' => '+b.compareSync\\(p[u],h[u]\\)\\)\\);\" 2>&1 | Out-String)"
+    ]
+  }
+}

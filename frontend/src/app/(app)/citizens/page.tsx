@@ -6,7 +6,9 @@ import {
   fetchCitizenDetail,
   fetchCitizenEnrollments,
   fetchCitizensList,
+  fetchEnrollmentActivities,
   fetchEnrollmentDetail,
+  type Activity,
   type CitizenDetail,
   type CitizenListItem,
   type EnrollmentDetail,
@@ -15,7 +17,7 @@ import {
 import { getToken } from '@/lib/session';
 import CitizenList from '@/components/citizens/CitizenList';
 import CitizenSummary from '@/components/citizens/CitizenSummary';
-import ActivitiesTimeline from '@/components/citizens/ActivitiesTimeline';
+import ActivityWorkspace from '@/components/citizens/ActivityWorkspace';
 import AddProgramDialog from '@/components/citizens/AddProgramDialog';
 
 /**
@@ -35,6 +37,9 @@ export default function CitizensPage() {
   const [selectedEnrollmentId, setSelectedEnrollmentId] = useState<string | null>(null);
   const [enrollmentDetail, setEnrollmentDetail] = useState<EnrollmentDetail | null>(null);
   const [enrollmentDetailLoading, setEnrollmentDetailLoading] = useState(false);
+  const [activities, setActivities] = useState<Activity[]>([]);
+  const [activitiesLoading, setActivitiesLoading] = useState(false);
+  const [activitiesError, setActivitiesError] = useState('');
   const [addOpen, setAddOpen] = useState(false);
   const [enrollmentsRefresh, setEnrollmentsRefresh] = useState(0);
   const pendingEnrollmentId = useRef<string | null>(null);
@@ -180,6 +185,39 @@ export default function CitizensPage() {
     };
   }, [selectedEnrollmentId]);
 
+  // Load activities for the selected enrollment (Activity Workspace).
+  useEffect(() => {
+    if (!selectedEnrollmentId) {
+      setActivities([]);
+      setActivitiesError('');
+      return;
+    }
+    const token = getToken();
+    if (!token) return;
+
+    let active = true;
+    setActivitiesLoading(true);
+    setActivitiesError('');
+    fetchEnrollmentActivities(token, selectedEnrollmentId)
+      .then((list) => {
+        if (active) {
+          setActivities(list);
+          setActivitiesLoading(false);
+        }
+      })
+      .catch(() => {
+        if (active) {
+          setActivities([]);
+          setActivitiesError('Unable to load activities.');
+          setActivitiesLoading(false);
+        }
+      });
+
+    return () => {
+      active = false;
+    };
+  }, [selectedEnrollmentId]);
+
   useEffect(() => {
     return () => {
       if (toastTimer.current) clearTimeout(toastTimer.current);
@@ -217,10 +255,11 @@ export default function CitizensPage() {
           onBack={() => router.push('/worklist')}
         />
 
-        <ActivitiesTimeline
-          detail={detail}
-          loading={detailLoading}
-          onComingSoon={notify}
+        <ActivityWorkspace
+          activities={activities}
+          loading={activitiesLoading}
+          error={activitiesError}
+          hasEnrollment={!!selectedEnrollmentId}
         />
       </div>
 

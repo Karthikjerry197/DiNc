@@ -8,6 +8,7 @@ import { WorklistModule } from './worklist/worklist.module';
 import { CitizensModule } from './citizens/citizens.module';
 import { GuidebooksModule } from './guidebooks/guidebooks.module';
 import { EnrollmentModule } from './enrollment/enrollment.module';
+import { ActivityModule } from './activity/activity.module';
 
 @Module({
   imports: [
@@ -20,6 +21,7 @@ import { EnrollmentModule } from './enrollment/enrollment.module';
     CitizensModule,
     GuidebooksModule,
     EnrollmentModule,
+    ActivityModule,
   ],
 })
 export class AppModule {}

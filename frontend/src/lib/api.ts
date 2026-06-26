@@ -432,6 +432,37 @@ export async function fetchEvents(
   return res.json() as Promise<EventOption[]>;
 }
 
+// ── Activities (read layer) ──────────────────────────────────────────────────
+
+export interface Activity {
+  id: string;
+  name: string | null;
+  status: string;
+  priority: string;
+  assignedUser: string | null;
+  assignedRole: string | null;
+  dueDate: string | null;
+  createdDate: string | null;
+  completedDate: string | null;
+  remarks: string | null;
+  event: { id: string | null; name: string | null };
+  enrollmentId: string | null;
+}
+
+export async function fetchEnrollmentActivities(
+  token: string,
+  enrollmentId: string,
+): Promise<Activity[]> {
+  const res = await fetch(`${API_BASE}/api/enrollments/${enrollmentId}/activities`, {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+
+  if (!res.ok) {
+    throw new Error('Unable to load activities');
+  }
+  return res.json() as Promise<Activity[]>;
+}
+
 /**
  * Creates a program enrollment. On failure, surfaces the backend's validation
  * message (string or array) as a single friendly Error — never a stack trace.

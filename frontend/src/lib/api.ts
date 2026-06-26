@@ -238,3 +238,130 @@ export async function fetchCitizenDetail(token: string, id: string): Promise<Cit
   }
   return res.json() as Promise<CitizenDetail>;
 }
+
+// ── Guidebooks ───────────────────────────────────────────────────────────────
+
+export interface GuidebookListItem {
+  id: string;
+  code: string;
+  category: string;
+  title: string;
+  summary: string | null;
+  status: 'Active' | 'Inactive';
+}
+
+export interface GuidebookDetail {
+  id: string;
+  code: string;
+  category: string;
+  title: string;
+  status: 'Active' | 'Inactive';
+  updatedAt: string;
+  summary: string | null;
+  evidenceSource: string | null;
+  keyRecommendations: string[];
+  referralCriteria: string[];
+}
+
+export async function fetchGuidebooksList(token: string): Promise<GuidebookListItem[]> {
+  const res = await fetch(`${API_BASE}/api/guidebooks/list`, {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+
+  if (!res.ok) {
+    throw new Error('Unable to load guidebooks');
+  }
+  return res.json() as Promise<GuidebookListItem[]>;
+}
+
+export async function fetchGuidebookDetail(token: string, id: string): Promise<GuidebookDetail> {
+  const res = await fetch(`${API_BASE}/api/guidebooks/${id}`, {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+
+  if (!res.ok) {
+    throw new Error('Unable to load guidebook detail');
+  }
+  return res.json() as Promise<GuidebookDetail>;
+}
+
+// ── Programs & Enrollments (read layer) ──────────────────────────────────────
+
+export interface ProgramDto {
+  id: string;
+  code: string;
+  name: string;
+  description: string | null;
+}
+
+export interface NamedRef {
+  id: string | null;
+  name: string | null;
+}
+
+export interface EnrollmentSummary {
+  id: string;
+  program: NamedRef;
+  subProgram: NamedRef | null;
+  enrollmentDate: string | null;
+  status: string;
+  priority: string | null;
+  cphcService: string | null;
+}
+
+export interface EnrollmentDetail {
+  id: string;
+  citizen: { id: string | null; uhid: string | null };
+  program: NamedRef;
+  subProgram: NamedRef | null;
+  condition: string | null;
+  event: string | null;
+  cphcService: string | null;
+  assignee: string | null;
+  priority: string | null;
+  status: string | null;
+  reviewStatus: string | null;
+  remarks: string | null;
+  enrollmentDate: string | null;
+  geographicUnit: string | null;
+  enrolledBy: string | null;
+}
+
+export async function fetchPrograms(token: string): Promise<ProgramDto[]> {
+  const res = await fetch(`${API_BASE}/api/programs`, {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+
+  if (!res.ok) {
+    throw new Error('Unable to load programs');
+  }
+  return res.json() as Promise<ProgramDto[]>;
+}
+
+export async function fetchCitizenEnrollments(
+  token: string,
+  citizenId: string,
+): Promise<EnrollmentSummary[]> {
+  const res = await fetch(`${API_BASE}/api/citizens/${citizenId}/enrollments`, {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+
+  if (!res.ok) {
+    throw new Error('Unable to load enrollments');
+  }
+  return res.json() as Promise<EnrollmentSummary[]>;
+}
+
+export async function fetchEnrollmentDetail(
+  token: string,
+  id: string,
+): Promise<EnrollmentDetail> {
+  const res = await fetch(`${API_BASE}/api/enrollments/${id}`, {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+
+  if (!res.ok) {
+    throw new Error('Unable to load enrollment detail');
+  }
+  return res.json() as Promise<EnrollmentDetail>;
+}

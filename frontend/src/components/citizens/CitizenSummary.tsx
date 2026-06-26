@@ -1,10 +1,16 @@
 'use client';
 
-import type { CitizenDetail } from '@/lib/api';
+import type { CitizenDetail, EnrollmentDetail, EnrollmentSummary } from '@/lib/api';
 
 interface CitizenSummaryProps {
   detail: CitizenDetail | null;
   loading: boolean;
+  enrollments: EnrollmentSummary[];
+  enrollmentsLoading: boolean;
+  selectedEnrollmentId: string | null;
+  onSelectEnrollment: (id: string) => void;
+  enrollmentDetail: EnrollmentDetail | null;
+  enrollmentDetailLoading: boolean;
   onComingSoon: (label: string) => void;
   onBack: () => void;
 }
@@ -17,9 +23,24 @@ function val(text: string | null | undefined): string {
   return text && String(text).trim() ? String(text) : '—';
 }
 
+function formatDate(iso: string | null): string {
+  if (!iso) return '—';
+  return new Date(iso).toLocaleDateString(undefined, {
+    year: 'numeric',
+    month: 'short',
+    day: 'numeric',
+  });
+}
+
 export default function CitizenSummary({
   detail,
   loading,
+  enrollments,
+  enrollmentsLoading,
+  selectedEnrollmentId,
+  onSelectEnrollment,
+  enrollmentDetail,
+  enrollmentDetailLoading,
   onComingSoon,
   onBack,
 }: CitizenSummaryProps) {
@@ -42,7 +63,7 @@ export default function CitizenSummary({
     );
   }
 
-  const { citizen, programs, enrollment, stats } = detail;
+  const { citizen, stats } = detail;
   const name = citizen.fullName?.trim() ? citizen.fullName : citizen.uhid;
   const demographics = [
     citizen.age != null ? `${citizen.age} yrs` : null,
@@ -51,16 +72,22 @@ export default function CitizenSummary({
     citizen.phone,
   ].filter(Boolean);
 
-  const infoRows: { label: string; value: string | null }[] = [
-    { label: 'CPHC Service', value: enrollment?.service ?? null },
-    { label: 'Event', value: enrollment?.event ?? null },
-    { label: 'Condition', value: enrollment?.condition ?? null },
-    { label: 'Assignee', value: enrollment?.assignee ?? null },
-    { label: 'Priority', value: enrollment?.priority ?? null },
-    { label: 'Status', value: enrollment?.status ?? null },
-    { label: 'Review Status', value: enrollment?.reviewStatus ?? null },
-    { label: 'Remarks', value: enrollment?.remarks ?? null },
-  ];
+  const infoRows: { label: string; value: string | null }[] = enrollmentDetail
+    ? [
+        { label: 'Program', value: enrollmentDetail.program.name },
+        { label: 'Sub Program', value: enrollmentDetail.subProgram?.name ?? null },
+        { label: 'CPHC Service', value: enrollmentDetail.cphcService },
+        { label: 'Event', value: enrollmentDetail.event },
+        { label: 'Condition', value: enrollmentDetail.condition },
+        { label: 'Assignee', value: enrollmentDetail.assignee },
+        { label: 'Priority', value: enrollmentDetail.priority },
+        { label: 'Status', value: enrollmentDetail.status },
+        { label: 'Review Status', value: enrollmentDetail.reviewStatus },
+        { label: 'Enrollment Date', value: formatDate(enrollmentDetail.enrollmentDate) },
+        { label: 'Geographic Unit', value: enrollmentDetail.geographicUnit },
+        { label: 'Remarks', value: enrollmentDetail.remarks },
+      ]
+    : [];
 
   return (
     <section className="cz-center">
@@ -83,7 +110,7 @@ export default function CitizenSummary({
         </div>
       </div>
 
-      {/* Program chips */}
+      {/* Program chips — live enrollments; selecting one updates the panel below. */}
       <div className="cz-section">
         <div className="cz-section-head">
           <span className="cz-section-label">Enrolled Programs</span>
@@ -96,32 +123,51 @@ export default function CitizenSummary({
             ＋ Add Program
           </button>
         </div>
-        {programs.length > 0 ? (
+        {enrollmentsLoading ? (
+          <div className="cz-inline-empty">Loading programs…</div>
+        ) : enrollments.length > 0 ? (
           <div className="cz-chips">
-            {programs.map((program) => (
-              <span key={program.id} className="cz-program-chip">
-                {program.name}
-                <button
-                  type="button"
-                  className="cz-chip-x"
-                  title="Remove program"
-                  aria-label={`Remove ${program.name}`}
-                  onClick={() => onComingSoon('Remove program')}
+            {enrollments.map((enrollment) => {
+              const label = enrollment.program.name ?? 'Program';
+              const active = enrollment.id === selectedEnrollmentId;
+              return (
+                <div
+                  key={enrollment.id}
+                  className={`cz-program-chip${active ? ' active' : ''}`}
+                  title={enrollment.status}
                 >
-                  ×
-                </button>
-              </span>
-            ))}
+                  <button
+                    type="button"
+                    className="cz-chip-select"
+                    aria-pressed={active}
+                    onClick={() => onSelectEnrollment(enrollment.id)}
+                  >
+                    {label}
+                  </button>
+                  <button
+                    type="button"
+                    className="cz-chip-x"
+                    title="Remove program"
+                    aria-label={`Remove ${label}`}
+                    onClick={() => onComingSoon('Remove program')}
+                  >
+                    ×
+                  </button>
+                </div>
+              );
+            })}
           </div>
         ) : (
           <div className="cz-inline-empty">No programs enrolled.</div>
         )}
       </div>
 
-      {/* Enrollment information */}
+      {/* Enrollment information — driven by the selected enrollment. */}
       <div className="cz-section">
         <span className="cz-section-label">Enrollment Information</span>
-        {enrollment ? (
+        {enrollmentDetailLoading ? (
+          <div className="cz-inline-empty">Loading enrollment…</div>
+        ) : enrollmentDetail ? (
           <div className="cz-info-grid">
             {infoRows.map((row) => (
               <div key={row.label} className="cz-info-row">

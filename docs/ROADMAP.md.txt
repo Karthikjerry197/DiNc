@@ -1,0 +1,165 @@
+# DiNC Development Roadmap
+
+**Project:** DiNC (Digital Integrated NCD Care Platform)
+
+**Current Phase:** Phase 2 – Functional Development
+
+**Last Updated:** 26 June 2026
+
+---
+
+# Vision
+
+Build a modern, scalable healthcare operations platform for Non-Communicable Disease (NCD) management that supports patient enrollment, clinical workflows, guidebooks, activities, reviews, reporting, and administration.
+
+---
+
+# Phase 1 – Foundation ✅
+
+## Milestone 1 – Login & Authentication
+
+* [x] JWT Authentication
+* [x] Role-based login
+* [x] Protected routes
+* [x] Guest mode
+
+## Milestone 2 – Application Shell & Dashboard
+
+* [x] Sidebar
+* [x] Top navigation
+* [x] Administrator Dashboard
+* [x] Live PostgreSQL summary
+
+## Milestone 3 – Worklist Visual Framework
+
+* [x] Worklist layout
+* [x] Filters
+* [x] Team monitoring
+* [x] Professional UI
+
+## Milestone 4 – Citizen Workspace
+
+* [x] Citizen list
+* [x] Citizen summary
+* [x] Activity timeline
+* [x] Enrollment panel
+* [x] Three-panel workspace
+
+## Milestone 5 – Guidebooks & Clinical Decision Support
+
+* [x] Guidebook workspace
+* [x] Protocol list
+* [x] Overview page
+* [x] Read-only integration
+* [x] Placeholder tabs
+
+---
+
+# Phase 2 – Functional Development 🚧
+
+## Milestone 6 – Program & Enrollment Management
+
+* [ ] Read Programs API
+* [ ] Enrollment API
+* [ ] Add Program
+* [ ] Remove Program
+* [ ] Multiple Program Support
+* [ ] Enrollment Details
+* [ ] Validation
+* [ ] Testing
+
+## Milestone 7 – Activity Management
+
+* [ ] Activity CRUD
+* [ ] Timeline
+* [ ] Status
+* [ ] Priority
+* [ ] Due Dates
+* [ ] Outcomes
+
+## Milestone 8 – Guidebook Integration
+
+* [ ] Link Guidebooks to Programs
+* [ ] Protocol Navigation
+* [ ] FAQ Integration
+* [ ] Training Integration
+
+## Milestone 9 – Calling Workflow
+
+* [ ] Call Queue
+* [ ] Call History
+* [ ] Retry Workflow
+* [ ] Missed Calls
+
+## Milestone 10 – Reviews & Outcomes
+
+* [ ] Outcome Recording
+* [ ] Reviewer Workflow
+* [ ] Approvals
+* [ ] Audit Trail
+
+## Milestone 11 – Reports & Administration
+
+* [ ] Reports
+* [ ] User Management
+* [ ] Roles & Permissions
+* [ ] System Settings
+
+---
+
+# Phase 3 – Production
+
+## Deployment
+
+* [ ] GitHub Repository
+* [ ] Docker
+* [ ] AWS Deployment
+* [ ] HTTPS
+* [ ] Domain Configuration
+* [ ] PostgreSQL Production Database
+
+## Security
+
+* [ ] Production JWT Secrets
+* [ ] Role Validation
+* [ ] Security Review
+
+## Testing
+
+* [ ] Regression Testing
+* [ ] End-to-End Testing
+* [ ] Performance Testing
+
+---
+
+# Git Milestones
+
+* [x] Milestone 1 Commit
+* [x] Milestone 2 Commit
+* [x] Milestone 3 Commit
+* [x] Milestone 4 Commit
+* [x] Milestone 5 Commit
+
+Stable Branches
+
+* [x] milestone-5-stable
+
+---
+
+# Current Focus
+
+➡️ Next Milestone: Program & Enrollment Management
+
+Objective:
+Transform the Citizen Workspace from a visual interface into a fully functional enrollment management system using the existing PostgreSQL database without modifying the schema.
+
+---
+
+# Notes
+
+* Build incrementally.
+* Test every milestone.
+* Commit every milestone.
+* Create a stable branch after major milestones.
+* Keep frontend and backend builds passing at all times.
+* Do not modify the PostgreSQL schema unless absolutely necessary.

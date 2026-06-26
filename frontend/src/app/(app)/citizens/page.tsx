@@ -16,6 +16,7 @@ import { getToken } from '@/lib/session';
 import CitizenList from '@/components/citizens/CitizenList';
 import CitizenSummary from '@/components/citizens/CitizenSummary';
 import ActivitiesTimeline from '@/components/citizens/ActivitiesTimeline';
+import AddProgramDialog from '@/components/citizens/AddProgramDialog';
 
 /**
  * Citizen Workspace — the primary three-panel workspace opened from the
@@ -34,15 +35,23 @@ export default function CitizensPage() {
   const [selectedEnrollmentId, setSelectedEnrollmentId] = useState<string | null>(null);
   const [enrollmentDetail, setEnrollmentDetail] = useState<EnrollmentDetail | null>(null);
   const [enrollmentDetailLoading, setEnrollmentDetailLoading] = useState(false);
+  const [addOpen, setAddOpen] = useState(false);
+  const [enrollmentsRefresh, setEnrollmentsRefresh] = useState(0);
+  const pendingEnrollmentId = useRef<string | null>(null);
   const [error, setError] = useState('');
   const [toast, setToast] = useState('');
   const toastTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  const notify = useCallback((label: string) => {
-    setToast(`${label} — Coming in a future milestone.`);
+  const flash = useCallback((message: string) => {
+    setToast(message);
     if (toastTimer.current) clearTimeout(toastTimer.current);
     toastTimer.current = setTimeout(() => setToast(''), 2600);
   }, []);
+
+  const notify = useCallback(
+    (label: string) => flash(`${label} — Coming in a future milestone.`),
+    [flash],
+  );
 
   // Load the citizen list once, then select the requested (?c=) or first citizen.
   useEffect(() => {
@@ -118,11 +127,15 @@ export default function CitizensPage() {
     setEnrollmentsLoading(true);
     fetchCitizenEnrollments(token, selectedId)
       .then((list) => {
-        if (active) {
-          setEnrollments(list);
-          setSelectedEnrollmentId(list[0]?.id ?? null);
-          setEnrollmentsLoading(false);
-        }
+        if (!active) return;
+        setEnrollments(list);
+        // After a create, select the new enrollment; otherwise keep first.
+        const pending = pendingEnrollmentId.current;
+        const next =
+          (pending && list.find((e) => e.id === pending)?.id) ?? list[0]?.id ?? null;
+        pendingEnrollmentId.current = null;
+        setSelectedEnrollmentId(next);
+        setEnrollmentsLoading(false);
       })
       .catch(() => {
         if (active) {
@@ -135,7 +148,7 @@ export default function CitizensPage() {
     return () => {
       active = false;
     };
-  }, [selectedId]);
+  }, [selectedId, enrollmentsRefresh]);
 
   // Load detail for the selected enrollment (Enrollment Information panel).
   useEffect(() => {
@@ -199,6 +212,7 @@ export default function CitizensPage() {
           onSelectEnrollment={setSelectedEnrollmentId}
           enrollmentDetail={enrollmentDetail}
           enrollmentDetailLoading={enrollmentDetailLoading}
+          onAddProgram={() => detail && setAddOpen(true)}
           onComingSoon={notify}
           onBack={() => router.push('/worklist')}
         />
@@ -209,6 +223,20 @@ export default function CitizensPage() {
           onComingSoon={notify}
         />
       </div>
+
+      {selectedId && (
+        <AddProgramDialog
+          citizenId={selectedId}
+          open={addOpen}
+          onClose={() => setAddOpen(false)}
+          onCreated={(created) => {
+            setAddOpen(false);
+            pendingEnrollmentId.current = created.id;
+            setEnrollmentsRefresh((n) => n + 1);
+            flash('Program enrollment added.');
+          }}
+        />
+      )}
 
       {toast && <div className="cz-toast">{toast}</div>}
     </div>

@@ -1,9 +1,13 @@
 import { Injectable } from '@nestjs/common';
 import { DatabaseService } from '../database/database.service';
 import {
+  CreateEnrollmentInput,
+  DiseaseDto,
   EnrollmentDetailRow,
   EnrollmentSummaryRow,
+  EventDto,
   ProgramRow,
+  SubProgramDto,
 } from './enrollment.types';
 
 /**
@@ -71,6 +75,7 @@ export class EnrollmentRepository {
               sp.name AS sub_program_name,
               d.name AS disease_name,
               ev.name AS event_name,
+              (e.metadata ->> 'remarks') AS remarks,
               (
                 SELECT w.priority
                 FROM public.worklist_items w
@@ -89,5 +94,120 @@ export class EnrollmentRepository {
       [id],
     );
     return result.rows[0] ?? null;
+  }
+
+  // ── Cascade reads (populate the Add Program dialog) ──────────────────────
+
+  async findSubProgramsByProgram(programId: string): Promise<SubProgramDto[]> {
+    const result = await this.db.query<SubProgramDto>(
+      `SELECT id, name
+       FROM public.sub_programs
+       WHERE program_id = $1 AND is_active = true
+       ORDER BY name`,
+      [programId],
+    );
+    return result.rows;
+  }
+
+  async findDiseasesBySubProgram(subProgramId: string): Promise<DiseaseDto[]> {
+    const result = await this.db.query<DiseaseDto>(
+      `SELECT id, name
+       FROM public.diseases
+       WHERE sub_program_id = $1 AND is_active = true
+       ORDER BY name`,
+      [subProgramId],
+    );
+    return result.rows;
+  }
+
+  async findEventsByDisease(diseaseId: string): Promise<EventDto[]> {
+    const result = await this.db.query<EventDto>(
+      `SELECT id, name
+       FROM public.events
+       WHERE disease_id = $1 AND is_active = true
+       ORDER BY sequence, name`,
+      [diseaseId],
+    );
+    return result.rows;
+  }
+
+  // ── Validation lookups ───────────────────────────────────────────────────
+
+  async citizenExists(citizenId: string): Promise<boolean> {
+    const result = await this.db.query<{ exists: boolean }>(
+      `SELECT EXISTS(SELECT 1 FROM public.citizens WHERE id = $1) AS exists`,
+      [citizenId],
+    );
+    return result.rows[0]?.exists ?? false;
+  }
+
+  async isProgramActive(programId: string): Promise<boolean> {
+    const result = await this.db.query<{ exists: boolean }>(
+      `SELECT EXISTS(
+         SELECT 1 FROM public.programs WHERE id = $1 AND is_active = true
+       ) AS exists`,
+      [programId],
+    );
+    return result.rows[0]?.exists ?? false;
+  }
+
+  /** Returns the program a disease belongs to (via its sub-program), or null. */
+  async findProgramIdForDisease(diseaseId: string): Promise<string | null> {
+    const result = await this.db.query<{ program_id: string }>(
+      `SELECT sp.program_id
+       FROM public.diseases d
+       JOIN public.sub_programs sp ON sp.id = d.sub_program_id
+       WHERE d.id = $1
+       LIMIT 1`,
+      [diseaseId],
+    );
+    return result.rows[0]?.program_id ?? null;
+  }
+
+  /** Returns the disease an event belongs to, or null when the event is unknown. */
+  async findDiseaseIdForEvent(eventId: string): Promise<string | null> {
+    const result = await this.db.query<{ disease_id: string }>(
+      `SELECT disease_id FROM public.events WHERE id = $1 LIMIT 1`,
+      [eventId],
+    );
+    return result.rows[0]?.disease_id ?? null;
+  }
+
+  async hasActiveEnrollment(citizenId: string, programId: string): Promise<boolean> {
+    const result = await this.db.query<{ exists: boolean }>(
+      `SELECT EXISTS(
+         SELECT 1 FROM public.enrollments
+         WHERE citizen_id = $1 AND program_id = $2 AND status = 'ACTIVE'
+       ) AS exists`,
+      [citizenId, programId],
+    );
+    return result.rows[0]?.exists ?? false;
+  }
+
+  // ── Write (the single INSERT for this milestone) ─────────────────────────
+
+  /**
+   * Inserts one enrollment using only existing columns and returns its new id.
+   * Optional remarks are stored inside the existing metadata jsonb column.
+   */
+  async insertEnrollment(input: CreateEnrollmentInput): Promise<string> {
+    const metadata = input.remarks ? JSON.stringify({ remarks: input.remarks }) : null;
+    const result = await this.db.query<{ id: string }>(
+      `INSERT INTO public.enrollments
+         (citizen_id, program_id, disease_id, current_event_id, start_date, status, enrolled_by, metadata)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8::jsonb)
+       RETURNING id`,
+      [
+        input.citizenId,
+        input.programId,
+        input.diseaseId,
+        input.eventId,
+        input.startDate,
+        input.status,
+        input.enrolledBy,
+        metadata,
+      ],
+    );
+    return result.rows[0].id;
   }
 }

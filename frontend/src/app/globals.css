@@ -2339,3 +2339,104 @@ a.wl-icon-btn {
     max-height: 420px;
   }
 }
+
+/* ════════════════════════════════════════════════════════════════════════
+   Milestone 6 Part 2 — Add Program Enrollment dialog
+   ════════════════════════════════════════════════════════════════════════ */
+
+.modal-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(17, 24, 39, 0.45);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+  z-index: 100;
+}
+
+.modal {
+  background: #fff;
+  border-radius: 16px;
+  width: 480px;
+  max-width: 96vw;
+  max-height: 92vh;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  box-shadow: 0 24px 70px rgba(0, 0, 0, 0.25);
+  border: 1px solid var(--bd);
+}
+
+.modal-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 16px 20px;
+  border-bottom: 1px solid var(--bd);
+}
+
+.modal-title {
+  font-size: 16px;
+  font-weight: 800;
+  letter-spacing: -0.01em;
+}
+
+.modal-close {
+  background: transparent;
+  border: none;
+  font-size: 22px;
+  line-height: 1;
+  color: var(--ts);
+  cursor: pointer;
+  width: 30px;
+  height: 30px;
+  border-radius: 8px;
+}
+
+.modal-close:hover:not(:disabled) {
+  background: #f3f4f6;
+  color: var(--tp);
+}
+
+.modal-close:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.modal-body {
+  padding: 18px 20px;
+  overflow-y: auto;
+}
+
+.modal-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+}
+
+.modal-textarea {
+  min-height: 70px;
+  resize: vertical;
+  font-family: inherit;
+}
+
+.modal-foot {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+  padding: 14px 20px;
+  border-top: 1px solid var(--bd);
+  background: #fafdfb;
+}
+
+.modal-foot .btn {
+  width: auto;
+  padding: 9px 18px;
+}
+
+@media (max-width: 520px) {
+  .modal-row {
+    grid-template-columns: 1fr;
+  }
+}

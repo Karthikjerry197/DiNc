@@ -365,3 +365,102 @@ export async function fetchEnrollmentDetail(
   }
   return res.json() as Promise<EnrollmentDetail>;
 }
+
+export interface SubProgramOption {
+  id: string;
+  name: string;
+}
+
+export interface DiseaseOption {
+  id: string;
+  name: string;
+}
+
+export interface EventOption {
+  id: string;
+  name: string;
+}
+
+export interface CreateEnrollmentPayload {
+  programId: string;
+  diseaseId: string;
+  eventId?: string;
+  startDate: string;
+  status?: string;
+  remarks?: string;
+}
+
+export async function fetchSubPrograms(
+  token: string,
+  programId: string,
+): Promise<SubProgramOption[]> {
+  const res = await fetch(`${API_BASE}/api/programs/${programId}/sub-programs`, {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+
+  if (!res.ok) {
+    throw new Error('Unable to load sub-programs');
+  }
+  return res.json() as Promise<SubProgramOption[]>;
+}
+
+export async function fetchDiseases(
+  token: string,
+  subProgramId: string,
+): Promise<DiseaseOption[]> {
+  const res = await fetch(`${API_BASE}/api/sub-programs/${subProgramId}/diseases`, {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+
+  if (!res.ok) {
+    throw new Error('Unable to load conditions');
+  }
+  return res.json() as Promise<DiseaseOption[]>;
+}
+
+export async function fetchEvents(
+  token: string,
+  diseaseId: string,
+): Promise<EventOption[]> {
+  const res = await fetch(`${API_BASE}/api/diseases/${diseaseId}/events`, {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+
+  if (!res.ok) {
+    throw new Error('Unable to load events');
+  }
+  return res.json() as Promise<EventOption[]>;
+}
+
+/**
+ * Creates a program enrollment. On failure, surfaces the backend's validation
+ * message (string or array) as a single friendly Error — never a stack trace.
+ */
+export async function createEnrollment(
+  token: string,
+  citizenId: string,
+  payload: CreateEnrollmentPayload,
+): Promise<EnrollmentDetail> {
+  const res = await fetch(`${API_BASE}/api/citizens/${citizenId}/enrollments`, {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${token}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify(payload),
+  });
+
+  if (!res.ok) {
+    let message = 'Unable to add program enrollment.';
+    try {
+      const body = (await res.json()) as { message?: string | string[] };
+      if (body?.message) {
+        message = Array.isArray(body.message) ? body.message.join(' ') : body.message;
+      }
+    } catch {
+      /* keep the default message */
+    }
+    throw new Error(message);
+  }
+  return res.json() as Promise<EnrollmentDetail>;
+}

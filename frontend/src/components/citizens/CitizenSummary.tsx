@@ -11,6 +11,7 @@ interface CitizenSummaryProps {
   onSelectEnrollment: (id: string) => void;
   enrollmentDetail: EnrollmentDetail | null;
   enrollmentDetailLoading: boolean;
+  onAddProgram: () => void;
   onComingSoon: (label: string) => void;
   onBack: () => void;
 }
@@ -41,6 +42,7 @@ export default function CitizenSummary({
   onSelectEnrollment,
   enrollmentDetail,
   enrollmentDetailLoading,
+  onAddProgram,
   onComingSoon,
   onBack,
 }: CitizenSummaryProps) {
@@ -118,7 +120,7 @@ export default function CitizenSummary({
             type="button"
             className="cz-chip-add"
             title="Add Program"
-            onClick={() => onComingSoon('Add Program')}
+            onClick={onAddProgram}
           >
             ＋ Add Program
           </button>

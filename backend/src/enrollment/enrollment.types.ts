@@ -13,6 +13,21 @@ export interface ProgramDto {
   description: string | null;
 }
 
+export interface SubProgramDto {
+  id: string;
+  name: string;
+}
+
+export interface DiseaseDto {
+  id: string;
+  name: string;
+}
+
+export interface EventDto {
+  id: string;
+  name: string;
+}
+
 export interface NamedRef {
   id: string | null;
   name: string | null;
@@ -81,4 +96,17 @@ export interface EnrollmentDetailRow {
   sub_program_name: string | null;
   disease_name: string | null;
   event_name: string | null;
+  remarks: string | null;
+}
+
+/** Validated input for creating an enrollment (citizenId comes from the URL). */
+export interface CreateEnrollmentInput {
+  citizenId: string;
+  programId: string;
+  diseaseId: string;
+  eventId: string | null;
+  startDate: string;
+  status: string;
+  remarks: string | null;
+  enrolledBy: string | null;
 }

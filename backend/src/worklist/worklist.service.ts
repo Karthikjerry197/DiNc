@@ -1,5 +1,7 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { DatabaseService } from '../database/database.service';
+import { GuidebooksService } from '../guidebooks/guidebooks.service';
+import { GuidebookRef } from '../guidebooks/guidebooks.types';
 import {
   AssigneeOption,
   MonitoringEntry,
@@ -22,7 +24,44 @@ export class WorklistService {
   private readonly logger = new Logger(WorklistService.name);
   private static readonly ITEM_LIMIT = 50;
 
-  constructor(private readonly db: DatabaseService) {}
+  /**
+   * Data-integrity guard: only count/show worklist items still linked to an
+   * existing enrollment, so orphaned items never appear with missing context.
+   */
+  private static readonly LINKED_ENROLLMENT =
+    'EXISTS (SELECT 1 FROM public.enrollments en WHERE en.id = w.enrollment_id)';
+
+  constructor(
+    private readonly db: DatabaseService,
+    private readonly guidebooks: GuidebooksService,
+  ) {}
+
+  /**
+   * Resolves the guidebook for a single worklist item using its own
+   * program/disease/event (falling back to the item's enrollment). Returns the
+   * matched guidebook or null; throws 404 when the item does not exist.
+   */
+  async getGuidebookForItem(itemId: string): Promise<{ guidebook: GuidebookRef | null }> {
+    const result = await this.db.query<{ haystack: string }>(
+      `SELECT COALESCE(p.name, '') || ' ' || COALESCE(p.code, '') || ' ' ||
+              COALESCE(d.name, '') || ' ' || COALESCE(d.code, '') || ' ' ||
+              COALESCE(ev.name, '') AS haystack
+       FROM public.worklist_items w
+       LEFT JOIN public.enrollments e ON e.id = w.enrollment_id
+       LEFT JOIN public.programs p ON p.id = COALESCE(w.program_id, e.program_id)
+       LEFT JOIN public.diseases d ON d.id = COALESCE(w.disease_id, e.disease_id)
+       LEFT JOIN public.events ev ON ev.id = w.event_id
+       WHERE w.id = $1
+       LIMIT 1`,
+      [itemId],
+    );
+    const row = result.rows[0];
+    if (!row) {
+      throw new NotFoundException('Worklist item not found.');
+    }
+    const guidebook = await this.guidebooks.matchByText(row.haystack);
+    return { guidebook };
+  }
 
   async getAdminOverview(): Promise<WorklistOverview> {
     const [stats, items, programs, assignees, monitoring] = await Promise.all([
@@ -60,7 +99,8 @@ export class WorklistService {
                 count(*) FILTER (WHERE due_date = CURRENT_DATE)::int AS due_today,
                 count(*) FILTER (WHERE status = 'COMPLETED')::int AS completed,
                 count(*) FILTER (WHERE is_escalation = true)::int AS escalations
-         FROM public.worklist_items`,
+         FROM public.worklist_items w
+         WHERE ${WorklistService.LINKED_ENROLLMENT}`,
       );
       const row = result.rows[0];
       if (!row) return empty;
@@ -109,7 +149,7 @@ export class WorklistService {
                 w.status AS status,
                 w.assigned_to AS assigned_to
          FROM public.worklist_items w
-         LEFT JOIN public.enrollments e ON e.id = w.enrollment_id
+         JOIN public.enrollments e ON e.id = w.enrollment_id
          LEFT JOIN public.citizens c ON c.id = e.citizen_id
          LEFT JOIN public.programs p ON p.id = COALESCE(w.program_id, e.program_id)
          LEFT JOIN public.diseases d ON d.id = w.disease_id
@@ -185,9 +225,10 @@ export class WorklistService {
                 COALESCE(cnt.pending, 0)::int AS pending
          FROM public.users u
          LEFT JOIN (
-           SELECT assigned_to, count(*) FILTER (WHERE status = 'PENDING')::int AS pending
-           FROM public.worklist_items
-           GROUP BY assigned_to
+           SELECT w.assigned_to, count(*) FILTER (WHERE w.status = 'PENDING')::int AS pending
+           FROM public.worklist_items w
+           WHERE ${WorklistService.LINKED_ENROLLMENT}
+           GROUP BY w.assigned_to
          ) cnt ON cnt.assigned_to = u.username
          WHERE u.is_active = true
          ORDER BY u.full_name

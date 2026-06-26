@@ -1,6 +1,10 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { DatabaseService } from '../database/database.service';
-import { GuidebookDetail, GuidebookListItem } from './guidebooks.types';
+import {
+  GuidebookDetail,
+  GuidebookListItem,
+  GuidebookRef,
+} from './guidebooks.types';
 
 /**
  * Read-only data source for the Guidebooks workspace.
@@ -81,6 +85,32 @@ export class GuidebooksService {
       };
     } catch (error) {
       this.logger.warn(`Guidebook detail query failed: ${(error as Error).message}`);
+      return null;
+    }
+  }
+
+  /**
+   * Resolves the guidebook that best matches a free-text clinical context (built
+   * from a program/disease/event). Uses the existing public.guide_rules table:
+   * each rule holds a regular expression and points to a guidebook; the first
+   * rule (by sort_order) whose pattern matches the text wins. Returns null when
+   * no curated rule matches — callers fall back to the generic Guidebooks page.
+   */
+  async matchByText(haystack: string): Promise<GuidebookRef | null> {
+    if (!haystack || !haystack.trim()) return null;
+    try {
+      const result = await this.db.query<GuidebookRef>(
+        `SELECT g.id, g.code, g.category, g.title
+         FROM public.guide_rules gr
+         JOIN public.guidebooks g ON g.id = gr.guidebook_id
+         WHERE g.is_active = true AND $1 ~* gr.pattern
+         ORDER BY gr.sort_order ASC
+         LIMIT 1`,
+        [haystack],
+      );
+      return result.rows[0] ?? null;
+    } catch (error) {
+      this.logger.warn(`Guidebook match query failed: ${(error as Error).message}`);
       return null;
     }
   }

@@ -1,7 +1,12 @@
 'use client';
 
-import { useEffect, useState } from 'react';
-import { fetchWorklistOverview, type WorklistOverview } from '@/lib/api';
+import { useCallback, useEffect, useState } from 'react';
+import { useRouter } from 'next/navigation';
+import {
+  fetchWorklistItemGuidebook,
+  fetchWorklistOverview,
+  type WorklistOverview,
+} from '@/lib/api';
 import { getToken } from '@/lib/session';
 import WorklistToolbar from '@/components/worklist/WorklistToolbar';
 import WorklistFilters from '@/components/worklist/WorklistFilters';
@@ -29,9 +34,28 @@ const EMPTY: WorklistOverview = {
  * data is read-only and filters/actions are presentational.
  */
 export default function WorklistPage() {
+  const router = useRouter();
   const [data, setData] = useState<WorklistOverview>(EMPTY);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+
+  // Context-aware: resolve the item's guidebook and open it preselected.
+  const openGuidebook = useCallback(
+    async (itemId: string) => {
+      const token = getToken();
+      if (!token) {
+        router.push('/guidebooks');
+        return;
+      }
+      try {
+        const guidebook = await fetchWorklistItemGuidebook(token, itemId);
+        router.push(guidebook ? `/guidebooks?g=${guidebook.id}` : '/guidebooks');
+      } catch {
+        router.push('/guidebooks');
+      }
+    },
+    [router],
+  );
 
   useEffect(() => {
     let active = true;
@@ -74,7 +98,7 @@ export default function WorklistPage() {
         <div className="dash-loading">Loading worklist&hellip;</div>
       ) : (
         <>
-          <WorklistTable items={data.items} />
+          <WorklistTable items={data.items} onOpenGuidebook={openGuidebook} />
           <div className="wl-footer">
             <span>
               Showing {data.items.length} {data.items.length === 1 ? 'item' : 'items'}

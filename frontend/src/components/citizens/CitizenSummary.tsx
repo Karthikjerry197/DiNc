@@ -12,11 +12,13 @@ interface CitizenSummaryProps {
   enrollmentDetail: EnrollmentDetail | null;
   enrollmentDetailLoading: boolean;
   onAddProgram: () => void;
+  onOpenGuidebook: () => void;
   onComingSoon: (label: string) => void;
   onBack: () => void;
 }
 
-/** Primary action buttons — all UI-only this milestone. */
+/** Action buttons. "Guidebook" is context-aware (opens the enrollment's
+ *  guidebook); the rest remain UI-only this milestone. */
 const PRIMARY_ACTIONS = ['Guidebook', 'Call Next', 'Edit', 'Close', 'Remove'];
 const SECONDARY_ACTIONS = ['Guide Book', 'FAQs', 'Manage Activities'];
 
@@ -43,6 +45,7 @@ export default function CitizenSummary({
   enrollmentDetail,
   enrollmentDetailLoading,
   onAddProgram,
+  onOpenGuidebook,
   onComingSoon,
   onBack,
 }: CitizenSummaryProps) {
@@ -66,6 +69,7 @@ export default function CitizenSummary({
   }
 
   const { citizen, stats } = detail;
+  const activeEnrollments = enrollments.filter((e) => e.status === 'ACTIVE');
   const name = citizen.fullName?.trim() ? citizen.fullName : citizen.uhid;
   const demographics = [
     citizen.age != null ? `${citizen.age} yrs` : null,
@@ -112,10 +116,13 @@ export default function CitizenSummary({
         </div>
       </div>
 
-      {/* Program chips — live enrollments; selecting one updates the panel below. */}
+      {/* Active programs — live enrollments; selecting one updates the panel below. */}
       <div className="cz-section">
         <div className="cz-section-head">
-          <span className="cz-section-label">Enrolled Programs</span>
+          <span className="cz-section-label">
+            Active Programs
+            <span className="cz-enroll-count">{activeEnrollments.length}</span>
+          </span>
           <button
             type="button"
             className="cz-chip-add"
@@ -127,40 +134,29 @@ export default function CitizenSummary({
         </div>
         {enrollmentsLoading ? (
           <div className="cz-inline-empty">Loading programs…</div>
-        ) : enrollments.length > 0 ? (
-          <div className="cz-chips">
-            {enrollments.map((enrollment) => {
+        ) : activeEnrollments.length > 0 ? (
+          <ul className="cz-prog-list">
+            {activeEnrollments.map((enrollment) => {
               const label = enrollment.program.name ?? 'Program';
-              const active = enrollment.id === selectedEnrollmentId;
+              const selected = enrollment.id === selectedEnrollmentId;
               return (
-                <div
-                  key={enrollment.id}
-                  className={`cz-program-chip${active ? ' active' : ''}`}
-                  title={enrollment.status}
-                >
+                <li key={enrollment.id}>
                   <button
                     type="button"
-                    className="cz-chip-select"
-                    aria-pressed={active}
+                    className={`cz-prog-row${selected ? ' selected' : ''}`}
+                    aria-pressed={selected}
                     onClick={() => onSelectEnrollment(enrollment.id)}
                   >
-                    {label}
+                    <span className="cz-prog-dot" aria-hidden="true" />
+                    <span className="cz-prog-name">{label}</span>
+                    {selected && <span className="cz-prog-current">Currently Selected</span>}
                   </button>
-                  <button
-                    type="button"
-                    className="cz-chip-x"
-                    title="Remove program"
-                    aria-label={`Remove ${label}`}
-                    onClick={() => onComingSoon('Remove program')}
-                  >
-                    ×
-                  </button>
-                </div>
+                </li>
               );
             })}
-          </div>
+          </ul>
         ) : (
-          <div className="cz-inline-empty">No programs enrolled.</div>
+          <div className="cz-inline-empty">No active clinical programs.</div>
         )}
       </div>
 
@@ -210,8 +206,8 @@ export default function CitizenSummary({
               key={label}
               type="button"
               className="wl-btn wl-btn-soft"
-              title={label}
-              onClick={() => onComingSoon(label)}
+              title={label === 'Guidebook' ? 'Open the guidebook for this enrollment' : label}
+              onClick={label === 'Guidebook' ? onOpenGuidebook : () => onComingSoon(label)}
             >
               {label}
             </button>

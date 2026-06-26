@@ -12,5 +12,8 @@ import { GuidebooksService } from './guidebooks.service';
   imports: [AuthModule],
   controllers: [GuidebooksController],
   providers: [GuidebooksService],
+  // Exported so Enrollment/Worklist modules can reuse the guidebook matcher for
+  // context-aware navigation without duplicating the guide_rules logic.
+  exports: [GuidebooksService],
 })
 export class GuidebooksModule {}

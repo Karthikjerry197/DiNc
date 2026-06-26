@@ -5,6 +5,8 @@ import type { WorklistItem } from '@/lib/api';
 
 interface WorklistTableProps {
   items: WorklistItem[];
+  /** Opens the guidebook for a worklist item (context-aware navigation). */
+  onOpenGuidebook: (itemId: string) => void;
 }
 
 /** Row action icons — UI only for this milestone (tooltips + hover, no behaviour). */
@@ -30,7 +32,7 @@ function value(text: string | null): string {
   return text && text.trim() ? text : '—';
 }
 
-export default function WorklistTable({ items }: WorklistTableProps) {
+export default function WorklistTable({ items, onOpenGuidebook }: WorklistTableProps) {
   if (items.length === 0) {
     return (
       <div className="panel">
@@ -93,19 +95,37 @@ export default function WorklistTable({ items }: WorklistTableProps) {
               </td>
               <td className="wl-col-actions">
                 <div className="wl-row-actions">
-                  {ROW_ACTIONS.map((action) =>
-                    action.key === 'open' ? (
+                  {ROW_ACTIONS.map((action) => {
+                    if (action.key === 'open') {
                       // Open navigates into the Citizen Workspace (Milestone 4).
-                      <Link
-                        key={action.key}
-                        href="/citizens"
-                        className="wl-icon-btn"
-                        title={action.label}
-                        aria-label={action.label}
-                      >
-                        {action.icon}
-                      </Link>
-                    ) : (
+                      return (
+                        <Link
+                          key={action.key}
+                          href="/citizens"
+                          className="wl-icon-btn"
+                          title={action.label}
+                          aria-label={action.label}
+                        >
+                          {action.icon}
+                        </Link>
+                      );
+                    }
+                    if (action.key === 'guidebook') {
+                      // Guidebook opens the guidebook for this item's enrollment.
+                      return (
+                        <button
+                          key={action.key}
+                          type="button"
+                          className="wl-icon-btn"
+                          title="Open the guidebook for this item"
+                          aria-label={action.label}
+                          onClick={() => onOpenGuidebook(item.id)}
+                        >
+                          {action.icon}
+                        </button>
+                      );
+                    }
+                    return (
                       <button
                         key={action.key}
                         type="button"
@@ -115,8 +135,8 @@ export default function WorklistTable({ items }: WorklistTableProps) {
                       >
                         {action.icon}
                       </button>
-                    ),
-                  )}
+                    );
+                  })}
                 </div>
               </td>
             </tr>

@@ -1663,6 +1663,91 @@ a.wl-icon-btn {
   box-shadow: 0 0 0 2px rgba(36, 161, 72, 0.35);
 }
 
+.cz-enroll-count {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 18px;
+  height: 16px;
+  padding: 0 5px;
+  margin-left: 7px;
+  border-radius: 99px;
+  background: var(--pl);
+  color: var(--ps);
+  font-size: 10px;
+  font-weight: 800;
+  vertical-align: middle;
+}
+
+/* ── Active programs list (Milestone 8 enhancement) ── */
+.cz-prog-list {
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+
+.cz-prog-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  text-align: left;
+  background: #fff;
+  border: 1px solid var(--bd);
+  border-radius: 9px;
+  padding: 9px 11px;
+  cursor: pointer;
+  transition: all 0.14s;
+}
+
+.cz-prog-row:hover {
+  background: #fafdfb;
+  border-color: #9acba5;
+}
+
+.cz-prog-row.selected {
+  background: #eaf4ff;
+  border-color: #0284c7;
+  box-shadow: 0 0 0 2px rgba(2, 132, 199, 0.16);
+}
+
+.cz-prog-dot {
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  background: var(--p);
+  flex-shrink: 0;
+}
+
+.cz-prog-row.selected .cz-prog-dot {
+  border-radius: 2px;
+  transform: rotate(45deg);
+  background: #0284c7;
+}
+
+.cz-prog-name {
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--tp);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.cz-prog-current {
+  margin-left: auto;
+  flex-shrink: 0;
+  font-size: 9.5px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: #0369a1;
+  background: #e0f2fe;
+  border-radius: 99px;
+  padding: 2px 8px;
+}
+
 .cz-chip-select {
   background: transparent;
   border: none;
@@ -2444,6 +2529,37 @@ a.wl-icon-btn {
 /* ════════════════════════════════════════════════════════════════════════
    Milestone 7 Part 1 — Activity Workspace (read layer)
    ════════════════════════════════════════════════════════════════════════ */
+
+.act-head-left {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.act-new-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  background: var(--p);
+  border: 1px solid var(--p);
+  color: #fff;
+  border-radius: 8px;
+  padding: 6px 11px;
+  font-size: 11.5px;
+  font-weight: 700;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: background 0.15s;
+}
+
+.act-new-btn:hover:not(:disabled) {
+  background: var(--ps);
+}
+
+.act-new-btn:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
 
 .act-card {
   flex-direction: column;

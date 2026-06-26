@@ -6,6 +6,14 @@
  * UI renders professional empty states instead of fabricating clinical content.
  */
 
+/** A lightweight reference to a guidebook, used by the context-aware resolver. */
+export interface GuidebookRef {
+  id: string;
+  code: string;
+  category: string;
+  title: string;
+}
+
 export interface GuidebookListItem {
   id: string;
   code: string;

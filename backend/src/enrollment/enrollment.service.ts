@@ -5,11 +5,15 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { EnrollmentRepository } from './enrollment.repository';
+import { ActivityService } from '../activity/activity.service';
+import { GuidebooksService } from '../guidebooks/guidebooks.service';
 import { CreateEnrollmentDto } from './dto/create-enrollment.dto';
 import {
+  CreateEnrollmentResultDto,
   DiseaseDto,
   EnrollmentDetailDto,
   EnrollmentDetailRow,
+  EnrollmentGuidebookDto,
   EnrollmentSummaryDto,
   EnrollmentSummaryRow,
   EventDto,
@@ -23,7 +27,23 @@ import {
  */
 @Injectable()
 export class EnrollmentService {
-  constructor(private readonly repo: EnrollmentRepository) {}
+  constructor(
+    private readonly repo: EnrollmentRepository,
+    private readonly activities: ActivityService,
+    private readonly guidebooks: GuidebooksService,
+  ) {}
+
+  /** Resolves the guidebook matching an enrollment's program/disease/event. */
+  async getGuidebookForEnrollment(
+    enrollmentId: string,
+  ): Promise<EnrollmentGuidebookDto> {
+    const haystack = await this.repo.findEnrollmentHaystack(enrollmentId);
+    if (haystack === null) {
+      throw new NotFoundException('Enrollment not found.');
+    }
+    const guidebook = await this.guidebooks.matchByText(haystack);
+    return { guidebook };
+  }
 
   async getActivePrograms(): Promise<ProgramDto[]> {
     const rows = await this.repo.findActivePrograms();
@@ -66,7 +86,7 @@ export class EnrollmentService {
     citizenId: string,
     dto: CreateEnrollmentDto,
     enrolledBy: string | null,
-  ): Promise<EnrollmentDetailDto> {
+  ): Promise<CreateEnrollmentResultDto> {
     if (!(await this.repo.citizenExists(citizenId))) {
       throw new NotFoundException('Citizen not found.');
     }
@@ -114,12 +134,25 @@ export class EnrollmentService {
       enrolledBy,
     });
 
+    // Automatically create the enrollment's first activity for the selected
+    // event. Skipped when no event was chosen (worklist_items.event_id is NOT
+    // NULL, so an activity requires an event). Idempotent in the activity layer.
+    let activity = null;
+    if (dto.eventId) {
+      activity = await this.activities.createInitialActivity({
+        enrollmentId: newId,
+        eventId: dto.eventId,
+        programId: dto.programId,
+        diseaseId: dto.diseaseId,
+      });
+    }
+
     const created = await this.repo.findEnrollmentById(newId);
     if (!created) {
       // Should never happen — the row was just inserted.
       throw new NotFoundException('Enrollment could not be loaded after creation.');
     }
-    return this.toDetail(created);
+    return { enrollment: this.toDetail(created), activity };
   }
 
   private toSummary(row: EnrollmentSummaryRow): EnrollmentSummaryDto {

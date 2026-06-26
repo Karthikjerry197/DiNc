@@ -285,6 +285,45 @@ export async function fetchGuidebookDetail(token: string, id: string): Promise<G
   return res.json() as Promise<GuidebookDetail>;
 }
 
+// ── Context-aware guidebook resolution ───────────────────────────────────────
+
+export interface GuidebookRef {
+  id: string;
+  code: string;
+  category: string;
+  title: string;
+}
+
+export async function fetchEnrollmentGuidebook(
+  token: string,
+  enrollmentId: string,
+): Promise<GuidebookRef | null> {
+  const res = await fetch(`${API_BASE}/api/enrollments/${enrollmentId}/guidebook`, {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+
+  if (!res.ok) {
+    throw new Error('Unable to resolve guidebook');
+  }
+  const body = (await res.json()) as { guidebook: GuidebookRef | null };
+  return body.guidebook;
+}
+
+export async function fetchWorklistItemGuidebook(
+  token: string,
+  itemId: string,
+): Promise<GuidebookRef | null> {
+  const res = await fetch(`${API_BASE}/api/worklist/items/${itemId}/guidebook`, {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+
+  if (!res.ok) {
+    throw new Error('Unable to resolve guidebook');
+  }
+  const body = (await res.json()) as { guidebook: GuidebookRef | null };
+  return body.guidebook;
+}
+
 // ── Programs & Enrollments (read layer) ──────────────────────────────────────
 
 export interface ProgramDto {
@@ -390,6 +429,12 @@ export interface CreateEnrollmentPayload {
   remarks?: string;
 }
 
+export interface CreateEnrollmentResult {
+  enrollment: EnrollmentDetail;
+  /** The activity auto-created for the selected event (null when no event). */
+  activity: Activity | null;
+}
+
 export async function fetchSubPrograms(
   token: string,
   programId: string,
@@ -463,6 +508,71 @@ export async function fetchEnrollmentActivities(
   return res.json() as Promise<Activity[]>;
 }
 
+export interface ActivityAssignee {
+  username: string;
+  fullName: string;
+}
+
+export interface ActivityOptions {
+  defaultEventId: string | null;
+  events: { id: string; name: string }[];
+  assignees: ActivityAssignee[];
+}
+
+export interface CreateActivityPayload {
+  eventId: string;
+  dueDate: string;
+  assignedTo?: string;
+  priority?: string;
+}
+
+export async function fetchActivityOptions(
+  token: string,
+  enrollmentId: string,
+): Promise<ActivityOptions> {
+  const res = await fetch(`${API_BASE}/api/enrollments/${enrollmentId}/activity-options`, {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+
+  if (!res.ok) {
+    throw new Error('Unable to load activity options');
+  }
+  return res.json() as Promise<ActivityOptions>;
+}
+
+/**
+ * Creates an activity. On failure, surfaces the backend's validation message
+ * (string or array) as a single friendly Error — never a stack trace.
+ */
+export async function createActivity(
+  token: string,
+  enrollmentId: string,
+  payload: CreateActivityPayload,
+): Promise<Activity> {
+  const res = await fetch(`${API_BASE}/api/enrollments/${enrollmentId}/activities`, {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${token}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify(payload),
+  });
+
+  if (!res.ok) {
+    let message = 'Unable to create activity.';
+    try {
+      const body = (await res.json()) as { message?: string | string[] };
+      if (body?.message) {
+        message = Array.isArray(body.message) ? body.message.join(' ') : body.message;
+      }
+    } catch {
+      /* keep the default message */
+    }
+    throw new Error(message);
+  }
+  return res.json() as Promise<Activity>;
+}
+
 /**
  * Creates a program enrollment. On failure, surfaces the backend's validation
  * message (string or array) as a single friendly Error — never a stack trace.
@@ -471,7 +581,7 @@ export async function createEnrollment(
   token: string,
   citizenId: string,
   payload: CreateEnrollmentPayload,
-): Promise<EnrollmentDetail> {
+): Promise<CreateEnrollmentResult> {
   const res = await fetch(`${API_BASE}/api/citizens/${citizenId}/enrollments`, {
     method: 'POST',
     headers: {
@@ -493,5 +603,5 @@ export async function createEnrollment(
     }
     throw new Error(message);
   }
-  return res.json() as Promise<EnrollmentDetail>;
+  return res.json() as Promise<CreateEnrollmentResult>;
 }

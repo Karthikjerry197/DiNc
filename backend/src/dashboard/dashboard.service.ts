@@ -21,6 +21,14 @@ import {
 export class DashboardService {
   private readonly logger = new Logger(DashboardService.name);
 
+  /**
+   * Data-integrity guard: a worklist item only counts/displays when it still
+   * references an existing enrollment. This excludes orphaned items (e.g. left
+   * over from a deleted enrollment) so they never appear with missing context.
+   */
+  private static readonly LINKED_ENROLLMENT =
+    'EXISTS (SELECT 1 FROM public.enrollments en WHERE en.id = w.enrollment_id)';
+
   constructor(private readonly db: DatabaseService) {}
 
   async getAdminSummary(): Promise<AdminDashboardSummary> {
@@ -61,13 +69,16 @@ export class DashboardService {
         "SELECT count(*)::int AS c FROM public.notifications WHERE status = 'PENDING'",
       ),
       this.count(
-        "SELECT count(*)::int AS c FROM public.worklist_items WHERE status = 'PENDING'",
+        `SELECT count(*)::int AS c FROM public.worklist_items w
+         WHERE w.status = 'PENDING' AND ${DashboardService.LINKED_ENROLLMENT}`,
       ),
       this.count(
-        "SELECT count(*)::int AS c FROM public.worklist_items WHERE status = 'PENDING' AND due_date < CURRENT_DATE",
+        `SELECT count(*)::int AS c FROM public.worklist_items w
+         WHERE w.status = 'PENDING' AND w.due_date < CURRENT_DATE AND ${DashboardService.LINKED_ENROLLMENT}`,
       ),
       this.count(
-        "SELECT count(*)::int AS c FROM public.worklist_items WHERE status = 'COMPLETED'",
+        `SELECT count(*)::int AS c FROM public.worklist_items w
+         WHERE w.status = 'COMPLETED' AND ${DashboardService.LINKED_ENROLLMENT}`,
       ),
       this.services(),
       this.recentActivity(),
@@ -159,6 +170,7 @@ export class DashboardService {
                   w.priority || ' priority',
                   w.created_at
              FROM public.worklist_items w
+             WHERE ${DashboardService.LINKED_ENROLLMENT}
            UNION ALL
            SELECT 'NOTIFICATION'::text,
                   'Notification ' || n.status,
@@ -199,7 +211,7 @@ export class DashboardService {
                 w.priority AS priority,
                 w.status AS status
          FROM public.worklist_items w
-         LEFT JOIN public.enrollments e ON e.id = w.enrollment_id
+         JOIN public.enrollments e ON e.id = w.enrollment_id
          LEFT JOIN public.citizens c ON c.id = e.citizen_id
          LEFT JOIN public.events ev ON ev.id = w.event_id
          ORDER BY w.due_date ASC NULLS LAST

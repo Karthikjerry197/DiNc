@@ -7,8 +7,8 @@ import {
   fetchEvents,
   fetchPrograms,
   fetchSubPrograms,
+  type CreateEnrollmentResult,
   type DiseaseOption,
-  type EnrollmentDetail,
   type EventOption,
   type ProgramDto,
   type SubProgramOption,
@@ -19,7 +19,7 @@ interface AddProgramDialogProps {
   citizenId: string;
   open: boolean;
   onClose: () => void;
-  onCreated: (enrollment: EnrollmentDetail) => void;
+  onCreated: (result: CreateEnrollmentResult) => void;
 }
 
 const STATUS_OPTIONS = ['ACTIVE', 'INACTIVE', 'COMPLETED'];
@@ -180,7 +180,7 @@ export default function AddProgramDialog({
 
     setSaving(true);
     try {
-      const created = await createEnrollment(token, citizenId, {
+      const result = await createEnrollment(token, citizenId, {
         programId,
         diseaseId,
         eventId: eventId || undefined,
@@ -188,7 +188,7 @@ export default function AddProgramDialog({
         status,
         remarks: remarks.trim() ? remarks.trim() : undefined,
       });
-      onCreated(created);
+      onCreated(result);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Unable to add program enrollment.');
     } finally {

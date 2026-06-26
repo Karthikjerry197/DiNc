@@ -13,5 +13,8 @@ import { ActivityService } from './activity.service';
   imports: [AuthModule],
   controllers: [ActivityController],
   providers: [ActivityService, ActivityRepository],
+  // Exported so EnrollmentModule can auto-create the initial activity on
+  // enrollment without duplicating the worklist_items insert logic.
+  exports: [ActivityService],
 })
 export class ActivityModule {}

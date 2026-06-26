@@ -1,10 +1,12 @@
 /**
- * DTOs for the Program & Enrollment read layer.
+ * DTOs for the Program & Enrollment Management module.
  *
- * Every value originates from a SELECT on existing tables. Fields not modelled
- * in the schema (e.g. CPHC service link, review status, remarks) are reported
- * as null so the UI renders professional empty states — nothing is fabricated.
+ * Every read value originates from a SELECT on existing tables. Fields not
+ * modelled in the schema (e.g. CPHC service link, review status) are reported as
+ * null so the UI renders professional empty states — nothing is fabricated.
  */
+import type { ActivityDto } from '../activity/activity.types';
+import type { GuidebookRef } from '../guidebooks/guidebooks.types';
 
 export interface ProgramDto {
   id: string;
@@ -109,4 +111,19 @@ export interface CreateEnrollmentInput {
   status: string;
   remarks: string | null;
   enrolledBy: string | null;
+}
+
+/**
+ * Response of POST /api/citizens/:citizenId/enrollments — the new enrollment and
+ * the activity automatically created for its selected event (null when the
+ * enrollment has no event).
+ */
+export interface CreateEnrollmentResultDto {
+  enrollment: EnrollmentDetailDto;
+  activity: ActivityDto | null;
+}
+
+/** Response of the context-aware guidebook resolver (null when no rule matches). */
+export interface EnrollmentGuidebookDto {
+  guidebook: GuidebookRef | null;
 }

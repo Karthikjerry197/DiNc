@@ -173,6 +173,27 @@ export class EnrollmentRepository {
     return result.rows[0]?.disease_id ?? null;
   }
 
+  /**
+   * Builds the clinical-context text for an enrollment (program + disease +
+   * current event, names and codes) used to resolve the matching guidebook.
+   * Returns null when the enrollment does not exist.
+   */
+  async findEnrollmentHaystack(enrollmentId: string): Promise<string | null> {
+    const result = await this.db.query<{ haystack: string }>(
+      `SELECT COALESCE(p.name, '') || ' ' || COALESCE(p.code, '') || ' ' ||
+              COALESCE(d.name, '') || ' ' || COALESCE(d.code, '') || ' ' ||
+              COALESCE(ev.name, '') AS haystack
+       FROM public.enrollments e
+       LEFT JOIN public.programs p ON p.id = e.program_id
+       LEFT JOIN public.diseases d ON d.id = e.disease_id
+       LEFT JOIN public.events ev ON ev.id = e.current_event_id
+       WHERE e.id = $1
+       LIMIT 1`,
+      [enrollmentId],
+    );
+    return result.rows[0]?.haystack ?? null;
+  }
+
   async hasActiveEnrollment(citizenId: string, programId: string): Promise<boolean> {
     const result = await this.db.query<{ exists: boolean }>(
       `SELECT EXISTS(

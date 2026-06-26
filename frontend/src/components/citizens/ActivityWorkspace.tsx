@@ -9,6 +9,7 @@ interface ActivityWorkspaceProps {
   error: string;
   /** Whether an enrollment is currently selected (drives the empty message). */
   hasEnrollment: boolean;
+  onNewActivity: () => void;
 }
 
 function formatDate(iso: string | null): string {
@@ -34,6 +35,7 @@ export default function ActivityWorkspace({
   loading,
   error,
   hasEnrollment,
+  onNewActivity,
 }: ActivityWorkspaceProps) {
   const [selectedId, setSelectedId] = useState<string | null>(null);
 
@@ -48,8 +50,19 @@ export default function ActivityWorkspace({
   return (
     <aside className="cz-timeline">
       <div className="cz-timeline-head">
-        <h2 className="cz-panel-title">Activities</h2>
-        <span className="cz-count">{hasEnrollment ? activities.length : 0}</span>
+        <div className="act-head-left">
+          <h2 className="cz-panel-title">Activities</h2>
+          <span className="cz-count">{hasEnrollment ? activities.length : 0}</span>
+        </div>
+        <button
+          type="button"
+          className="act-new-btn"
+          title={hasEnrollment ? 'New activity' : 'Select an enrollment first'}
+          onClick={onNewActivity}
+          disabled={!hasEnrollment}
+        >
+          ＋ New Activity
+        </button>
       </div>
 
       <div className="cz-timeline-list">

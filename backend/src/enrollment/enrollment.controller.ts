@@ -16,8 +16,10 @@ import { JwtPayload } from '../auth/types/jwt-payload.type';
 import { CreateEnrollmentDto } from './dto/create-enrollment.dto';
 import { EnrollmentService } from './enrollment.service';
 import {
+  CreateEnrollmentResultDto,
   DiseaseDto,
   EnrollmentDetailDto,
+  EnrollmentGuidebookDto,
   EnrollmentSummaryDto,
   EventDto,
   ProgramDto,
@@ -83,12 +85,22 @@ export class EnrollmentController {
     @Param('citizenId') citizenId: string,
     @Body() body: CreateEnrollmentDto,
     @Req() req: Request,
-  ): Promise<EnrollmentDetailDto> {
+  ): Promise<CreateEnrollmentResultDto> {
     if (!UUID_RE.test(citizenId)) {
       throw new NotFoundException('Citizen not found');
     }
     const user = (req as Request & { user?: JwtPayload }).user;
     return this.enrollment.createEnrollment(citizenId, body, user?.sub ?? null);
+  }
+
+  @Get('enrollments/:enrollmentId/guidebook')
+  getEnrollmentGuidebook(
+    @Param('enrollmentId') enrollmentId: string,
+  ): Promise<EnrollmentGuidebookDto> {
+    if (!UUID_RE.test(enrollmentId)) {
+      throw new NotFoundException('Enrollment not found');
+    }
+    return this.enrollment.getGuidebookForEnrollment(enrollmentId);
   }
 
   @Get('enrollments/:id')

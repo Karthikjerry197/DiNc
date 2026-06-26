@@ -56,7 +56,11 @@ export default function GuidebooksPage() {
         if (!active) return;
         setGuidebooks(list);
         setListLoading(false);
-        setSelectedId(list[0]?.id ?? null);
+        // Context-aware entry: ?g=<guidebookId> preselects that guidebook
+        // (and so highlights its program/category); otherwise the first.
+        const requested = new URLSearchParams(window.location.search).get('g');
+        const initial = list.find((g) => g.id === requested)?.id ?? list[0]?.id ?? null;
+        setSelectedId(initial);
       })
       .catch(() => {
         if (active) {

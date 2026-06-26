@@ -8,6 +8,7 @@ import {
   fetchCitizensList,
   fetchEnrollmentActivities,
   fetchEnrollmentDetail,
+  fetchEnrollmentGuidebook,
   type Activity,
   type CitizenDetail,
   type CitizenListItem,
@@ -19,6 +20,7 @@ import CitizenList from '@/components/citizens/CitizenList';
 import CitizenSummary from '@/components/citizens/CitizenSummary';
 import ActivityWorkspace from '@/components/citizens/ActivityWorkspace';
 import AddProgramDialog from '@/components/citizens/AddProgramDialog';
+import AddActivityDialog from '@/components/citizens/AddActivityDialog';
 
 /**
  * Citizen Workspace — the primary three-panel workspace opened from the
@@ -40,7 +42,9 @@ export default function CitizensPage() {
   const [activities, setActivities] = useState<Activity[]>([]);
   const [activitiesLoading, setActivitiesLoading] = useState(false);
   const [activitiesError, setActivitiesError] = useState('');
+  const [activitiesRefresh, setActivitiesRefresh] = useState(0);
   const [addOpen, setAddOpen] = useState(false);
+  const [addActivityOpen, setAddActivityOpen] = useState(false);
   const [enrollmentsRefresh, setEnrollmentsRefresh] = useState(0);
   const pendingEnrollmentId = useRef<string | null>(null);
   const [error, setError] = useState('');
@@ -57,6 +61,27 @@ export default function CitizensPage() {
     (label: string) => flash(`${label} — Coming in a future milestone.`),
     [flash],
   );
+
+  // Context-aware: resolve the selected enrollment's guidebook, then navigate to
+  // the Guidebooks page with it preselected. Falls back to the generic page.
+  const openGuidebook = useCallback(async () => {
+    const token = getToken();
+    if (!token || !selectedEnrollmentId) {
+      router.push('/guidebooks');
+      return;
+    }
+    try {
+      const guidebook = await fetchEnrollmentGuidebook(token, selectedEnrollmentId);
+      if (guidebook) {
+        router.push(`/guidebooks?g=${guidebook.id}`);
+      } else {
+        flash('No specific guidebook for this enrollment.');
+        router.push('/guidebooks');
+      }
+    } catch {
+      router.push('/guidebooks');
+    }
+  }, [router, selectedEnrollmentId, flash]);
 
   // Load the citizen list once, then select the requested (?c=) or first citizen.
   useEffect(() => {
@@ -216,7 +241,7 @@ export default function CitizensPage() {
     return () => {
       active = false;
     };
-  }, [selectedEnrollmentId]);
+  }, [selectedEnrollmentId, activitiesRefresh]);
 
   useEffect(() => {
     return () => {
@@ -251,6 +276,7 @@ export default function CitizensPage() {
           enrollmentDetail={enrollmentDetail}
           enrollmentDetailLoading={enrollmentDetailLoading}
           onAddProgram={() => detail && setAddOpen(true)}
+          onOpenGuidebook={openGuidebook}
           onComingSoon={notify}
           onBack={() => router.push('/worklist')}
         />
@@ -260,6 +286,7 @@ export default function CitizensPage() {
           loading={activitiesLoading}
           error={activitiesError}
           hasEnrollment={!!selectedEnrollmentId}
+          onNewActivity={() => selectedEnrollmentId && setAddActivityOpen(true)}
         />
       </div>
 
@@ -268,11 +295,30 @@ export default function CitizensPage() {
           citizenId={selectedId}
           open={addOpen}
           onClose={() => setAddOpen(false)}
-          onCreated={(created) => {
+          onCreated={(result) => {
             setAddOpen(false);
-            pendingEnrollmentId.current = created.id;
+            // Select the new enrollment; its activities (incl. the auto-created
+            // initial activity) load automatically in the Activity Workspace.
+            pendingEnrollmentId.current = result.enrollment.id;
             setEnrollmentsRefresh((n) => n + 1);
-            flash('Program enrollment added.');
+            flash(
+              result.activity
+                ? 'Program enrolled and initial activity created.'
+                : 'Program enrollment added.',
+            );
+          }}
+        />
+      )}
+
+      {selectedEnrollmentId && (
+        <AddActivityDialog
+          enrollmentId={selectedEnrollmentId}
+          open={addActivityOpen}
+          onClose={() => setAddActivityOpen(false)}
+          onCreated={() => {
+            setAddActivityOpen(false);
+            setActivitiesRefresh((n) => n + 1);
+            flash('Activity created.');
           }}
         />
       )}

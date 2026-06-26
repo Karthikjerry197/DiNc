@@ -37,3 +37,39 @@ export interface ActivityRow {
   event_name: string | null;
   enrollment_id: string | null;
 }
+
+export interface AssigneeOption {
+  username: string;
+  fullName: string;
+}
+
+export interface EventOption {
+  id: string;
+  name: string;
+}
+
+/** Everything the "New Activity" dialog needs, for one enrollment. */
+export interface ActivityOptionsDto {
+  defaultEventId: string | null;
+  events: EventOption[];
+  assignees: AssigneeOption[];
+}
+
+/** The enrollment context used to link a new activity. */
+export interface EnrollmentCoreRow {
+  id: string;
+  program_id: string | null;
+  disease_id: string | null;
+  current_event_id: string | null;
+}
+
+/** Validated input for creating an activity (enrollmentId comes from the URL). */
+export interface CreateActivityInput {
+  enrollmentId: string;
+  eventId: string;
+  programId: string | null;
+  diseaseId: string | null;
+  assignedTo: string | null;
+  dueDate: string;
+  priority: string;
+}

@@ -17,6 +17,8 @@ export interface WorklistStats {
 
 export interface WorklistItem {
   id: string;
+  /** Owning citizen id — enables navigation into the Citizen Workspace. */
+  citizenId: string | null;
   uhid: string | null;
   citizen: string | null;
   program: string | null;

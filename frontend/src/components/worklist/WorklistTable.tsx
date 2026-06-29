@@ -7,15 +7,17 @@ interface WorklistTableProps {
   items: WorklistItem[];
   /** Opens the guidebook for a worklist item (context-aware navigation). */
   onOpenGuidebook: (itemId: string) => void;
+  /** Opens the Report Duplicate dialog for a worklist item's citizen. */
+  onReportDuplicate?: (item: WorklistItem) => void;
 }
 
-/** Row action icons — UI only for this milestone (tooltips + hover, no behaviour). */
+/** Row action icons. Open / Guidebook / Duplicate are wired; others are placeholders. */
 const ROW_ACTIONS: { key: string; icon: string; label: string }[] = [
   { key: 'open', icon: '↗', label: 'Open' },
   { key: 'history', icon: '🕘', label: 'History' },
   { key: 'guidebook', icon: '📘', label: 'Guidebook' },
   { key: 'call', icon: '📞', label: 'Call' },
-  { key: 'duplicate', icon: '⧉', label: 'Duplicate' },
+  { key: 'duplicate', icon: '⚠', label: 'Report Duplicate' },
   { key: 'more', icon: '⋯', label: 'More' },
 ];
 
@@ -32,7 +34,11 @@ function value(text: string | null): string {
   return text && text.trim() ? text : '—';
 }
 
-export default function WorklistTable({ items, onOpenGuidebook }: WorklistTableProps) {
+export default function WorklistTable({
+  items,
+  onOpenGuidebook,
+  onReportDuplicate,
+}: WorklistTableProps) {
   if (items.length === 0) {
     return (
       <div className="panel">
@@ -97,17 +103,34 @@ export default function WorklistTable({ items, onOpenGuidebook }: WorklistTableP
                 <div className="wl-row-actions">
                   {ROW_ACTIONS.map((action) => {
                     if (action.key === 'open') {
-                      // Open navigates into the Citizen Workspace (Milestone 4).
+                      // Open navigates into the Citizen Workspace, preselecting
+                      // this item's citizen when known.
                       return (
                         <Link
                           key={action.key}
-                          href="/citizens"
+                          href={item.citizenId ? `/citizens?c=${item.citizenId}` : '/citizens'}
                           className="wl-icon-btn"
                           title={action.label}
                           aria-label={action.label}
                         >
                           {action.icon}
                         </Link>
+                      );
+                    }
+                    if (action.key === 'duplicate') {
+                      // Report Duplicate opens the auditable duplicate request flow.
+                      return (
+                        <button
+                          key={action.key}
+                          type="button"
+                          className="wl-icon-btn"
+                          title={action.label}
+                          aria-label={action.label}
+                          disabled={!item.citizenId || !onReportDuplicate}
+                          onClick={() => item.citizenId && onReportDuplicate?.(item)}
+                        >
+                          {action.icon}
+                        </button>
                       );
                     }
                     if (action.key === 'guidebook') {

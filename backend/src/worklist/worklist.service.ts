@@ -122,6 +122,7 @@ export class WorklistService {
     try {
       const result = await this.db.query<{
         id: string;
+        citizen_id: string | null;
         uhid: string | null;
         citizen: string | null;
         program: string | null;
@@ -136,6 +137,7 @@ export class WorklistService {
         assigned_to: string | null;
       }>(
         `SELECT w.id,
+                c.id AS citizen_id,
                 c.uhid AS uhid,
                 c.full_name AS citizen,
                 p.name AS program,
@@ -160,6 +162,7 @@ export class WorklistService {
       );
       return result.rows.map((row) => ({
         id: row.id,
+        citizenId: row.citizen_id,
         uhid: row.uhid,
         citizen: row.citizen,
         program: row.program,

@@ -2634,3 +2634,324 @@ a.wl-icon-btn {
   text-align: right;
   word-break: break-word;
 }
+
+/* ════════════════════════════════════════════════════════════════════════
+   Milestone 8 — Operations Dashboard & Data Quality (Duplicate Requests)
+   ════════════════════════════════════════════════════════════════════════ */
+
+/* ── Shared button variants ── */
+.btn-danger {
+  background: var(--er);
+  color: #fff;
+  box-shadow: 0 1px 4px rgba(220, 38, 38, 0.25);
+}
+.btn-danger:hover:not(:disabled) {
+  background: #b91c1c;
+}
+.btn-sm {
+  width: auto;
+  padding: 6px 12px;
+  font-size: 11.5px;
+  border-radius: 8px;
+}
+
+/* ── Extra status pills (compare view + request statuses) ── */
+.pill-active { background: #dcfce7; color: #15803d; }
+.pill-inactive { background: #f3f4f6; color: #4b5563; }
+.dq-status-pending { background: #fef3c7; color: #b45309; }
+.dq-status-approved { background: #dbeafe; color: #1d4ed8; }
+.dq-status-rejected { background: #fee2e2; color: #b91c1c; }
+.dq-status-resolved { background: #dcfce7; color: #15803d; }
+
+/* ── Dashboard: Today's Follow-up Worklist (prominent) ── */
+.dash-worklist-panel {
+  border-top: 3px solid var(--p);
+}
+.dash-worklist-meta {
+  display: flex;
+  gap: 14px;
+}
+.worklist-mini-stat {
+  font-size: 12px;
+  font-weight: 700;
+}
+.dash-worklist-wrap {
+  overflow-x: auto;
+}
+.dash-worklist-table {
+  width: 100%;
+}
+.dash-col-actions {
+  white-space: nowrap;
+  width: 1%;
+}
+.dash-row-actions {
+  display: flex;
+  gap: 4px;
+}
+
+/* ── Dashboard: Programs Summary ── */
+.program-summary-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+}
+.program-summary-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 9px 2px;
+  border-bottom: 1px solid var(--bd);
+  font-size: 12.5px;
+}
+.program-summary-item:last-child {
+  border-bottom: none;
+}
+.program-summary-name {
+  color: var(--tp);
+  font-weight: 500;
+}
+.program-summary-count {
+  font-weight: 800;
+  color: var(--p);
+  background: var(--pl);
+  border-radius: 999px;
+  padding: 2px 10px;
+  font-size: 11.5px;
+}
+
+/* ── Administration hub tiles ── */
+.admin-tile-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  gap: 14px;
+}
+.admin-tile {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  background: #fff;
+  border: 1px solid var(--bd);
+  border-radius: 14px;
+  padding: 16px 18px;
+  text-decoration: none;
+  color: inherit;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.03);
+  transition: all 0.18s;
+}
+.admin-tile:hover {
+  border-color: #c0d4c2;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.06);
+}
+.admin-tile-disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+.admin-tile-disabled:hover {
+  border-color: var(--bd);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.03);
+}
+.admin-tile-icon {
+  font-size: 24px;
+  width: 46px;
+  height: 46px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--pl);
+  border-radius: 12px;
+  flex-shrink: 0;
+}
+.admin-tile-body {
+  flex: 1;
+  min-width: 0;
+}
+.admin-tile-label {
+  font-weight: 700;
+  font-size: 14px;
+  color: var(--tp);
+}
+.admin-tile-desc {
+  font-size: 12px;
+  color: var(--ts);
+  margin-top: 3px;
+}
+.admin-tile-go {
+  color: var(--p);
+  font-size: 18px;
+  font-weight: 700;
+}
+.admin-tile-soon {
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  color: var(--ts);
+  background: #f3f4f6;
+  border-radius: 6px;
+  padding: 1px 6px;
+  margin-left: 6px;
+}
+
+/* ── Data Quality: Duplicate Requests list ── */
+.dq-breadcrumb {
+  font-size: 12px;
+  color: var(--ts);
+  margin-bottom: 4px;
+}
+.dq-breadcrumb a {
+  color: var(--p);
+  text-decoration: none;
+}
+.dq-breadcrumb a:hover {
+  text-decoration: underline;
+}
+.dq-refresh {
+  align-self: flex-start;
+}
+.dq-table-wrap {
+  overflow-x: auto;
+}
+.dq-col-actions {
+  white-space: nowrap;
+  width: 1%;
+}
+.dq-row-actions {
+  display: flex;
+  gap: 6px;
+  justify-content: flex-end;
+}
+
+/* ── Data Quality: dialogs ── */
+.dq-dialog-note {
+  font-size: 12.5px;
+  color: var(--ts);
+  background: #f9fafb;
+  border: 1px solid var(--bd);
+  border-radius: 9px;
+  padding: 10px 12px;
+  margin: 0 0 14px;
+}
+.dq-fixed-patient {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  flex-wrap: wrap;
+  background: var(--pl);
+  border-radius: 9px;
+  padding: 10px 12px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--tp);
+}
+
+/* ── Compare Records (wide modal, side-by-side) ── */
+.modal-wide {
+  width: 920px;
+}
+.dq-compare-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px;
+}
+.dq-compare-col {
+  border: 1px solid var(--bd);
+  border-radius: 12px;
+  padding: 14px;
+  min-width: 0;
+}
+.dq-compare-heading {
+  font-weight: 800;
+  font-size: 13px;
+  color: var(--tp);
+  padding-bottom: 8px;
+  margin-bottom: 10px;
+  border-bottom: 2px solid var(--p);
+}
+.dq-compare-section {
+  margin-bottom: 14px;
+}
+.dq-compare-label {
+  font-size: 10.5px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--ts);
+  margin-bottom: 6px;
+}
+.dq-compare-uhid {
+  font-size: 14px;
+  font-weight: 700;
+}
+.dq-demo {
+  margin: 0;
+  display: grid;
+  gap: 4px;
+}
+.dq-demo > div {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+  font-size: 12.5px;
+}
+.dq-demo dt {
+  color: var(--ts);
+  margin: 0;
+}
+.dq-demo dd {
+  margin: 0;
+  font-weight: 600;
+  color: var(--tp);
+  text-align: right;
+}
+.dq-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.dq-chip {
+  background: var(--pl);
+  color: var(--ps);
+  border-radius: 999px;
+  padding: 3px 10px;
+  font-size: 11.5px;
+  font-weight: 600;
+}
+.dq-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.dq-list li {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  font-size: 12.5px;
+}
+.dq-list-main {
+  font-weight: 600;
+  color: var(--tp);
+}
+.dq-list-sub {
+  font-size: 11.5px;
+  color: var(--ts);
+}
+.dq-muted {
+  font-size: 12px;
+  color: var(--ts);
+  font-style: italic;
+}
+
+@media (max-width: 760px) {
+  .modal-wide {
+    width: 96vw;
+  }
+  .dq-compare-grid {
+    grid-template-columns: 1fr;
+  }
+}

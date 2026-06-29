@@ -16,5 +16,8 @@ import { EnrollmentService } from './enrollment.service';
   imports: [AuthModule, ActivityModule, GuidebooksModule],
   controllers: [EnrollmentController],
   providers: [EnrollmentService, EnrollmentRepository],
+  // Exported so the Data Quality module can reuse the enrollment reader and the
+  // context-aware guidebook resolver for the duplicate comparison.
+  exports: [EnrollmentService],
 })
 export class EnrollmentModule {}

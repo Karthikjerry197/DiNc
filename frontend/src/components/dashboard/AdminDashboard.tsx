@@ -1,11 +1,18 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useRouter } from 'next/navigation';
 import {
   fetchAdminDashboard,
+  fetchWorklistItemGuidebook,
+  fetchWorklistOverview,
   type AdminDashboardSummary,
+  type WorklistItem,
 } from '@/lib/api';
 import { getToken } from '@/lib/session';
+import ReportDuplicateDialog, {
+  type ReportDuplicateTarget,
+} from '@/components/dataquality/ReportDuplicateDialog';
 
 /** Formats a count for a stat card; `null` (unavailable) renders an em dash. */
 function statValue(value: number | null): string {
@@ -33,6 +40,17 @@ function formatDate(iso: string | null): string {
   });
 }
 
+function value(text: string | null): string {
+  return text && text.trim() ? text : '—';
+}
+
+/** End of the current local day, used to flag follow-ups due today or overdue. */
+function endOfToday(): number {
+  const d = new Date();
+  d.setHours(23, 59, 59, 999);
+  return d.getTime();
+}
+
 interface StatCardDef {
   label: string;
   value: number | null;
@@ -49,9 +67,20 @@ const ACTIVITY_ICON: Record<string, string> = {
 };
 
 export default function AdminDashboard() {
+  const router = useRouter();
   const [data, setData] = useState<AdminDashboardSummary | null>(null);
+  const [worklist, setWorklist] = useState<WorklistItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+  const [reportTarget, setReportTarget] = useState<ReportDuplicateTarget | null>(null);
+  const [toast, setToast] = useState('');
+  const toastTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const flash = useCallback((message: string) => {
+    setToast(message);
+    if (toastTimer.current) clearTimeout(toastTimer.current);
+    toastTimer.current = setTimeout(() => setToast(''), 2600);
+  }, []);
 
   useEffect(() => {
     let active = true;
@@ -63,12 +92,14 @@ export default function AdminDashboard() {
       return;
     }
 
-    fetchAdminDashboard(token)
-      .then((summary) => {
-        if (active) {
-          setData(summary);
-          setLoading(false);
-        }
+    // Reuse both existing read APIs: the dashboard summary (KPIs, services,
+    // programs, activity) and the worklist overview (follow-up items).
+    Promise.all([fetchAdminDashboard(token), fetchWorklistOverview(token)])
+      .then(([summary, overview]) => {
+        if (!active) return;
+        setData(summary);
+        setWorklist(overview.items);
+        setLoading(false);
       })
       .catch(() => {
         if (active) {
@@ -81,6 +112,48 @@ export default function AdminDashboard() {
       active = false;
     };
   }, []);
+
+  useEffect(() => {
+    return () => {
+      if (toastTimer.current) clearTimeout(toastTimer.current);
+    };
+  }, []);
+
+  // Today's follow-up worklist: pending items due today or overdue. When none
+  // qualify, fall back to the nearest upcoming pending items so the worklist is
+  // never needlessly empty.
+  const followups = useMemo(() => {
+    const pending = worklist.filter((i) => i.status.toUpperCase() === 'PENDING');
+    const cutoff = endOfToday();
+    const due = pending.filter(
+      (i) => i.dueDate && new Date(i.dueDate).getTime() <= cutoff,
+    );
+    return (due.length > 0 ? due : pending).slice(0, 12);
+  }, [worklist]);
+
+  // Always open the guidebook for THIS item's enrollment/activity. When no
+  // curated guidebook matches the item's clinical context, surface a notice
+  // rather than dropping the user on the generic Guidebooks landing page.
+  const openGuidebook = useCallback(
+    async (itemId: string) => {
+      const token = getToken();
+      if (!token) {
+        flash('Your session has expired. Please sign in again.');
+        return;
+      }
+      try {
+        const guidebook = await fetchWorklistItemGuidebook(token, itemId);
+        if (guidebook) {
+          router.push(`/guidebooks?g=${guidebook.id}`);
+        } else {
+          flash('No specific guidebook is mapped to this activity.');
+        }
+      } catch {
+        flash('Unable to open the guidebook for this activity.');
+      }
+    },
+    [router, flash],
+  );
 
   if (loading) {
     return (
@@ -122,7 +195,7 @@ export default function AdminDashboard() {
       <div className="page-head">
         <div>
           <h1 className="page-title">Dashboard</h1>
-          <p className="page-subtitle">Administrator overview · live system summary</p>
+          <p className="page-subtitle">Operations command centre · live system summary</p>
         </div>
       </div>
 
@@ -145,67 +218,127 @@ export default function AdminDashboard() {
 
       <div className="dash-columns">
         <div className="dash-col-main">
-          <div className="panel">
+          <div className="panel dash-worklist-panel">
             <div className="panel-head">
-              <h2 className="panel-title">Worklist Overview</h2>
-            </div>
-            <div className="worklist-stats">
-              <div className="worklist-stat">
-                <span className="worklist-stat-value" style={{ color: '#d97706' }}>
-                  {statValue(data?.worklist.pending ?? null)}
+              <h2 className="panel-title">Today&apos;s Follow-up Worklist</h2>
+              <div className="dash-worklist-meta">
+                <span className="worklist-mini-stat" style={{ color: '#d97706' }}>
+                  {statValue(data?.worklist.pending ?? null)} pending
                 </span>
-                <span className="worklist-stat-label">Pending</span>
-              </div>
-              <div className="worklist-stat">
-                <span className="worklist-stat-value" style={{ color: '#dc2626' }}>
-                  {statValue(data?.worklist.overdue ?? null)}
+                <span className="worklist-mini-stat" style={{ color: '#dc2626' }}>
+                  {statValue(data?.worklist.overdue ?? null)} overdue
                 </span>
-                <span className="worklist-stat-label">Overdue</span>
-              </div>
-              <div className="worklist-stat">
-                <span className="worklist-stat-value" style={{ color: '#24a148' }}>
-                  {statValue(data?.worklist.completed ?? null)}
-                </span>
-                <span className="worklist-stat-label">Completed</span>
               </div>
             </div>
 
-            {data && data.recentWorklist.length > 0 ? (
-              <table className="data-table">
-                <thead>
-                  <tr>
-                    <th>UHID</th>
-                    <th>Citizen</th>
-                    <th>Activity</th>
-                    <th>Due</th>
-                    <th>Priority</th>
-                    <th>Status</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {data.recentWorklist.map((row, i) => (
-                    <tr key={i}>
-                      <td className="mono">{row.uhid ?? '—'}</td>
-                      <td>{row.citizen ?? '—'}</td>
-                      <td>{row.activity ?? '—'}</td>
-                      <td>{formatDate(row.dueDate)}</td>
-                      <td>
-                        <span className={`pill pill-${row.priority.toLowerCase()}`}>{row.priority}</span>
-                      </td>
-                      <td>
-                        <span className={`pill pill-${row.status.toLowerCase()}`}>{row.status}</span>
-                      </td>
+            {followups.length > 0 ? (
+              <div className="dash-worklist-wrap">
+                <table className="data-table dash-worklist-table">
+                  <thead>
+                    <tr>
+                      <th>UHID</th>
+                      <th>Program</th>
+                      <th>Activity</th>
+                      <th>Due Date</th>
+                      <th>Priority</th>
+                      <th>Status</th>
+                      <th className="dash-col-actions">Actions</th>
                     </tr>
-                  ))}
-                </tbody>
-              </table>
+                  </thead>
+                  <tbody>
+                    {followups.map((item) => (
+                      <tr key={item.id}>
+                        <td className="mono">{value(item.uhid)}</td>
+                        <td>{value(item.program)}</td>
+                        <td>{value(item.activity)}</td>
+                        <td>{formatDate(item.dueDate)}</td>
+                        <td>
+                          <span className={`pill pill-${item.priority.toLowerCase()}`}>{item.priority}</span>
+                        </td>
+                        <td>
+                          <span className={`pill pill-${item.status.toLowerCase()}`}>{item.status}</span>
+                        </td>
+                        <td className="dash-col-actions">
+                          <div className="dash-row-actions">
+                            <button
+                              type="button"
+                              className="wl-icon-btn"
+                              title="Open the guidebook for this patient's activity"
+                              aria-label="Guidebook"
+                              onClick={() => openGuidebook(item.id)}
+                            >
+                              📖
+                            </button>
+                            <button
+                              type="button"
+                              className="wl-icon-btn"
+                              title="Call (coming soon)"
+                              aria-label="Call"
+                              onClick={() => flash('Call — Coming in a future milestone.')}
+                            >
+                              📞
+                            </button>
+                            <button
+                              type="button"
+                              className="wl-icon-btn"
+                              title="Open patient workspace"
+                              aria-label="Open Patient"
+                              disabled={!item.citizenId}
+                              onClick={() =>
+                                item.citizenId && router.push(`/citizens?c=${item.citizenId}`)
+                              }
+                            >
+                              👁
+                            </button>
+                            <button
+                              type="button"
+                              className="wl-icon-btn"
+                              title="Report a possible duplicate patient"
+                              aria-label="Report Duplicate"
+                              disabled={!item.citizenId}
+                              onClick={() =>
+                                item.citizenId &&
+                                setReportTarget({
+                                  id: item.citizenId,
+                                  uhid: item.uhid,
+                                  fullName: item.citizen,
+                                })
+                              }
+                            >
+                              ⚠
+                            </button>
+                          </div>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
             ) : (
-              <EmptyState text="No worklist items to display." />
+              <EmptyState text="No follow-up items to display." />
             )}
           </div>
         </div>
 
         <div className="dash-col-side">
+          <div className="panel">
+            <div className="panel-head">
+              <h2 className="panel-title">Programs Summary</h2>
+            </div>
+            {data && data.programs.length > 0 ? (
+              <ul className="program-summary-list">
+                {data.programs.map((p) => (
+                  <li key={p.name} className="program-summary-item">
+                    <span className="program-summary-name">{p.name}</span>
+                    <span className="program-summary-count">{p.activeEnrollments.toLocaleString()}</span>
+                  </li>
+                ))}
+              </ul>
+            ) : (
+              <EmptyState text="No active programs." />
+            )}
+          </div>
+
           <div className="panel">
             <div className="panel-head">
               <h2 className="panel-title">CPHC Services</h2>
@@ -253,6 +386,20 @@ export default function AdminDashboard() {
           </div>
         </div>
       </div>
+
+      {reportTarget && (
+        <ReportDuplicateDialog
+          current={reportTarget}
+          open={reportTarget !== null}
+          onClose={() => setReportTarget(null)}
+          onSubmitted={(request) => {
+            setReportTarget(null);
+            flash(`Duplicate request ${request.reference} submitted for review.`);
+          }}
+        />
+      )}
+
+      {toast && <div className="cz-toast">{toast}</div>}
     </div>
   );
 }

@@ -9,6 +9,7 @@ import { CitizensModule } from './citizens/citizens.module';
 import { GuidebooksModule } from './guidebooks/guidebooks.module';
 import { EnrollmentModule } from './enrollment/enrollment.module';
 import { ActivityModule } from './activity/activity.module';
+import { DataQualityModule } from './data-quality/data-quality.module';
 
 @Module({
   imports: [
@@ -22,6 +23,7 @@ import { ActivityModule } from './activity/activity.module';
     GuidebooksModule,
     EnrollmentModule,
     ActivityModule,
+    DataQualityModule,
   ],
 })
 export class AppModule {}

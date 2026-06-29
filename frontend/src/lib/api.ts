@@ -61,6 +61,11 @@ export interface ServiceItem {
   color: string | null;
 }
 
+export interface ProgramSummaryItem {
+  name: string;
+  activeEnrollments: number;
+}
+
 export interface ActivityItem {
   kind: string;
   title: string;
@@ -81,6 +86,7 @@ export interface AdminDashboardSummary {
   stats: DashboardStats;
   worklist: WorklistBreakdown;
   services: ServiceItem[];
+  programs: ProgramSummaryItem[];
   recentActivity: ActivityItem[];
   recentWorklist: WorklistRow[];
 }
@@ -109,6 +115,7 @@ export interface WorklistStats {
 
 export interface WorklistItem {
   id: string;
+  citizenId: string | null;
   uhid: string | null;
   citizen: string | null;
   program: string | null;
@@ -604,4 +611,158 @@ export async function createEnrollment(
     throw new Error(message);
   }
   return res.json() as Promise<CreateEnrollmentResult>;
+}
+
+// ── Data Quality: Duplicate Requests ─────────────────────────────────────────
+
+export type DuplicateRequestStatus =
+  | 'PENDING'
+  | 'APPROVED'
+  | 'REJECTED'
+  | 'RESOLVED';
+
+export type DuplicateResolution = 'MERGED' | 'DELETED';
+
+export interface RequestCitizenRef {
+  id: string;
+  uhid: string | null;
+  fullName: string | null;
+}
+
+export interface DuplicateRequest {
+  id: string;
+  reference: string;
+  currentPatient: RequestCitizenRef;
+  duplicatePatient: RequestCitizenRef;
+  reason: string;
+  comments: string | null;
+  status: DuplicateRequestStatus;
+  resolution: DuplicateResolution | null;
+  submittedBy: string;
+  submittedAt: string;
+  reviewedBy: string | null;
+  reviewedAt: string | null;
+  remarks: string | null;
+}
+
+export interface EnrollmentComparisonEntry extends EnrollmentSummary {
+  guidebook: GuidebookRef | null;
+}
+
+export interface PatientComparisonSide {
+  citizen: CitizenDetail['citizen'];
+  programs: ProgramChip[];
+  enrollments: EnrollmentComparisonEntry[];
+  activities: ActivityEntry[];
+  guidebooks: GuidebookRef[];
+}
+
+export interface DuplicateComparison {
+  request: DuplicateRequest;
+  current: PatientComparisonSide;
+  duplicate: PatientComparisonSide;
+}
+
+/** Reason codes accepted by the backend, with friendly labels for the UI. */
+export const DUPLICATE_REASONS: { value: string; label: string }[] = [
+  { value: 'DUPLICATE_REGISTRATION', label: 'Duplicate registration' },
+  { value: 'SAME_PERSON_DIFFERENT_UHID', label: 'Same person, different UHID' },
+  { value: 'DATA_ENTRY_ERROR', label: 'Data entry error' },
+  { value: 'MERGED_FAMILY_RECORD', label: 'Merged / family record' },
+  { value: 'OTHER', label: 'Other' },
+];
+
+/** Maps a stored reason code to its friendly label (falls back to the code). */
+export function duplicateReasonLabel(value: string): string {
+  return DUPLICATE_REASONS.find((r) => r.value === value)?.label ?? value;
+}
+
+/** Surfaces a backend validation message (string | string[]) as one Error. */
+async function readError(res: Response, fallback: string): Promise<Error> {
+  let message = fallback;
+  try {
+    const body = (await res.json()) as { message?: string | string[] };
+    if (body?.message) {
+      message = Array.isArray(body.message) ? body.message.join(' ') : body.message;
+    }
+  } catch {
+    /* keep the fallback */
+  }
+  return new Error(message);
+}
+
+export interface CreateDuplicateRequestPayload {
+  currentCitizenId: string;
+  duplicateCitizenId: string;
+  reason: string;
+  comments?: string;
+}
+
+export async function createDuplicateRequest(
+  token: string,
+  payload: CreateDuplicateRequestPayload,
+): Promise<DuplicateRequest> {
+  const res = await fetch(`${API_BASE}/api/data-quality/duplicate-requests`, {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+  });
+  if (!res.ok) throw await readError(res, 'Unable to submit duplicate request.');
+  return res.json() as Promise<DuplicateRequest>;
+}
+
+export async function fetchDuplicateRequests(token: string): Promise<DuplicateRequest[]> {
+  const res = await fetch(`${API_BASE}/api/data-quality/duplicate-requests`, {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  if (!res.ok) throw await readError(res, 'Unable to load duplicate requests.');
+  return res.json() as Promise<DuplicateRequest[]>;
+}
+
+export async function fetchDuplicateComparison(
+  token: string,
+  id: string,
+): Promise<DuplicateComparison> {
+  const res = await fetch(
+    `${API_BASE}/api/data-quality/duplicate-requests/${id}/comparison`,
+    { headers: { Authorization: `Bearer ${token}` } },
+  );
+  if (!res.ok) throw await readError(res, 'Unable to load comparison.');
+  return res.json() as Promise<DuplicateComparison>;
+}
+
+export async function reviewDuplicateRequest(
+  token: string,
+  id: string,
+  decision: 'approve' | 'reject',
+  remarks?: string,
+): Promise<DuplicateRequest> {
+  const res = await fetch(
+    `${API_BASE}/api/data-quality/duplicate-requests/${id}/${decision}`,
+    {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify(remarks ? { remarks } : {}),
+    },
+  );
+  if (!res.ok) throw await readError(res, `Unable to ${decision} this request.`);
+  return res.json() as Promise<DuplicateRequest>;
+}
+
+export async function resolveDuplicateRequest(
+  token: string,
+  id: string,
+  action: 'MERGE' | 'DELETE',
+  remarks?: string,
+): Promise<DuplicateRequest> {
+  const res = await fetch(
+    `${API_BASE}/api/data-quality/duplicate-requests/${id}/resolve`,
+    {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action, ...(remarks ? { remarks } : {}) }),
+    },
+  );
+  if (!res.ok) throw await readError(res, 'Unable to resolve this request.');
+  return res.json() as Promise<DuplicateRequest>;
 }

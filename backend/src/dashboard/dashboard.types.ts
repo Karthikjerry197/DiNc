@@ -32,6 +32,12 @@ export interface ServiceItem {
   color: string | null;
 }
 
+/** A program with its active-enrollment count for the Programs Summary widget. */
+export interface ProgramSummaryItem {
+  name: string;
+  activeEnrollments: number;
+}
+
 export interface ActivityItem {
   kind: string;
   title: string;
@@ -52,6 +58,7 @@ export interface AdminDashboardSummary {
   stats: DashboardStats;
   worklist: WorklistBreakdown;
   services: ServiceItem[];
+  programs: ProgramSummaryItem[];
   recentActivity: ActivityItem[];
   recentWorklist: WorklistRow[];
 }

@@ -12,5 +12,8 @@ import { CitizensService } from './citizens.service';
   imports: [AuthModule],
   controllers: [CitizensController],
   providers: [CitizensService],
+  // Exported so the Data Quality module can reuse the citizen reader for the
+  // side-by-side duplicate comparison without duplicating its SQL.
+  exports: [CitizensService],
 })
 export class CitizensModule {}

@@ -24,7 +24,7 @@ export const NAV_ITEMS: NavItem[] = [
   { label: 'Knowledge Base', href: '/knowledge-base', icon: '📚', enabled: false },
   { label: 'Notifications', href: '/notifications', icon: '🔔', enabled: false },
   { label: 'Reports', href: '/reports', icon: '📊', enabled: false },
-  { label: 'Administration', href: '/administration', icon: '⚙', enabled: false },
+  { label: 'Administration', href: '/administration', icon: '⚙', enabled: true },
 ];
 
 interface SidebarProps {

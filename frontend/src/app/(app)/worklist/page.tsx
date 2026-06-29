@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation';
 import {
   fetchWorklistItemGuidebook,
   fetchWorklistOverview,
+  type WorklistItem,
   type WorklistOverview,
 } from '@/lib/api';
 import { getToken } from '@/lib/session';
@@ -12,6 +13,9 @@ import WorklistToolbar from '@/components/worklist/WorklistToolbar';
 import WorklistFilters from '@/components/worklist/WorklistFilters';
 import TeamMonitoring from '@/components/worklist/TeamMonitoring';
 import WorklistTable from '@/components/worklist/WorklistTable';
+import ReportDuplicateDialog, {
+  type ReportDuplicateTarget,
+} from '@/components/dataquality/ReportDuplicateDialog';
 
 const EMPTY: WorklistOverview = {
   stats: {
@@ -38,6 +42,13 @@ export default function WorklistPage() {
   const [data, setData] = useState<WorklistOverview>(EMPTY);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+  const [reportTarget, setReportTarget] = useState<ReportDuplicateTarget | null>(null);
+  const [toast, setToast] = useState('');
+
+  const reportDuplicate = useCallback((item: WorklistItem) => {
+    if (!item.citizenId) return;
+    setReportTarget({ id: item.citizenId, uhid: item.uhid, fullName: item.citizen });
+  }, []);
 
   // Context-aware: resolve the item's guidebook and open it preselected.
   const openGuidebook = useCallback(
@@ -98,7 +109,11 @@ export default function WorklistPage() {
         <div className="dash-loading">Loading worklist&hellip;</div>
       ) : (
         <>
-          <WorklistTable items={data.items} onOpenGuidebook={openGuidebook} />
+          <WorklistTable
+            items={data.items}
+            onOpenGuidebook={openGuidebook}
+            onReportDuplicate={reportDuplicate}
+          />
           <div className="wl-footer">
             <span>
               Showing {data.items.length} {data.items.length === 1 ? 'item' : 'items'}
@@ -111,6 +126,21 @@ export default function WorklistPage() {
           </div>
         </>
       )}
+
+      {reportTarget && (
+        <ReportDuplicateDialog
+          current={reportTarget}
+          open={reportTarget !== null}
+          onClose={() => setReportTarget(null)}
+          onSubmitted={(request) => {
+            setReportTarget(null);
+            setToast(`Duplicate request ${request.reference} submitted for review.`);
+            setTimeout(() => setToast(''), 2600);
+          }}
+        />
+      )}
+
+      {toast && <div className="cz-toast">{toast}</div>}
     </div>
   );
 }

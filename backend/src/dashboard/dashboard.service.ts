@@ -3,6 +3,7 @@ import { DatabaseService } from '../database/database.service';
 import {
   ActivityItem,
   AdminDashboardSummary,
+  ProgramSummaryItem,
   ServiceItem,
   WorklistRow,
 } from './dashboard.types';
@@ -45,6 +46,7 @@ export class DashboardService {
       overdueTasks,
       completedTasks,
       services,
+      programsSummary,
       recentActivity,
       recentWorklist,
     ] = await Promise.all([
@@ -81,6 +83,7 @@ export class DashboardService {
          WHERE w.status = 'COMPLETED' AND ${DashboardService.LINKED_ENROLLMENT}`,
       ),
       this.services(),
+      this.programs(),
       this.recentActivity(),
       this.recentWorklist(),
     ]);
@@ -104,9 +107,36 @@ export class DashboardService {
         completed: completedTasks,
       },
       services,
+      programs: programsSummary,
       recentActivity,
       recentWorklist,
     };
+  }
+
+  /**
+   * Active programs with their active-enrollment counts for the Programs Summary
+   * widget. A LEFT JOIN keeps programs with no enrollments visible (count 0).
+   */
+  private async programs(): Promise<ProgramSummaryItem[]> {
+    try {
+      const result = await this.db.query<{ name: string; active_enrollments: number }>(
+        `SELECT p.name AS name,
+                count(e.id) FILTER (WHERE e.status = 'ACTIVE')::int AS active_enrollments
+         FROM public.programs p
+         LEFT JOIN public.enrollments e ON e.program_id = p.id
+         WHERE p.is_active = true
+         GROUP BY p.id, p.name
+         ORDER BY active_enrollments DESC, p.name
+         LIMIT 12`,
+      );
+      return result.rows.map((row) => ({
+        name: row.name,
+        activeEnrollments: row.active_enrollments,
+      }));
+    } catch (error) {
+      this.logger.warn(`Dashboard programs query failed: ${(error as Error).message}`);
+      return [];
+    }
   }
 
   /** Runs a single-row `count(*) AS c` query, returning the count or `null` on failure. */

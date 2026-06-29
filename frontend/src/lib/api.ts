@@ -308,6 +308,133 @@ export async function bulkUploadCitizens(
   return res.json() as Promise<BulkUploadResult>;
 }
 
+// ── Integrated registration (wizard + bulk with enrollment) ──────────────────
+
+export interface RegistrationProgramOption {
+  id: string;
+  code: string;
+  name: string;
+}
+export interface RegistrationWorkerOption {
+  username: string;
+  fullName: string;
+  role: string;
+}
+export interface RegistrationOptions {
+  programs: RegistrationProgramOption[];
+  workers: RegistrationWorkerOption[];
+}
+
+export interface DuplicateMatch {
+  id: string;
+  uhid: string;
+  fullName: string | null;
+  phone: string | null;
+  matchedOn: ('UHID' | 'PHONE' | 'AADHAAR')[];
+}
+
+export interface RegisterPatientPayload {
+  uhid?: string;
+  fullName: string;
+  age?: number;
+  dateOfBirth?: string;
+  gender?: string;
+  phone?: string;
+  address?: string;
+  village?: string;
+  district?: string;
+  aadhaar?: string;
+  programIds: string[];
+  assignedTo?: string;
+  force?: boolean;
+}
+
+export interface RegistrationResult {
+  citizenId: string;
+  uhid: string;
+  fullName: string | null;
+  enrollments: { programId: string; programName: string; enrollmentId: string; activityId: string | null }[];
+  skippedPrograms: string[];
+}
+
+export interface BulkPatientRow {
+  uhid?: string;
+  fullName: string;
+  age?: string;
+  gender?: string;
+  phone?: string;
+  address?: string;
+  village?: string;
+  district?: string;
+  aadhaar?: string;
+  programs?: string;
+}
+
+export interface BulkRowResult {
+  row: number;
+  uhid: string | null;
+  fullName: string | null;
+  status: 'CREATED' | 'DUPLICATE' | 'SKIPPED' | 'FAILED';
+  enrollments: number;
+  reason: string | null;
+}
+
+export interface BulkRegistrationResult {
+  total: number;
+  created: number;
+  duplicate: number;
+  skipped: number;
+  failed: number;
+  rows: BulkRowResult[];
+}
+
+export async function fetchRegistrationOptions(token: string): Promise<RegistrationOptions> {
+  const res = await fetch(`${API_BASE}/api/registration/options`, {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  if (!res.ok) throw await citizenError(res, 'Unable to load registration options.');
+  return res.json() as Promise<RegistrationOptions>;
+}
+
+export async function checkDuplicates(
+  token: string,
+  payload: { uhid?: string; phone?: string; aadhaar?: string },
+): Promise<{ duplicates: DuplicateMatch[] }> {
+  const res = await fetch(`${API_BASE}/api/registration/check-duplicates`, {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+  });
+  if (!res.ok) throw await citizenError(res, 'Unable to check for duplicates.');
+  return res.json() as Promise<{ duplicates: DuplicateMatch[] }>;
+}
+
+export async function registerPatient(
+  token: string,
+  payload: RegisterPatientPayload,
+): Promise<RegistrationResult> {
+  const res = await fetch(`${API_BASE}/api/registration`, {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+  });
+  if (!res.ok) throw await citizenError(res, 'Unable to register patient.');
+  return res.json() as Promise<RegistrationResult>;
+}
+
+export async function bulkRegisterPatients(
+  token: string,
+  payload: { patients: BulkPatientRow[]; defaultProgramIds?: string[]; assignedTo?: string },
+): Promise<BulkRegistrationResult> {
+  const res = await fetch(`${API_BASE}/api/registration/bulk`, {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+  });
+  if (!res.ok) throw await citizenError(res, 'Unable to bulk register patients.');
+  return res.json() as Promise<BulkRegistrationResult>;
+}
+
 // ── Guidebooks ───────────────────────────────────────────────────────────────
 
 export interface GuidebookListItem {

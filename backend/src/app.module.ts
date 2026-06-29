@@ -12,6 +12,7 @@ import { ActivityModule } from './activity/activity.module';
 import { DataQualityModule } from './data-quality/data-quality.module';
 import { ConsultationModule } from './consultation/consultation.module';
 import { WorkflowModule } from './workflow/workflow.module';
+import { RegistrationModule } from './registration/registration.module';
 
 @Module({
   imports: [
@@ -28,6 +29,7 @@ import { WorkflowModule } from './workflow/workflow.module';
     DataQualityModule,
     ConsultationModule,
     WorkflowModule,
+    RegistrationModule,
   ],
 })
 export class AppModule {}

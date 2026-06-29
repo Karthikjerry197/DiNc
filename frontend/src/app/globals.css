@@ -3390,3 +3390,130 @@ a.wl-icon-btn {
 @media (max-width: 760px) {
   .quick-actions { grid-template-columns: repeat(2, 1fr); }
 }
+
+/* ════════════════════════════════════════════════════════════════════════
+   Milestone 12 — Registration Wizard & Bulk Upload (enrollment)
+   ════════════════════════════════════════════════════════════════════════ */
+
+/* Wizard progress indicator */
+.rw-steps {
+  display: flex;
+  list-style: none;
+  margin: 0;
+  padding: 14px 20px;
+  gap: 8px;
+  border-bottom: 1px solid var(--bd);
+  background: #fafdfb;
+}
+.rw-step {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: 1;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--ts);
+}
+.rw-step-no {
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 11px;
+  background: #e5e7eb;
+  color: var(--ts);
+  flex-shrink: 0;
+}
+.rw-current .rw-step-no { background: var(--p); color: #fff; }
+.rw-current { color: var(--tp); }
+.rw-done .rw-step-no { background: #bbf7d0; color: #15803d; }
+
+/* Program selection grid (wizard + bulk defaults) */
+.rw-program-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+  gap: 8px;
+}
+.rw-program {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  border: 1px solid var(--bd);
+  border-radius: 9px;
+  padding: 10px 12px;
+  font-size: 12.5px;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+.rw-program:hover { border-color: #c0d4c2; }
+.rw-program.selected {
+  border-color: var(--p);
+  background: var(--pl);
+}
+.rw-program-name { font-weight: 500; }
+
+/* Duplicate warning */
+.rw-dup-warning {
+  border: 1px solid #fde68a;
+  background: #fffbeb;
+  border-radius: 10px;
+  padding: 12px 14px;
+  margin-bottom: 14px;
+}
+.rw-dup-head {
+  font-weight: 700;
+  color: #b45309;
+  margin-bottom: 8px;
+}
+.rw-dup-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 12.5px;
+  padding: 4px 0;
+  flex-wrap: wrap;
+}
+.rw-dup-on { color: var(--ts); }
+.rw-dup-link { color: var(--p); font-weight: 600; text-decoration: none; }
+.rw-dup-link:hover { text-decoration: underline; }
+.rw-dup-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 8px;
+}
+
+/* Review */
+.rw-review-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px;
+}
+.rw-review-label {
+  font-size: 10.5px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--ts);
+  margin-bottom: 6px;
+}
+.rw-foot { justify-content: space-between; }
+
+/* Bulk parse status */
+.bu-parsed {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--tp);
+  margin-top: 8px;
+}
+.bu-file-name { color: var(--ps); }
+
+@media (max-width: 760px) {
+  .rw-review-grid { grid-template-columns: 1fr; }
+  .rw-step-label { display: none; }
+}

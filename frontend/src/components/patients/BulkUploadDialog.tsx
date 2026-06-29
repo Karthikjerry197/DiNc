@@ -1,20 +1,23 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
+import * as XLSX from 'xlsx';
 import {
-  bulkUploadCitizens,
-  type BulkUploadResult,
-  type CreateCitizenPayload,
+  bulkRegisterPatients,
+  fetchRegistrationOptions,
+  type BulkPatientRow,
+  type BulkRegistrationResult,
+  type RegistrationOptions,
 } from '@/lib/api';
 import { getToken } from '@/lib/session';
 
 interface BulkUploadDialogProps {
   open: boolean;
   onClose: () => void;
-  onUploaded: (result: BulkUploadResult) => void;
+  onUploaded: (result: BulkRegistrationResult) => void;
 }
 
-const HEADER_ALIASES: Record<string, keyof CreateCitizenPayload> = {
+const HEADER_ALIASES: Record<string, keyof BulkPatientRow> = {
   uhid: 'uhid',
   full_name: 'fullName',
   fullname: 'fullName',
@@ -24,7 +27,12 @@ const HEADER_ALIASES: Record<string, keyof CreateCitizenPayload> = {
   sex: 'gender',
   phone: 'phone',
   mobile: 'phone',
+  address: 'address',
+  village: 'village',
   district: 'district',
+  aadhaar: 'aadhaar',
+  programs: 'programs',
+  program: 'programs',
 };
 
 /** Splits one CSV line, honouring simple double-quoted fields. */
@@ -35,104 +43,121 @@ function splitCsvLine(line: string): string[] {
   for (let i = 0; i < line.length; i += 1) {
     const ch = line[i];
     if (ch === '"') {
-      if (inQuotes && line[i + 1] === '"') {
-        cur += '"';
-        i += 1;
-      } else {
-        inQuotes = !inQuotes;
-      }
-    } else if (ch === ',' && !inQuotes) {
-      out.push(cur);
-      cur = '';
-    } else {
-      cur += ch;
-    }
+      if (inQuotes && line[i + 1] === '"') { cur += '"'; i += 1; } else { inQuotes = !inQuotes; }
+    } else if (ch === ',' && !inQuotes) { out.push(cur); cur = ''; } else { cur += ch; }
   }
   out.push(cur);
   return out.map((s) => s.trim());
 }
 
-/** Parses CSV text into validated patient payloads + parse warnings. */
-function parseCsv(text: string): { rows: CreateCitizenPayload[]; warnings: string[] } {
+/** Maps a 2-D cell grid (header row + data rows) to validated patient rows. */
+function gridToRows(grid: string[][]): { rows: BulkPatientRow[]; warnings: string[] } {
   const warnings: string[] = [];
-  const lines = text.split(/\r?\n/).filter((l) => l.trim().length > 0);
-  if (lines.length < 2) {
-    return { rows: [], warnings: ['Provide a header row and at least one patient row.'] };
-  }
-  const headers = splitCsvLine(lines[0]).map((h) => h.toLowerCase().replace(/\s+/g, '_'));
-  const rows: CreateCitizenPayload[] = [];
-
-  for (let i = 1; i < lines.length; i += 1) {
-    const cells = splitCsvLine(lines[i]);
-    const rec: Partial<CreateCitizenPayload> = {};
+  if (grid.length < 2) return { rows: [], warnings: ['Provide a header row and at least one data row.'] };
+  const headers = grid[0].map((h) => String(h ?? '').toLowerCase().trim().replace(/\s+/g, '_'));
+  const rows: BulkPatientRow[] = [];
+  for (let i = 1; i < grid.length; i += 1) {
+    const cells = grid[i];
+    if (!cells || cells.every((c) => !String(c ?? '').trim())) continue;
+    const rec: Record<string, string> = {};
     headers.forEach((h, idx) => {
       const field = HEADER_ALIASES[h];
-      const raw = (cells[idx] ?? '').trim();
-      if (!field || !raw) return;
-      if (field === 'age') {
-        const n = Number(raw);
-        if (Number.isFinite(n)) rec.age = n;
-      } else {
-        rec[field] = raw as never;
-      }
+      const raw = String(cells[idx] ?? '').trim();
+      if (field && raw) rec[field] = raw;
     });
-    if (!rec.uhid || !rec.fullName) {
-      warnings.push(`Row ${i + 1} skipped: UHID and name are required.`);
+    if (!rec.uhid && !rec.fullName) {
+      warnings.push(`Row ${i + 1} skipped: name is required.`);
       continue;
     }
-    rows.push(rec as CreateCitizenPayload);
+    if (!rec.fullName) {
+      warnings.push(`Row ${i + 1} skipped: name is required.`);
+      continue;
+    }
+    rows.push(rec as unknown as BulkPatientRow);
   }
   return { rows, warnings };
 }
 
+function parseCsvText(text: string): { rows: BulkPatientRow[]; warnings: string[] } {
+  const lines = text.split(/\r?\n/).filter((l) => l.trim().length > 0);
+  return gridToRows(lines.map(splitCsvLine));
+}
+
 /**
- * Bulk Upload dialog — the SINGLE implementation reused everywhere. Parses a CSV
- * (file or pasted text) client-side into the same per-patient shape used by single
- * registration, then submits them and shows a created/skipped/errors summary.
+ * Bulk Upload dialog — extends the single registration workflow to many patients
+ * from CSV or Excel (.xlsx). Each row is parsed client-side, then registered +
+ * enrolled server-side (atomic per row) into either its own `programs` column or
+ * the default programs chosen here. Reports a created/duplicate/skipped/failed
+ * summary.
  */
 export default function BulkUploadDialog({ open, onClose, onUploaded }: BulkUploadDialogProps) {
   const [text, setText] = useState('');
+  const [rows, setRows] = useState<BulkPatientRow[]>([]);
   const [warnings, setWarnings] = useState<string[]>([]);
-  const [parsedCount, setParsedCount] = useState(0);
-  const [result, setResult] = useState<BulkUploadResult | null>(null);
+  const [fileName, setFileName] = useState('');
+  const [options, setOptions] = useState<RegistrationOptions | null>(null);
+  const [defaultProgramIds, setDefaultProgramIds] = useState<string[]>([]);
+  const [assignedTo, setAssignedTo] = useState('');
+  const [result, setResult] = useState<BulkRegistrationResult | null>(null);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
 
   useEffect(() => {
     if (!open) return;
-    setText('');
-    setWarnings([]);
-    setParsedCount(0);
-    setResult(null);
-    setError('');
+    setText(''); setRows([]); setWarnings([]); setFileName('');
+    setDefaultProgramIds([]); setAssignedTo(''); setResult(null); setError('');
+    const token = getToken();
+    if (token) fetchRegistrationOptions(token).then(setOptions).catch(() => undefined);
   }, [open]);
+
+  const parsedFromText = useMemo(() => (text.trim() ? parseCsvText(text) : null), [text]);
+
+  // Effective rows: a parsed file takes precedence, else live-parsed paste.
+  const effective = fileName ? { rows, warnings } : parsedFromText ?? { rows: [], warnings: [] };
 
   if (!open) return null;
 
   function handleFile(file: File) {
+    setFileName(file.name);
+    setText('');
     const reader = new FileReader();
-    reader.onload = () => setText(String(reader.result ?? ''));
-    reader.readAsText(file);
+    const isExcel = /\.xlsx?$/i.test(file.name);
+    reader.onload = () => {
+      try {
+        if (isExcel) {
+          const wb = XLSX.read(reader.result, { type: 'array' });
+          const sheet = wb.Sheets[wb.SheetNames[0]];
+          const grid = XLSX.utils.sheet_to_json<string[]>(sheet, { header: 1, raw: false, defval: '' });
+          const parsed = gridToRows(grid.map((r) => r.map((c) => String(c ?? ''))));
+          setRows(parsed.rows); setWarnings(parsed.warnings);
+        } else {
+          const parsed = parseCsvText(String(reader.result ?? ''));
+          setRows(parsed.rows); setWarnings(parsed.warnings);
+        }
+      } catch {
+        setError('Unable to parse the file. Please check the format.');
+      }
+    };
+    if (isExcel) reader.readAsArrayBuffer(file);
+    else reader.readAsText(file);
+  }
+
+  function toggleProgram(id: string) {
+    setDefaultProgramIds((ids) => (ids.includes(id) ? ids.filter((x) => x !== id) : [...ids, id]));
   }
 
   async function handleUpload() {
-    setError('');
-    setResult(null);
+    setError(''); setResult(null);
     const token = getToken();
-    if (!token) {
-      setError('Your session has expired. Please sign in again.');
-      return;
-    }
-    const { rows, warnings: w } = parseCsv(text);
-    setWarnings(w);
-    setParsedCount(rows.length);
-    if (rows.length === 0) {
-      setError('No valid patient rows found. Check the format and required columns.');
-      return;
-    }
+    if (!token) return setError('Your session has expired. Please sign in again.');
+    if (effective.rows.length === 0) return setError('No valid patient rows found.');
     setSaving(true);
     try {
-      const res = await bulkUploadCitizens(token, rows);
+      const res = await bulkRegisterPatients(token, {
+        patients: effective.rows,
+        defaultProgramIds: defaultProgramIds.length ? defaultProgramIds : undefined,
+        assignedTo: assignedTo || undefined,
+      });
       setResult(res);
       onUploaded(res);
     } catch (err) {
@@ -144,60 +169,77 @@ export default function BulkUploadDialog({ open, onClose, onUploaded }: BulkUplo
 
   return (
     <div className="modal-overlay" role="presentation" onClick={() => !saving && onClose()}>
-      <div
-        className="modal modal-wide"
-        role="dialog"
-        aria-modal="true"
-        aria-labelledby="bulk-upload-title"
-        onClick={(e) => e.stopPropagation()}
-      >
+      <div className="modal modal-wide" role="dialog" aria-modal="true" aria-labelledby="bulk-title" onClick={(e) => e.stopPropagation()}>
         <div className="modal-head">
-          <h2 id="bulk-upload-title" className="modal-title">Bulk Upload Patients</h2>
-          <button type="button" className="modal-close" aria-label="Close" onClick={onClose} disabled={saving}>
-            ×
-          </button>
+          <h2 id="bulk-title" className="modal-title">Bulk Upload Patients</h2>
+          <button type="button" className="modal-close" aria-label="Close" onClick={onClose} disabled={saving}>×</button>
         </div>
 
         <div className="modal-body">
           {error && <div className="error-box">{error}</div>}
 
           <p className="dq-dialog-note">
-            Upload a CSV with a header row. Recognised columns:{' '}
-            <code>uhid, full_name, age, gender, phone, district</code>. <code>uhid</code> and{' '}
-            <code>full_name</code> are required; duplicate UHIDs are skipped.
+            Upload <strong>CSV</strong> or <strong>Excel (.xlsx)</strong> with a header row. Columns:{' '}
+            <code>uhid, full_name, age, gender, phone, address, village, district, aadhaar, programs</code>.
+            Only <code>full_name</code> is required; UHID auto-generates; duplicates are skipped. The{' '}
+            <code>programs</code> column (program codes, comma-separated) overrides the defaults below.
           </p>
 
-          <div className="fg">
-            <label className="fl" htmlFor="bu-file">CSV File</label>
-            <input
-              id="bu-file"
-              type="file"
-              accept=".csv,text/csv,text/plain"
-              className="fc"
-              disabled={saving}
-              onChange={(e) => {
-                const f = e.target.files?.[0];
-                if (f) handleFile(f);
-              }}
-            />
+          <div className="modal-row">
+            <div className="fg">
+              <label className="fl" htmlFor="bu-file">CSV / Excel File</label>
+              <input id="bu-file" type="file" accept=".csv,.xlsx,.xls,text/csv" className="fc" disabled={saving}
+                onChange={(e) => { const f = e.target.files?.[0]; if (f) handleFile(f); }} />
+            </div>
+            <div className="fg">
+              <label className="fl" htmlFor="bu-worker">Assign Worker (all rows)</label>
+              <select id="bu-worker" className="fc" value={assignedTo} disabled={saving}
+                onChange={(e) => setAssignedTo(e.target.value)}>
+                <option value="">— Unassigned —</option>
+                {(options?.workers ?? []).map((w) => (
+                  <option key={w.username} value={w.username}>{w.fullName} · {w.role}</option>
+                ))}
+              </select>
+            </div>
           </div>
 
+          {!fileName && (
+            <div className="fg">
+              <label className="fl" htmlFor="bu-text">Or paste CSV</label>
+              <textarea id="bu-text" className="fc modal-textarea bu-textarea" value={text} disabled={saving}
+                placeholder={'full_name,age,gender,phone,programs\nAsha Devi,34,Female,9876543210,HYPERTENSION,DIABETES'}
+                onChange={(e) => setText(e.target.value)} />
+            </div>
+          )}
+
           <div className="fg">
-            <label className="fl" htmlFor="bu-text">Or paste CSV</label>
-            <textarea
-              id="bu-text"
-              className="fc modal-textarea bu-textarea"
-              placeholder={'uhid,full_name,age,gender,phone,district\nASSAM-2026-09001,Asha Devi,34,Female,9876543210,Kamrup'}
-              value={text}
-              disabled={saving}
-              onChange={(e) => setText(e.target.value)}
-            />
+            <label className="fl">Default Programs (applied when a row has no programs column)</label>
+            {!options ? (
+              <div className="dash-loading">Loading programs&hellip;</div>
+            ) : (
+              <div className="rw-program-grid">
+                {options.programs.map((p) => {
+                  const checked = defaultProgramIds.includes(p.id);
+                  return (
+                    <label key={p.id} className={`rw-program${checked ? ' selected' : ''}`}>
+                      <input type="checkbox" checked={checked} disabled={saving} onChange={() => toggleProgram(p.id)} />
+                      <span className="rw-program-name">{p.name}</span>
+                    </label>
+                  );
+                })}
+              </div>
+            )}
           </div>
 
-          {warnings.length > 0 && (
+          <div className="bu-parsed">
+            {fileName && <span className="bu-file-name">📄 {fileName}</span>}
+            <span>{effective.rows.length} valid row(s) ready</span>
+          </div>
+
+          {effective.warnings.length > 0 && (
             <div className="bu-warnings">
-              {warnings.slice(0, 8).map((w, i) => <div key={i}>⚠ {w}</div>)}
-              {warnings.length > 8 && <div>…and {warnings.length - 8} more.</div>}
+              {effective.warnings.slice(0, 6).map((w, i) => <div key={i}>⚠ {w}</div>)}
+              {effective.warnings.length > 6 && <div>…and {effective.warnings.length - 6} more.</div>}
             </div>
           )}
 
@@ -205,12 +247,15 @@ export default function BulkUploadDialog({ open, onClose, onUploaded }: BulkUplo
             <div className="bu-result">
               <div className="bu-result-row">
                 <span className="bu-stat bu-ok">{result.created} created</span>
-                <span className="bu-stat bu-skip">{result.skipped} skipped (duplicate)</span>
-                <span className="bu-stat bu-err">{result.errors.length} errors</span>
-                <span className="bu-stat">of {result.total} rows</span>
+                <span className="bu-stat bu-skip">{result.duplicate} duplicate</span>
+                <span className="bu-stat bu-skip">{result.skipped} skipped</span>
+                <span className="bu-stat bu-err">{result.failed} failed</span>
+                <span className="bu-stat">of {result.total}</span>
               </div>
-              {result.errors.slice(0, 6).map((e, i) => (
-                <div key={i} className="bu-err-line">✗ {e.uhid ?? '(no uhid)'}: {e.reason}</div>
+              {result.rows.filter((r) => r.status === 'FAILED' || r.status === 'DUPLICATE').slice(0, 8).map((r) => (
+                <div key={r.row} className="bu-err-line">
+                  Row {r.row} · {r.fullName ?? '—'} · {r.status}{r.reason ? ` · ${r.reason}` : ''}
+                </div>
               ))}
             </div>
           )}
@@ -220,8 +265,8 @@ export default function BulkUploadDialog({ open, onClose, onUploaded }: BulkUplo
           <button type="button" className="btn btn-ghost" onClick={onClose} disabled={saving}>
             {result ? 'Done' : 'Cancel'}
           </button>
-          <button type="button" className="btn btn-primary" onClick={handleUpload} disabled={saving || !text.trim()}>
-            {saving ? 'Uploading…' : parsedCount > 0 ? 'Upload Again' : 'Upload Patients'}
+          <button type="button" className="btn btn-primary" onClick={handleUpload} disabled={saving || effective.rows.length === 0}>
+            {saving ? 'Uploading…' : `Upload ${effective.rows.length || ''} Patient(s)`}
           </button>
         </div>
       </div>

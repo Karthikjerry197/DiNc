@@ -2,9 +2,13 @@
 
 import { useState } from 'react';
 import Link from 'next/link';
-import type { BulkUploadResult, CitizenListItem } from '@/lib/api';
-import NewPatientDialog from './NewPatientDialog';
-import BulkUploadDialog from './BulkUploadDialog';
+import dynamic from 'next/dynamic';
+import type { BulkRegistrationResult, RegistrationResult } from '@/lib/api';
+import RegistrationWizard from './RegistrationWizard';
+
+// Lazy-loaded so the Excel parser (xlsx) is only fetched when a worker actually
+// opens Bulk Upload — keeping the Dashboard/Citizens/Worklist bundles light.
+const BulkUploadDialog = dynamic(() => import('./BulkUploadDialog'), { ssr: false });
 
 interface PatientActionsProps {
   /** 'dashboard' renders prominent action cards; 'toolbar' renders a button row. */
@@ -22,7 +26,7 @@ interface PatientActionsProps {
  *
  * Reused identically by the Dashboard (Quick Actions cards), the Citizens page and
  * the Worklist page (toolbar). It owns the dialog state and mounts the one
- * NewPatientDialog and one BulkUploadDialog — so there is exactly one
+ * RegistrationWizard and one BulkUploadDialog — so there is exactly one
  * implementation of each workflow regardless of where it is launched.
  */
 export default function PatientActions({
@@ -34,14 +38,19 @@ export default function PatientActions({
   const [newOpen, setNewOpen] = useState(false);
   const [bulkOpen, setBulkOpen] = useState(false);
 
-  function handleCreated(citizen: CitizenListItem) {
+  function handleRegistered(result: RegistrationResult) {
     setNewOpen(false);
-    onToast?.(`Patient ${citizen.uhid} registered.`);
+    const enrolled = result.enrollments.length;
+    onToast?.(
+      `Patient ${result.uhid} registered${enrolled ? ` · ${enrolled} program(s) enrolled` : ''}.`,
+    );
     onChanged?.();
   }
 
-  function handleUploaded(result: BulkUploadResult) {
-    onToast?.(`Bulk upload: ${result.created} created, ${result.skipped} skipped.`);
+  function handleUploaded(result: BulkRegistrationResult) {
+    onToast?.(
+      `Bulk upload: ${result.created} created, ${result.duplicate} duplicate, ${result.failed} failed.`,
+    );
     onChanged?.();
   }
 
@@ -82,8 +91,12 @@ export default function PatientActions({
         )}
       </div>
 
-      <NewPatientDialog open={newOpen} onClose={() => setNewOpen(false)} onCreated={handleCreated} />
-      <BulkUploadDialog open={bulkOpen} onClose={() => setBulkOpen(false)} onUploaded={handleUploaded} />
+      {newOpen && (
+        <RegistrationWizard open onClose={() => setNewOpen(false)} onRegistered={handleRegistered} />
+      )}
+      {bulkOpen && (
+        <BulkUploadDialog open onClose={() => setBulkOpen(false)} onUploaded={handleUploaded} />
+      )}
     </>
   );
 }

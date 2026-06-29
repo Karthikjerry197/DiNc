@@ -61,3 +61,21 @@ export interface CitizenDetail {
   activities: ActivityEntry[];
   stats: CompletionStats;
 }
+
+/** Normalised, validated patient fields used by create + bulk insert. */
+export interface CreateCitizenInput {
+  uhid: string;
+  fullName: string;
+  age: number | null;
+  gender: string | null;
+  phone: string | null;
+  district: string | null;
+}
+
+/** Summary returned by the bulk upload endpoint. */
+export interface BulkUploadResult {
+  total: number;
+  created: number;
+  skipped: number;
+  errors: { uhid: string | null; reason: string }[];
+}

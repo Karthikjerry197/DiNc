@@ -16,6 +16,8 @@ import WorklistTable from '@/components/worklist/WorklistTable';
 import ReportDuplicateDialog, {
   type ReportDuplicateTarget,
 } from '@/components/dataquality/ReportDuplicateDialog';
+import TeleconsultationWindow from '@/components/consultation/TeleconsultationWindow';
+import PatientActions from '@/components/patients/PatientActions';
 
 const EMPTY: WorklistOverview = {
   stats: {
@@ -43,11 +45,34 @@ export default function WorklistPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [reportTarget, setReportTarget] = useState<ReportDuplicateTarget | null>(null);
+  const [consultActivityId, setConsultActivityId] = useState<string | null>(null);
   const [toast, setToast] = useState('');
+
+  const flash = useCallback((message: string) => {
+    setToast(message);
+    setTimeout(() => setToast(''), 2600);
+  }, []);
 
   const reportDuplicate = useCallback((item: WorklistItem) => {
     if (!item.citizenId) return;
     setReportTarget({ id: item.citizenId, uhid: item.uhid, fullName: item.citizen });
+  }, []);
+
+  const startCall = useCallback((item: WorklistItem) => {
+    setConsultActivityId(item.id);
+  }, []);
+
+  // Re-fetch the worklist (used on mount and after a consultation completes so the
+  // list reflects new statuses and auto-generated activities without manual reload).
+  const reload = useCallback(() => {
+    const token = getToken();
+    if (!token) {
+      setLoading(false);
+      return;
+    }
+    fetchWorklistOverview(token)
+      .then((overview) => setData(overview))
+      .catch(() => setError('Unable to load worklist data.'));
   }, []);
 
   // Context-aware: resolve the item's guidebook and open it preselected.
@@ -100,6 +125,9 @@ export default function WorklistPage() {
   return (
     <div className="page wl-page">
       <WorklistToolbar stats={data.stats} />
+      <div className="op-toolbar-bar">
+        <PatientActions variant="toolbar" onChanged={reload} onToast={flash} />
+      </div>
       <WorklistFilters programs={data.programs} assignees={data.assignees} />
       <TeamMonitoring monitoring={data.monitoring} />
 
@@ -113,6 +141,7 @@ export default function WorklistPage() {
             items={data.items}
             onOpenGuidebook={openGuidebook}
             onReportDuplicate={reportDuplicate}
+            onStartCall={startCall}
           />
           <div className="wl-footer">
             <span>
@@ -134,8 +163,24 @@ export default function WorklistPage() {
           onClose={() => setReportTarget(null)}
           onSubmitted={(request) => {
             setReportTarget(null);
-            setToast(`Duplicate request ${request.reference} submitted for review.`);
-            setTimeout(() => setToast(''), 2600);
+            flash(`Duplicate request ${request.reference} submitted for review.`);
+          }}
+        />
+      )}
+
+      {consultActivityId && (
+        <TeleconsultationWindow
+          activityId={consultActivityId}
+          open={consultActivityId !== null}
+          onClose={() => setConsultActivityId(null)}
+          onCompleted={(result) => {
+            setConsultActivityId(null);
+            flash(
+              result.nextActivity
+                ? 'Consultation saved · next activity scheduled.'
+                : 'Consultation saved.',
+            );
+            reload();
           }}
         />
       )}

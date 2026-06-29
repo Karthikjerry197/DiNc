@@ -10,6 +10,8 @@ interface ActivityWorkspaceProps {
   /** Whether an enrollment is currently selected (drives the empty message). */
   hasEnrollment: boolean;
   onNewActivity: () => void;
+  /** Opens the Teleconsultation window for an activity. */
+  onStartCall?: (activityId: string) => void;
 }
 
 function formatDate(iso: string | null): string {
@@ -36,6 +38,7 @@ export default function ActivityWorkspace({
   error,
   hasEnrollment,
   onNewActivity,
+  onStartCall,
 }: ActivityWorkspaceProps) {
   const [selectedId, setSelectedId] = useState<string | null>(null);
 
@@ -108,6 +111,17 @@ export default function ActivityWorkspace({
                     <DetailRow label="Created" value={formatDate(activity.createdDate)} />
                     <DetailRow label="Completed" value={formatDate(activity.completedDate)} />
                     <DetailRow label="Remarks" value={value(activity.remarks)} />
+                    {onStartCall && (
+                      <div className="act-detail-actions">
+                        <button
+                          type="button"
+                          className="btn btn-primary btn-sm"
+                          onClick={() => onStartCall(activity.id)}
+                        >
+                          📞 Start Consultation
+                        </button>
+                      </div>
+                    )}
                   </div>
                 )}
               </div>

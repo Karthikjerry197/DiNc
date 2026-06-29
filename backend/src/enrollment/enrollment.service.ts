@@ -155,6 +155,16 @@ export class EnrollmentService {
     return { enrollment: this.toDetail(created), activity };
   }
 
+  /** Advances an enrollment's current event (care-plan progression). */
+  advanceToEvent(enrollmentId: string, eventId: string): Promise<void> {
+    return this.repo.advanceCurrentEvent(enrollmentId, eventId);
+  }
+
+  /** Updates an enrollment's lifecycle status. */
+  setStatus(enrollmentId: string, status: string): Promise<void> {
+    return this.repo.setStatus(enrollmentId, status);
+  }
+
   private toSummary(row: EnrollmentSummaryRow): EnrollmentSummaryDto {
     return {
       id: row.id,

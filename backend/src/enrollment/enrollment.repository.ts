@@ -231,4 +231,28 @@ export class EnrollmentRepository {
     );
     return result.rows[0].id;
   }
+
+  /**
+   * Advances the enrollment to its next scheduled event as the care plan
+   * progresses. Used by the consultation engine when a completed activity
+   * generates the next one.
+   */
+  async advanceCurrentEvent(enrollmentId: string, eventId: string): Promise<void> {
+    await this.db.query(
+      `UPDATE public.enrollments
+         SET current_event_id = $2, updated_at = now()
+       WHERE id = $1`,
+      [enrollmentId, eventId],
+    );
+  }
+
+  /** Updates an enrollment's lifecycle status (e.g. COMPLETED at end of plan). */
+  async setStatus(enrollmentId: string, status: string): Promise<void> {
+    await this.db.query(
+      `UPDATE public.enrollments
+         SET status = $2, updated_at = now()
+       WHERE id = $1`,
+      [enrollmentId, status],
+    );
+  }
 }

@@ -21,6 +21,13 @@ const TILES: AdminTile[] = [
     enabled: true,
   },
   {
+    label: 'Workflow Rules',
+    description: 'Configure what happens after each consultation outcome — no code changes.',
+    href: '/administration/workflow-rules',
+    icon: '🔀',
+    enabled: true,
+  },
+  {
     label: 'Users & Roles',
     description: 'Manage healthcare workers, administrators and access.',
     href: '/administration',

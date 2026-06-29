@@ -1,10 +1,12 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { ConflictException, Injectable, Logger } from '@nestjs/common';
 import { DatabaseService } from '../database/database.service';
 import {
   ActivityEntry,
+  BulkUploadResult,
   CitizenDetail,
   CitizenListItem,
   CompletionStats,
+  CreateCitizenInput,
   EnrollmentInfo,
   ProgramChip,
 } from './citizens.types';
@@ -49,6 +51,62 @@ export class CitizensService {
       this.logger.warn(`Citizens list query failed: ${(error as Error).message}`);
       return [];
     }
+  }
+
+  /**
+   * Registers a new patient. Relies on the existing UNIQUE(uhid) constraint:
+   * the guarded INSERT does nothing on a duplicate UHID, which we surface as a
+   * clean 409 rather than a database error.
+   */
+  async create(input: CreateCitizenInput): Promise<CitizenListItem> {
+    const id = await this.insertCitizen(input);
+    if (!id) {
+      throw new ConflictException('A patient with this UHID already exists.');
+    }
+    return {
+      id,
+      uhid: input.uhid,
+      fullName: input.fullName,
+      age: input.age,
+      gender: input.gender,
+      district: input.district,
+    };
+  }
+
+  /**
+   * Bulk-registers patients (reusing the same per-row insert as single
+   * registration). Duplicates (by UHID) are skipped, not errors; per-row failures
+   * are reported so the upload as a whole never fails wholesale.
+   */
+  async bulkCreate(rows: CreateCitizenInput[]): Promise<BulkUploadResult> {
+    const result: BulkUploadResult = {
+      total: rows.length,
+      created: 0,
+      skipped: 0,
+      errors: [],
+    };
+    for (const row of rows) {
+      try {
+        const id = await this.insertCitizen(row);
+        if (id) result.created += 1;
+        else result.skipped += 1; // duplicate UHID
+      } catch (error) {
+        result.errors.push({ uhid: row.uhid ?? null, reason: (error as Error).message });
+      }
+    }
+    return result;
+  }
+
+  /** Single guarded INSERT (ON CONFLICT DO NOTHING); returns the new id or null. */
+  private async insertCitizen(input: CreateCitizenInput): Promise<string | null> {
+    const res = await this.db.query<{ id: string }>(
+      `INSERT INTO public.citizens (uhid, full_name, age, gender, phone, district)
+       VALUES ($1, $2, $3, $4, $5, $6)
+       ON CONFLICT (uhid) DO NOTHING
+       RETURNING id`,
+      [input.uhid, input.fullName, input.age, input.gender, input.phone, input.district],
+    );
+    return res.rows[0]?.id ?? null;
   }
 
   /** Returns full detail for a citizen, or null when the id matches no record. */

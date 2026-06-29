@@ -128,6 +128,34 @@ export class ActivityService {
     return row ? ActivityService.toDto(row) : null;
   }
 
+  /**
+   * Transitions an activity to a new lifecycle state. Reused by start-call and by
+   * the Workflow Rules Engine — the Activity module owns activity-state writes so
+   * the lifecycle is not duplicated across modules.
+   */
+  transition(
+    activityId: string,
+    status: string,
+    opts: { complete?: boolean; escalate?: boolean } = {},
+  ): Promise<void> {
+    return this.repo.updateStatus(
+      activityId,
+      status,
+      opts.complete ?? false,
+      opts.escalate ?? false,
+    );
+  }
+
+  /** Reschedules an activity by pushing its due date forward `days` (stays PENDING). */
+  rescheduleDue(activityId: string, days: number): Promise<void> {
+    return this.repo.shiftDueDateDays(activityId, days);
+  }
+
+  /** Records a contact attempt; returns the new attempt count. */
+  recordAttempt(activityId: string): Promise<number> {
+    return this.repo.incrementRetry(activityId);
+  }
+
   private static toDto(row: ActivityRow): ActivityDto {
     return {
       id: row.id,

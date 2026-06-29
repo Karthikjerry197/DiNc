@@ -53,6 +53,10 @@ export interface WorklistBreakdown {
   pending: number | null;
   overdue: number | null;
   completed: number | null;
+  completedToday: number | null;
+  referred: number | null;
+  noAnswer: number | null;
+  emergencyReferrals: number | null;
 }
 
 export interface ServiceItem {
@@ -244,6 +248,64 @@ export async function fetchCitizenDetail(token: string, id: string): Promise<Cit
     throw new Error('Unable to load citizen detail');
   }
   return res.json() as Promise<CitizenDetail>;
+}
+
+// ── Patient registration & bulk upload (single shared workflow) ──────────────
+
+export interface CreateCitizenPayload {
+  uhid: string;
+  fullName: string;
+  age?: number;
+  gender?: string;
+  phone?: string;
+  district?: string;
+}
+
+export interface BulkUploadResult {
+  total: number;
+  created: number;
+  skipped: number;
+  errors: { uhid: string | null; reason: string }[];
+}
+
+/** Surfaces a backend validation message (string | string[]) as one Error. */
+async function citizenError(res: Response, fallback: string): Promise<Error> {
+  let message = fallback;
+  try {
+    const body = (await res.json()) as { message?: string | string[] };
+    if (body?.message) {
+      message = Array.isArray(body.message) ? body.message.join(' ') : body.message;
+    }
+  } catch {
+    /* keep fallback */
+  }
+  return new Error(message);
+}
+
+export async function createCitizen(
+  token: string,
+  payload: CreateCitizenPayload,
+): Promise<CitizenListItem> {
+  const res = await fetch(`${API_BASE}/api/citizens`, {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+  });
+  if (!res.ok) throw await citizenError(res, 'Unable to register patient.');
+  return res.json() as Promise<CitizenListItem>;
+}
+
+export async function bulkUploadCitizens(
+  token: string,
+  patients: CreateCitizenPayload[],
+): Promise<BulkUploadResult> {
+  const res = await fetch(`${API_BASE}/api/citizens/bulk`, {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ patients }),
+  });
+  if (!res.ok) throw await citizenError(res, 'Unable to upload patients.');
+  return res.json() as Promise<BulkUploadResult>;
 }
 
 // ── Guidebooks ───────────────────────────────────────────────────────────────
@@ -765,4 +827,228 @@ export async function resolveDuplicateRequest(
   );
   if (!res.ok) throw await readError(res, 'Unable to resolve this request.');
   return res.json() as Promise<DuplicateRequest>;
+}
+
+// ── Teleconsultation / Clinical Activity Lifecycle ───────────────────────────
+
+/** A dynamic, program-specific clinical form field (from the event template). */
+export interface ClinicalFieldDef {
+  type: 'text' | 'longtext' | 'number' | 'dropdown' | 'radio' | string;
+  label: string;
+  options: string[];
+  required: boolean;
+  sortOrder: number;
+}
+
+export interface ConsultationPatientInfo {
+  citizenId: string | null;
+  uhid: string | null;
+  fullName: string | null;
+  age: number | null;
+  gender: string | null;
+  phone: string | null;
+  assignedWorker: string | null;
+}
+
+export interface ConsultationClinicalContext {
+  program: string | null;
+  activity: string | null;
+  enrollmentStatus: string | null;
+  enrollmentId: string;
+  condition: string | null;
+}
+
+export interface DialInfo {
+  phone: string | null;
+  telLink: string | null;
+  provider: 'tel';
+}
+
+/** A selectable consultation outcome, sourced from the event's outcome_types. */
+export interface OutcomeOption {
+  id: string;
+  code: string;
+  name: string;
+  category: string;
+}
+
+export interface ConsultationContext {
+  activity: Activity;
+  patient: ConsultationPatientInfo;
+  clinicalContext: ConsultationClinicalContext;
+  dial: DialInfo;
+  guidebook: GuidebookRef | null;
+  clinicalForm: {
+    templateId: string | null;
+    templateName: string | null;
+    fields: ClinicalFieldDef[];
+  };
+  /** Configurable outcomes for this event (drive the Workflow Rules Engine). */
+  outcomeOptions: OutcomeOption[];
+}
+
+export interface StartCallResult {
+  activity: Activity;
+  dial: DialInfo;
+  attemptNumber: number;
+}
+
+export interface SaveConsultationPayload {
+  outcomeTypeId: string;
+  clinicalNotes?: string;
+  remarks?: string;
+  clinicalData?: Record<string, unknown>;
+}
+
+export interface SaveConsultationResult {
+  activity: Activity;
+  nextActivity: Activity | null;
+  enrollmentStatus: string | null;
+  outcomeRecordId: string;
+  /** The workflow action the engine executed, for UI feedback. */
+  workflowAction: string;
+  workflowMessage: string;
+  escalated: boolean;
+}
+
+export interface TimelineEntry {
+  kind: 'ENROLLMENT' | 'ACTIVITY';
+  id: string;
+  title: string;
+  program: string | null;
+  status: string;
+  date: string | null;
+  outcome: string | null;
+  priority: string | null;
+}
+
+export async function fetchConsultationContext(
+  token: string,
+  activityId: string,
+): Promise<ConsultationContext> {
+  const res = await fetch(`${API_BASE}/api/activities/${activityId}/consultation`, {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  if (!res.ok) throw await readError(res, 'Unable to load consultation.');
+  return res.json() as Promise<ConsultationContext>;
+}
+
+export async function startCall(
+  token: string,
+  activityId: string,
+): Promise<StartCallResult> {
+  const res = await fetch(`${API_BASE}/api/activities/${activityId}/start-call`, {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+    body: '{}',
+  });
+  if (!res.ok) throw await readError(res, 'Unable to start the call.');
+  return res.json() as Promise<StartCallResult>;
+}
+
+export async function saveConsultation(
+  token: string,
+  activityId: string,
+  payload: SaveConsultationPayload,
+): Promise<SaveConsultationResult> {
+  const res = await fetch(`${API_BASE}/api/activities/${activityId}/consultation`, {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+  });
+  if (!res.ok) throw await readError(res, 'Unable to save the consultation.');
+  return res.json() as Promise<SaveConsultationResult>;
+}
+
+export async function fetchCitizenTimeline(
+  token: string,
+  citizenId: string,
+): Promise<TimelineEntry[]> {
+  const res = await fetch(`${API_BASE}/api/citizens/${citizenId}/timeline`, {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  if (!res.ok) throw await readError(res, 'Unable to load patient timeline.');
+  return res.json() as Promise<TimelineEntry[]>;
+}
+
+// ── Workflow Rules Engine (Administration) ───────────────────────────────────
+
+export interface WorkflowRule {
+  id: string;
+  outcome: string;
+  outcomeCode: string;
+  category: string;
+  forEvent: string | null;
+  action: string;
+  nextActivity: string | null;
+  generatedEventId: string | null;
+  delayDays: number;
+  priority: string;
+  retryPolicy: string | null;
+  escalationRole: string | null;
+  notificationRole: string | null;
+  conditions: Record<string, unknown> | null;
+  isActive: boolean;
+}
+
+export interface WorkflowEventOption {
+  id: string;
+  name: string;
+  code: string;
+}
+
+export interface RetryConfig {
+  id: string;
+  program: string | null;
+  disease: string | null;
+  maxAttempts: number;
+  retryIntervalHours: number;
+  escalationAfterAttempts: number;
+  escalationRole: string | null;
+  isActive: boolean;
+}
+
+export interface WorkflowRulesOverview {
+  rules: WorkflowRule[];
+  options: {
+    actions: string[];
+    priorities: string[];
+    roles: string[];
+    events: WorkflowEventOption[];
+    retryPolicies: string[];
+  };
+  retryConfigs: RetryConfig[];
+}
+
+export interface UpdateRulePayload {
+  action: string;
+  generatedEventId?: string;
+  delayDays: number;
+  priority: string;
+  retryPolicy?: string | null;
+  escalationRole?: string | null;
+  notificationRole?: string | null;
+  isActive: boolean;
+}
+
+export async function fetchWorkflowRules(token: string): Promise<WorkflowRulesOverview> {
+  const res = await fetch(`${API_BASE}/api/workflow/rules`, {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  if (!res.ok) throw await readError(res, 'Unable to load workflow rules.');
+  return res.json() as Promise<WorkflowRulesOverview>;
+}
+
+export async function updateWorkflowRule(
+  token: string,
+  id: string,
+  payload: UpdateRulePayload,
+): Promise<WorkflowRule> {
+  const res = await fetch(`${API_BASE}/api/workflow/rules/${id}`, {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+  });
+  if (!res.ok) throw await readError(res, 'Unable to update the workflow rule.');
+  return res.json() as Promise<WorkflowRule>;
 }

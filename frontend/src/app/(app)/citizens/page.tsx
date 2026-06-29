@@ -21,6 +21,9 @@ import CitizenSummary from '@/components/citizens/CitizenSummary';
 import ActivityWorkspace from '@/components/citizens/ActivityWorkspace';
 import AddProgramDialog from '@/components/citizens/AddProgramDialog';
 import AddActivityDialog from '@/components/citizens/AddActivityDialog';
+import PatientTimeline from '@/components/citizens/PatientTimeline';
+import TeleconsultationWindow from '@/components/consultation/TeleconsultationWindow';
+import PatientActions from '@/components/patients/PatientActions';
 
 /**
  * Citizen Workspace — the primary three-panel workspace opened from the
@@ -45,6 +48,8 @@ export default function CitizensPage() {
   const [activitiesRefresh, setActivitiesRefresh] = useState(0);
   const [addOpen, setAddOpen] = useState(false);
   const [addActivityOpen, setAddActivityOpen] = useState(false);
+  const [consultActivityId, setConsultActivityId] = useState<string | null>(null);
+  const [timelineRefresh, setTimelineRefresh] = useState(0);
   const [enrollmentsRefresh, setEnrollmentsRefresh] = useState(0);
   const pendingEnrollmentId = useRef<string | null>(null);
   const [error, setError] = useState('');
@@ -55,6 +60,18 @@ export default function CitizensPage() {
     setToast(message);
     if (toastTimer.current) clearTimeout(toastTimer.current);
     toastTimer.current = setTimeout(() => setToast(''), 2600);
+  }, []);
+
+  // Refreshes the citizen list (after a registration / bulk upload) without
+  // disturbing the current selection.
+  const reloadCitizens = useCallback(() => {
+    const token = getToken();
+    if (!token) return;
+    fetchCitizensList(token)
+      .then(setCitizens)
+      .catch(() => {
+        /* keep existing list on failure */
+      });
   }, []);
 
   const notify = useCallback(
@@ -251,6 +268,14 @@ export default function CitizensPage() {
 
   return (
     <div className="page cz-page">
+      <div className="page-head cz-page-head">
+        <div>
+          <h1 className="page-title">Citizens</h1>
+          <p className="page-subtitle">Patient registry &amp; workspace</p>
+        </div>
+        <PatientActions variant="toolbar" onChanged={reloadCitizens} onToast={flash} />
+      </div>
+
       {error && <div className="dash-error">{error}</div>}
 
       <div className="cz-workspace">
@@ -287,8 +312,11 @@ export default function CitizensPage() {
           error={activitiesError}
           hasEnrollment={!!selectedEnrollmentId}
           onNewActivity={() => selectedEnrollmentId && setAddActivityOpen(true)}
+          onStartCall={(activityId) => setConsultActivityId(activityId)}
         />
       </div>
+
+      <PatientTimeline citizenId={selectedId} refreshKey={timelineRefresh} />
 
       {selectedId && (
         <AddProgramDialog
@@ -319,6 +347,27 @@ export default function CitizensPage() {
             setAddActivityOpen(false);
             setActivitiesRefresh((n) => n + 1);
             flash('Activity created.');
+          }}
+        />
+      )}
+
+      {consultActivityId && (
+        <TeleconsultationWindow
+          activityId={consultActivityId}
+          open={consultActivityId !== null}
+          onClose={() => setConsultActivityId(null)}
+          onCompleted={(result) => {
+            setConsultActivityId(null);
+            // Refresh activities, enrollments and timeline so the workspace
+            // reflects the completed consultation and any new activity at once.
+            setActivitiesRefresh((n) => n + 1);
+            setEnrollmentsRefresh((n) => n + 1);
+            setTimelineRefresh((n) => n + 1);
+            flash(
+              result.nextActivity
+                ? 'Consultation saved · next activity scheduled.'
+                : 'Consultation saved.',
+            );
           }}
         />
       )}

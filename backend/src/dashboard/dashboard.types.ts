@@ -24,6 +24,14 @@ export interface WorklistBreakdown {
   pending: number | null;
   overdue: number | null;
   completed: number | null;
+  /** Activities completed today (consultations closed today). */
+  completedToday: number | null;
+  /** Activities referred onward. */
+  referred: number | null;
+  /** Consultations recorded as "No Answer" today. */
+  noAnswer: number | null;
+  /** Activities flagged as emergency referrals. */
+  emergencyReferrals: number | null;
 }
 
 export interface ServiceItem {

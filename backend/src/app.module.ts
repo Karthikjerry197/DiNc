@@ -10,6 +10,8 @@ import { GuidebooksModule } from './guidebooks/guidebooks.module';
 import { EnrollmentModule } from './enrollment/enrollment.module';
 import { ActivityModule } from './activity/activity.module';
 import { DataQualityModule } from './data-quality/data-quality.module';
+import { ConsultationModule } from './consultation/consultation.module';
+import { WorkflowModule } from './workflow/workflow.module';
 
 @Module({
   imports: [
@@ -24,6 +26,8 @@ import { DataQualityModule } from './data-quality/data-quality.module';
     EnrollmentModule,
     ActivityModule,
     DataQualityModule,
+    ConsultationModule,
+    WorkflowModule,
   ],
 })
 export class AppModule {}

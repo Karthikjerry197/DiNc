@@ -45,6 +45,10 @@ export class DashboardService {
       pendingTasks,
       overdueTasks,
       completedTasks,
+      completedToday,
+      referredTasks,
+      noAnswerToday,
+      emergencyReferrals,
       services,
       programsSummary,
       recentActivity,
@@ -82,6 +86,24 @@ export class DashboardService {
         `SELECT count(*)::int AS c FROM public.worklist_items w
          WHERE w.status = 'COMPLETED' AND ${DashboardService.LINKED_ENROLLMENT}`,
       ),
+      this.count(
+        `SELECT count(*)::int AS c FROM public.worklist_items w
+         WHERE w.status = 'COMPLETED' AND w.outcome_recorded_at::date = CURRENT_DATE
+           AND ${DashboardService.LINKED_ENROLLMENT}`,
+      ),
+      this.count(
+        `SELECT count(*)::int AS c FROM public.worklist_items w
+         WHERE w.status = 'REFERRED' AND ${DashboardService.LINKED_ENROLLMENT}`,
+      ),
+      this.count(
+        `SELECT count(*)::int AS c FROM public.outcome_records orr
+         WHERE orr.data ->> 'outcomeCategory' = 'NEGATIVE'
+           AND orr.recorded_at::date = CURRENT_DATE`,
+      ),
+      this.count(
+        `SELECT count(*)::int AS c FROM public.worklist_items w
+         WHERE w.status = 'EMERGENCY' AND ${DashboardService.LINKED_ENROLLMENT}`,
+      ),
       this.services(),
       this.programs(),
       this.recentActivity(),
@@ -105,6 +127,10 @@ export class DashboardService {
         pending: pendingTasks,
         overdue: overdueTasks,
         completed: completedTasks,
+        completedToday,
+        referred: referredTasks,
+        noAnswer: noAnswerToday,
+        emergencyReferrals,
       },
       services,
       programs: programsSummary,

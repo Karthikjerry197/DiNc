@@ -151,4 +151,55 @@ export class ActivityRepository {
     );
     return result.rows[0]?.id ?? null;
   }
+
+  // ── Lifecycle writes (used by start-call and the Workflow Rules Engine) ───
+
+  /**
+   * Transitions an activity to a new lifecycle state. Stamps outcome_recorded_at
+   * when `complete`; flags escalation and raises priority when `escalate`. Bumps
+   * `version` for optimistic concurrency (rows are created with version = 1).
+   */
+  async updateStatus(
+    activityId: string,
+    status: string,
+    complete: boolean,
+    escalate: boolean,
+  ): Promise<void> {
+    await this.db.query(
+      `UPDATE public.worklist_items
+         SET status = $2,
+             is_escalation = is_escalation OR $4,
+             priority = CASE WHEN $4 THEN 'URGENT' ELSE priority END,
+             outcome_recorded_at = CASE WHEN $3 THEN now() ELSE outcome_recorded_at END,
+             version = version + 1,
+             updated_at = now()
+       WHERE id = $1`,
+      [activityId, status, complete, escalate],
+    );
+  }
+
+  /** Pushes an activity's due date forward by `days` and keeps it PENDING (retry). */
+  async shiftDueDateDays(activityId: string, days: number): Promise<void> {
+    await this.db.query(
+      `UPDATE public.worklist_items
+         SET due_date = CURRENT_DATE + ($2 || ' days')::interval,
+             status = 'PENDING',
+             version = version + 1,
+             updated_at = now()
+       WHERE id = $1`,
+      [activityId, Math.max(0, Math.round(days))],
+    );
+  }
+
+  /** Increments the attempt counter and returns the new value. */
+  async incrementRetry(activityId: string): Promise<number> {
+    const result = await this.db.query<{ retry_count: number }>(
+      `UPDATE public.worklist_items
+         SET retry_count = retry_count + 1, version = version + 1, updated_at = now()
+       WHERE id = $1
+       RETURNING retry_count`,
+      [activityId],
+    );
+    return result.rows[0]?.retry_count ?? 0;
+  }
 }

@@ -9,6 +9,8 @@ interface WorklistTableProps {
   onOpenGuidebook: (itemId: string) => void;
   /** Opens the Report Duplicate dialog for a worklist item's citizen. */
   onReportDuplicate?: (item: WorklistItem) => void;
+  /** Opens the Teleconsultation window for a worklist item. */
+  onStartCall?: (item: WorklistItem) => void;
 }
 
 /** Row action icons. Open / Guidebook / Duplicate are wired; others are placeholders. */
@@ -38,6 +40,7 @@ export default function WorklistTable({
   items,
   onOpenGuidebook,
   onReportDuplicate,
+  onStartCall,
 }: WorklistTableProps) {
   if (items.length === 0) {
     return (
@@ -115,6 +118,22 @@ export default function WorklistTable({
                         >
                           {action.icon}
                         </Link>
+                      );
+                    }
+                    if (action.key === 'call') {
+                      // Call opens the Teleconsultation workflow for this activity.
+                      return (
+                        <button
+                          key={action.key}
+                          type="button"
+                          className="wl-icon-btn"
+                          title="Start teleconsultation"
+                          aria-label="Call"
+                          disabled={!onStartCall}
+                          onClick={() => onStartCall?.(item)}
+                        >
+                          {action.icon}
+                        </button>
                       );
                     }
                     if (action.key === 'duplicate') {

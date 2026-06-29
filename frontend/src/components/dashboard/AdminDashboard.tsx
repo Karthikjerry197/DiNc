@@ -13,6 +13,8 @@ import { getToken } from '@/lib/session';
 import ReportDuplicateDialog, {
   type ReportDuplicateTarget,
 } from '@/components/dataquality/ReportDuplicateDialog';
+import TeleconsultationWindow from '@/components/consultation/TeleconsultationWindow';
+import PatientActions from '@/components/patients/PatientActions';
 
 /** Formats a count for a stat card; `null` (unavailable) renders an em dash. */
 function statValue(value: number | null): string {
@@ -73,6 +75,7 @@ export default function AdminDashboard() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [reportTarget, setReportTarget] = useState<ReportDuplicateTarget | null>(null);
+  const [consultActivityId, setConsultActivityId] = useState<string | null>(null);
   const [toast, setToast] = useState('');
   const toastTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -82,36 +85,31 @@ export default function AdminDashboard() {
     toastTimer.current = setTimeout(() => setToast(''), 2600);
   }, []);
 
-  useEffect(() => {
-    let active = true;
+  // Reuse both existing read APIs: the dashboard summary (KPIs, services,
+  // programs, activity) and the worklist overview (follow-up items). Exposed as a
+  // callable so it can refresh automatically after a consultation completes.
+  const load = useCallback(() => {
     const token = getToken();
-
     if (!token) {
       // No authenticated session (e.g. guest): show empty states, never fake data.
       setLoading(false);
       return;
     }
-
-    // Reuse both existing read APIs: the dashboard summary (KPIs, services,
-    // programs, activity) and the worklist overview (follow-up items).
     Promise.all([fetchAdminDashboard(token), fetchWorklistOverview(token)])
       .then(([summary, overview]) => {
-        if (!active) return;
         setData(summary);
         setWorklist(overview.items);
         setLoading(false);
       })
       .catch(() => {
-        if (active) {
-          setError('Unable to load dashboard data.');
-          setLoading(false);
-        }
+        setError('Unable to load dashboard data.');
+        setLoading(false);
       });
-
-    return () => {
-      active = false;
-    };
   }, []);
+
+  useEffect(() => {
+    load();
+  }, [load]);
 
   useEffect(() => {
     return () => {
@@ -199,6 +197,18 @@ export default function AdminDashboard() {
         </div>
       </div>
 
+      <section className="panel quick-actions-panel">
+        <div className="panel-head">
+          <h2 className="panel-title">Quick Actions</h2>
+        </div>
+        <PatientActions
+          variant="dashboard"
+          includeNavShortcuts
+          onChanged={load}
+          onToast={flash}
+        />
+      </section>
+
       {error && <div className="dash-error">{error}</div>}
 
       <section className="stat-grid">
@@ -221,14 +231,15 @@ export default function AdminDashboard() {
           <div className="panel dash-worklist-panel">
             <div className="panel-head">
               <h2 className="panel-title">Today&apos;s Follow-up Worklist</h2>
-              <div className="dash-worklist-meta">
-                <span className="worklist-mini-stat" style={{ color: '#d97706' }}>
-                  {statValue(data?.worklist.pending ?? null)} pending
-                </span>
-                <span className="worklist-mini-stat" style={{ color: '#dc2626' }}>
-                  {statValue(data?.worklist.overdue ?? null)} overdue
-                </span>
-              </div>
+            </div>
+
+            <div className="consult-stat-row">
+              <ConsultStat label="Completed Today" value={data?.worklist.completedToday ?? null} accent="#15803d" />
+              <ConsultStat label="Pending" value={data?.worklist.pending ?? null} accent="#d97706" />
+              <ConsultStat label="Overdue" value={data?.worklist.overdue ?? null} accent="#dc2626" />
+              <ConsultStat label="Referred" value={data?.worklist.referred ?? null} accent="#1d4ed8" />
+              <ConsultStat label="No Answer" value={data?.worklist.noAnswer ?? null} accent="#6b7280" />
+              <ConsultStat label="Emergency" value={data?.worklist.emergencyReferrals ?? null} accent="#b91c1c" />
             </div>
 
             {followups.length > 0 ? (
@@ -272,9 +283,9 @@ export default function AdminDashboard() {
                             <button
                               type="button"
                               className="wl-icon-btn"
-                              title="Call (coming soon)"
+                              title="Start teleconsultation"
                               aria-label="Call"
-                              onClick={() => flash('Call — Coming in a future milestone.')}
+                              onClick={() => setConsultActivityId(item.id)}
                             >
                               📞
                             </button>
@@ -399,6 +410,24 @@ export default function AdminDashboard() {
         />
       )}
 
+      {consultActivityId && (
+        <TeleconsultationWindow
+          activityId={consultActivityId}
+          open={consultActivityId !== null}
+          onClose={() => setConsultActivityId(null)}
+          onCompleted={(result) => {
+            setConsultActivityId(null);
+            flash(
+              result.nextActivity
+                ? 'Consultation saved · next activity scheduled.'
+                : 'Consultation saved.',
+            );
+            // Dashboard + worklist stats refresh automatically — no manual reload.
+            load();
+          }}
+        />
+      )}
+
       {toast && <div className="cz-toast">{toast}</div>}
     </div>
   );
@@ -409,6 +438,23 @@ function EmptyState({ text }: { text: string }) {
     <div className="empty-state">
       <div className="empty-state-icon" aria-hidden="true">∅</div>
       <div className="empty-state-text">{text}</div>
+    </div>
+  );
+}
+
+function ConsultStat({
+  label,
+  value,
+  accent,
+}: {
+  label: string;
+  value: number | null;
+  accent: string;
+}) {
+  return (
+    <div className="consult-stat">
+      <span className="consult-stat-value" style={{ color: accent }}>{statValue(value)}</span>
+      <span className="consult-stat-label">{label}</span>
     </div>
   );
 }

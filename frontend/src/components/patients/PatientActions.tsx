@@ -11,9 +11,13 @@ import RegistrationWizard from './RegistrationWizard';
 const BulkUploadDialog = dynamic(() => import('./BulkUploadDialog'), { ssr: false });
 
 interface PatientActionsProps {
-  /** 'dashboard' renders prominent action cards; 'toolbar' renders a button row. */
-  variant?: 'dashboard' | 'toolbar';
-  /** Dashboard only: also show Worklist + Guidebooks navigation shortcuts. */
+  /**
+   * 'dashboard' — tall icon cards (original).
+   * 'compact'   — slim horizontal pill row (~40% height of dashboard).
+   * 'toolbar'   — inline button row.
+   */
+  variant?: 'dashboard' | 'compact' | 'toolbar';
+  /** Dashboard/compact: also show Worklist + Guidebooks navigation shortcuts. */
   includeNavShortcuts?: boolean;
   /** Fired after a patient is created or a bulk upload completes (to refresh). */
   onChanged?: () => void;
@@ -54,7 +58,52 @@ export default function PatientActions({
     onChanged?.();
   }
 
-  const isCards = variant === 'dashboard';
+  const isCards   = variant === 'dashboard';
+  const isCompact = variant === 'compact';
+
+  if (isCompact) {
+    return (
+      <>
+        <div className="qa-compact-bar">
+          <button
+            type="button"
+            className="qa-compact-btn qa-compact-btn--primary"
+            onClick={() => setNewOpen(true)}
+          >
+            <span className="qa-compact-icon" aria-hidden="true">➕</span>
+            New Patient
+          </button>
+          <button
+            type="button"
+            className="qa-compact-btn"
+            onClick={() => setBulkOpen(true)}
+          >
+            <span className="qa-compact-icon" aria-hidden="true">📂</span>
+            Bulk Upload
+          </button>
+          {includeNavShortcuts && (
+            <>
+              <Link href="/worklist" className="qa-compact-btn">
+                <span className="qa-compact-icon" aria-hidden="true">📋</span>
+                Worklist
+              </Link>
+              <Link href="/guidebooks" className="qa-compact-btn">
+                <span className="qa-compact-icon" aria-hidden="true">📖</span>
+                Guidebooks
+              </Link>
+            </>
+          )}
+        </div>
+
+        {newOpen && (
+          <RegistrationWizard open onClose={() => setNewOpen(false)} onRegistered={handleRegistered} />
+        )}
+        {bulkOpen && (
+          <BulkUploadDialog open onClose={() => setBulkOpen(false)} onUploaded={handleUploaded} />
+        )}
+      </>
+    );
+  }
 
   return (
     <>

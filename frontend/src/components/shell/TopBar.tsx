@@ -1,5 +1,6 @@
 'use client';
 
+import Link from 'next/link';
 import type { AuthUser } from '@/lib/api';
 
 interface TopBarProps {
@@ -40,9 +41,9 @@ function initials(name: string): string {
 export default function TopBar({ user, onLogout }: TopBarProps) {
   return (
     <header className="shell-topbar">
-      <div className="shell-topbar-title">
+      <Link href="/dashboard" className="shell-topbar-title" aria-label="Go to Dashboard">
         Digital Integrated Care Network <span className="shell-topbar-tag">(DiNC)</span>
-      </div>
+      </Link>
 
       <div className="shell-search">
         <span className="shell-search-icon" aria-hidden="true">🔍</span>

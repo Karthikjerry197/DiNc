@@ -8,6 +8,7 @@ import {
   type AnalyticsQueryParams,
 } from '@/lib/api';
 import FilterBar from '@/components/analytics/FilterBar';
+import OperationsSection from '@/components/analytics/OperationsSection';
 import ExecutiveSection from '@/components/analytics/ExecutiveSection';
 import ProgramsSection from '@/components/analytics/ProgramsSection';
 import WorklistSection from '@/components/analytics/WorklistSection';
@@ -17,9 +18,10 @@ import SchedulerSection from '@/components/analytics/SchedulerSection';
 import WorkflowSection from '@/components/analytics/WorkflowSection';
 import KnowledgeSection from '@/components/analytics/KnowledgeSection';
 
-type Tab = 'executive' | 'programs' | 'worklist' | 'workers' | 'registrations' | 'scheduler' | 'workflow' | 'knowledge';
+type Tab = 'operations' | 'executive' | 'programs' | 'worklist' | 'workers' | 'registrations' | 'scheduler' | 'workflow' | 'knowledge';
 
 const TABS: { key: Tab; label: string }[] = [
+  { key: 'operations', label: 'Operations' },
   { key: 'executive', label: 'Executive' },
   { key: 'programs', label: 'Programs' },
   { key: 'worklist', label: 'Worklist' },
@@ -32,14 +34,14 @@ const TABS: { key: Tab; label: string }[] = [
 
 const EMPTY_PARAMS: AnalyticsQueryParams = {};
 
-const FILTER_TABS: Tab[] = ['executive', 'programs', 'worklist', 'workers', 'registrations', 'workflow'];
+const FILTER_TABS: Tab[] = ['operations', 'executive', 'programs', 'worklist', 'workers', 'registrations', 'workflow'];
 
 export default function ReportsPage() {
   const user = getCurrentUser();
   const isAdmin = user?.role === 'ADMIN';
   const token = getToken() ?? '';
 
-  const [tab, setTab] = useState<Tab>('executive');
+  const [tab, setTab] = useState<Tab>('operations');
   const [params, setParams] = useState<AnalyticsQueryParams>(EMPTY_PARAMS);
   const [options, setOptions] = useState<AnalyticsFilterOptions | null>(null);
 
@@ -90,6 +92,9 @@ export default function ReportsPage() {
         ))}
       </div>
 
+      {tab === 'operations' && (
+        <OperationsSection token={token} params={params} isAdmin={isAdmin} />
+      )}
       {tab === 'executive' && (
         <ExecutiveSection token={token} params={params} />
       )}

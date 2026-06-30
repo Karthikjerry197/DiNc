@@ -127,3 +127,28 @@ export interface SeriesPoint {
   label: string;
   value: number;
 }
+
+/**
+ * Aggregated snapshot for the Operations Dashboard — what supervisors and
+ * medical officers need to understand today's care load at a glance.
+ * All figures come from existing tables; nothing is stored or duplicated.
+ * Programs and workers are embedded so the frontend needs one round-trip.
+ */
+export interface OperationsDashboardDto {
+  // ── Today's Work ──────────────────────────────────────────────────────
+  dueToday: number;
+  overdueActivities: number;
+  highPriorityActivities: number;
+  escalatedActivities: number;
+  // ── Population Summary ────────────────────────────────────────────────
+  totalCitizens: number;
+  activeEnrollments: number;
+  newRegistrationsToday: number;
+  // ── Consultation Summary ──────────────────────────────────────────────
+  consultationsCompletedToday: number;
+  consultationsPending: number;
+  referralsToday: number;
+  // ── Per-Programme and Per-Worker breakdown (reused from existing) ─────
+  programs: ProgramAnalyticsRow[];
+  workers: WorkerPerformanceRow[];
+}

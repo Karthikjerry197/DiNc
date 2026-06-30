@@ -18,6 +18,8 @@ import { useDocumentationEngine } from '@/components/consultation/useDocumentati
 import DocumentationPreview from '@/components/consultation/DocumentationPreview';
 import CounsellingWizard from '@/components/consultation/CounsellingWizard';
 import ConsultationOutcomeDialog from '@/components/consultation/ConsultationOutcomeDialog';
+import ClinicalDecisionPanel from '@/components/consultation/ClinicalDecisionPanel';
+import CarePlanPanel from '@/components/care-plan/CarePlanPanel';
 
 type CallPhase = 'ready' | 'in-progress' | 'ended';
 
@@ -460,8 +462,14 @@ export default function ConsultationWorkspacePage() {
           />
         </div>
 
-        {/* Right: Live Clinical Note + History */}
+        {/* Right: CDSE panel + Care Plan panel + Live Clinical Note + History */}
         <div className="cw-note-col">
+          <ClinicalDecisionPanel citizenId={patient.citizenId} />
+          <CarePlanPanel
+            citizenId={patient.citizenId}
+            citizenName={patient.fullName}
+            worklistItemId={ctx?.activity?.id}
+          />
           <div className="cw-note-col-head">Live Clinical Note</div>
           <DocumentationPreview
             note={displayNote}

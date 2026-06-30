@@ -5,6 +5,7 @@ import {
   KnowledgeAnalyticsDto,
   KnowledgeItemStat,
   NameCount,
+  OperationsDashboardDto,
   ProgramAnalyticsRow,
   RegistrationAnalyticsDto,
   SchedulerAnalyticsDto,
@@ -532,6 +533,105 @@ export class AnalyticsRepository {
         };
       },
       { programs: [], workers: [], districts: [], diseases: [] },
+    );
+  }
+
+  /**
+   * Operations Dashboard snapshot — the single endpoint for Medical Officers
+   * and Supervisors. One focused query covering Today's Work, Population, and
+   * Consultation Summary, then delegates to the existing `programs()` and
+   * `workers()` methods rather than duplicating their SQL.
+   */
+  operations(f: AnalyticsFilters): Promise<OperationsDashboardDto> {
+    return this.safe(
+      'operations',
+      async () => {
+        // Single-pass snapshot over worklist_items for the four dashboard sections.
+        const snap = await this.db.query<{
+          due_today: number;
+          overdue: number;
+          high_priority: number;
+          escalated: number;
+          total_citizens: number;
+          active_enrollments: number;
+          completed_today: number;
+          in_progress: number;
+        }>(
+          `SELECT
+             count(*) FILTER (
+               WHERE w.status IN ('PENDING','IN_PROGRESS')
+                 AND w.due_date = CURRENT_DATE
+             )::int AS due_today,
+             count(*) FILTER (
+               WHERE w.status IN ('PENDING','IN_PROGRESS')
+                 AND w.due_date < CURRENT_DATE
+             )::int AS overdue,
+             count(*) FILTER (
+               WHERE w.priority IN ('HIGH','URGENT')
+                 AND w.status NOT IN ('COMPLETED','CANCELLED')
+             )::int AS high_priority,
+             count(*) FILTER (
+               WHERE w.is_escalation = true
+                 AND w.status NOT IN ('COMPLETED','CANCELLED')
+             )::int AS escalated,
+             count(DISTINCT e.citizen_id)::int                                         AS total_citizens,
+             count(DISTINCT e.id) FILTER (WHERE e.status = 'ACTIVE')::int             AS active_enrollments,
+             count(*) FILTER (WHERE w.outcome_recorded_at::date = CURRENT_DATE)::int  AS completed_today,
+             count(*) FILTER (WHERE w.status = 'IN_PROGRESS')::int                    AS in_progress
+           FROM public.worklist_items w
+           JOIN  public.enrollments e ON e.id = w.enrollment_id
+           LEFT JOIN public.citizens c ON c.id = e.citizen_id
+           WHERE ${AnalyticsRepository.WL_WHERE}`,
+          AnalyticsRepository.wlParams(f),
+        );
+
+        // New registrations today (not filtered by programme/worker scope).
+        const reg = await this.db.query<{ today: number }>(
+          `SELECT count(*) FILTER (WHERE created_at::date = CURRENT_DATE)::int AS today
+           FROM public.citizens
+           WHERE ($1::text IS NULL OR district = $1::text)`,
+          [f.district],
+        );
+
+        // Referrals = ESCALATION-category outcomes recorded today.
+        const refs = await this.db.query<{ c: number }>(
+          `SELECT count(*)::int AS c
+           FROM public.outcome_records orr
+           JOIN public.outcome_types ot ON ot.id = orr.outcome_type_id
+           WHERE ot.category = 'ESCALATION'
+             AND orr.recorded_at::date = CURRENT_DATE
+             AND ($1::date IS NULL OR orr.recorded_at::date >= $1::date)`,
+          [f.from],
+        );
+
+        // Reuse existing methods — no SQL duplication.
+        const [programs, workers] = await Promise.all([
+          this.programs(f),
+          this.workers(f),
+        ]);
+
+        const row = snap.rows[0];
+        return {
+          dueToday:                   row?.due_today          ?? 0,
+          overdueActivities:          row?.overdue            ?? 0,
+          highPriorityActivities:     row?.high_priority      ?? 0,
+          escalatedActivities:        row?.escalated          ?? 0,
+          totalCitizens:              row?.total_citizens     ?? 0,
+          activeEnrollments:          row?.active_enrollments ?? 0,
+          newRegistrationsToday:      reg.rows[0]?.today      ?? 0,
+          consultationsCompletedToday: row?.completed_today   ?? 0,
+          consultationsPending:       row?.in_progress        ?? 0,
+          referralsToday:             refs.rows[0]?.c         ?? 0,
+          programs,
+          workers,
+        };
+      },
+      {
+        dueToday: 0, overdueActivities: 0, highPriorityActivities: 0, escalatedActivities: 0,
+        totalCitizens: 0, activeEnrollments: 0, newRegistrationsToday: 0,
+        consultationsCompletedToday: 0, consultationsPending: 0, referralsToday: 0,
+        programs: [], workers: [],
+      },
     );
   }
 

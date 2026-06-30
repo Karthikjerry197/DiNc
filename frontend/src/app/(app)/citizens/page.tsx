@@ -25,6 +25,7 @@ import StartConsultationDialog from '@/components/citizens/StartConsultationDial
 import PatientTimeline from '@/components/citizens/PatientTimeline';
 import ClinicalJourney from '@/components/citizens/ClinicalJourney';
 import PatientActions from '@/components/patients/PatientActions';
+import ClinicalDecisionPanel from '@/components/consultation/ClinicalDecisionPanel';
 
 /**
  * Citizen Workspace — the primary three-panel workspace opened from the
@@ -342,7 +343,10 @@ export default function CitizensPage() {
             />
           </>
         ) : (
-          <ClinicalJourney citizenId={selectedId} />
+          <div className="cz-journey-main">
+            <ClinicalDecisionPanel citizenId={selectedId} />
+            <ClinicalJourney citizenId={selectedId} />
+          </div>
         )}
       </div>
 

@@ -17,6 +17,8 @@ import { RegistrationModule } from './registration/registration.module';
 import { SchedulerModule } from './scheduler/scheduler.module';
 import { KnowledgeModule } from './knowledge/knowledge.module';
 import { AnalyticsModule } from './analytics/analytics.module';
+import { CdseModule } from './cdse/cdse.module';
+import { CarePlanModule } from './care-plan/care-plan.module';
 
 @Module({
   imports: [
@@ -38,6 +40,8 @@ import { AnalyticsModule } from './analytics/analytics.module';
     SchedulerModule,
     KnowledgeModule,
     AnalyticsModule,
+    CdseModule,
+    CarePlanModule,
   ],
 })
 export class AppModule {}

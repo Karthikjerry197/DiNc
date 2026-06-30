@@ -95,6 +95,54 @@ export interface AdminDashboardSummary {
   recentWorklist: WorklistRow[];
 }
 
+// ── Dashboard Layout ──────────────────────────────────────────────────────────
+
+export interface DashboardLayoutItem {
+  widgetId: string;
+  visible: boolean;
+  collapsed: boolean;
+  /** Grid column span (1–3). Optional; absent on layouts saved before Dashboard Studio. */
+  colSpan?: number;
+}
+
+export interface DashboardLayoutResponse {
+  role: string;
+  layout: DashboardLayoutItem[];
+  updatedBy: string | null;
+  updatedAt: string | null;
+}
+
+/** Fetch the layout for the current user's role.
+ *  Admins may pass an optional `role` to fetch another role's layout for editing. */
+export async function fetchDashboardLayout(
+  token: string,
+  role?: string,
+): Promise<DashboardLayoutResponse> {
+  const url = role
+    ? `${API_BASE}/api/dashboard/layout?role=${encodeURIComponent(role)}`
+    : `${API_BASE}/api/dashboard/layout`;
+  const res = await fetch(url, { headers: { Authorization: `Bearer ${token}` } });
+  if (!res.ok) throw new Error('Failed to load dashboard layout');
+  return res.json() as Promise<DashboardLayoutResponse>;
+}
+
+/** Persist a role's layout. Admin-only on the backend. */
+export async function saveDashboardLayout(
+  token: string,
+  role: string,
+  layout: DashboardLayoutItem[],
+): Promise<void> {
+  const res = await fetch(`${API_BASE}/api/dashboard/layout`, {
+    method: 'PUT',
+    headers: {
+      Authorization: `Bearer ${token}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({ role, layout }),
+  });
+  if (!res.ok) throw new Error('Failed to save dashboard layout');
+}
+
 export async function fetchAdminDashboard(token: string): Promise<AdminDashboardSummary> {
   const res = await fetch(`${API_BASE}/api/dashboard/admin/summary`, {
     headers: { Authorization: `Bearer ${token}` },
@@ -1660,3 +1708,279 @@ export const fetchKnowledgeAnalytics = (t: string) =>
   getAnalytics<KnowledgeAnalytics>(t, 'knowledge');
 export const fetchAnalyticsFilterOptions = (t: string) =>
   getAnalytics<AnalyticsFilterOptions>(t, 'filter-options');
+
+/**
+ * Milestone 19 — Operations Dashboard.
+ * Aggregated snapshot for supervisors and medical officers: what needs attention
+ * today. Single round-trip; embeds programs and workers so the frontend does not
+ * need to call those endpoints separately.
+ */
+export interface OperationsDashboard {
+  dueToday: number;
+  overdueActivities: number;
+  highPriorityActivities: number;
+  escalatedActivities: number;
+  totalCitizens: number;
+  activeEnrollments: number;
+  newRegistrationsToday: number;
+  consultationsCompletedToday: number;
+  consultationsPending: number;
+  referralsToday: number;
+  programs: ProgramAnalyticsRow[];
+  workers: WorkerPerformanceRow[];
+}
+
+export const fetchOperationsDashboard = (t: string, p?: AnalyticsQueryParams) =>
+  getAnalytics<OperationsDashboard>(t, 'operations', p);
+
+// ── Clinical Decision Support Engine (CDSE) ───────────────────────────────────
+
+export type RecommendationPriority =
+  | 'CRITICAL'
+  | 'HIGH'
+  | 'RECOMMENDED'
+  | 'PREVENTIVE'
+  | 'INFORMATION';
+
+export type RiskLevel = 'LOW' | 'MODERATE' | 'HIGH';
+
+export interface CdsRecommendation {
+  ruleId: string;
+  title: string;
+  explanation: string;
+  reasons: string[];
+  action: string;
+  priority: RecommendationPriority;
+  supportingRule: string;
+}
+
+export interface CdsResponse {
+  citizenId: string;
+  overallRisk: RiskLevel;
+  riskExplanation: string;
+  recommendations: CdsRecommendation[];
+  evaluatedAt: string;
+  totalActivePrograms: number;
+  totalConsultations: number;
+}
+
+export async function fetchCdsRecommendations(
+  token: string,
+  citizenId: string,
+): Promise<CdsResponse> {
+  const res = await fetch(
+    `${API_BASE}/api/citizens/${encodeURIComponent(citizenId)}/cdse-recommendations`,
+    { headers: { Authorization: `Bearer ${token}` } },
+  );
+  if (!res.ok) throw new Error('Failed to load clinical recommendations');
+  return res.json() as Promise<CdsResponse>;
+}
+
+// ── Longitudinal Care Plan Engine ─────────────────────────────────────────────
+
+export type CarePlanStatus     = 'DRAFT' | 'ACTIVE' | 'COMPLETED' | 'SUSPENDED';
+export type ProblemStatus      = 'ACTIVE' | 'RESOLVED' | 'MONITORING' | 'DEFERRED';
+export type GoalCategory       = 'CLINICAL' | 'LIFESTYLE' | 'MEDICATION' | 'EDUCATION' | 'REFERRAL';
+export type GoalStatus         = 'ACTIVE' | 'ACHIEVED' | 'PARTIAL' | 'NOT_ACHIEVED' | 'DEFERRED';
+export type GoalPriority       = 'CRITICAL' | 'HIGH' | 'ROUTINE';
+export type InterventionStatus = 'PLANNED' | 'ONGOING' | 'COMPLETED' | 'DISCONTINUED';
+export type ProgressType       = 'ASSESSMENT' | 'UPDATE' | 'REVIEW' | 'ESCALATION' | 'ACHIEVEMENT';
+export type CdseDecision       = 'ACCEPTED' | 'DECLINED';
+
+export interface CarePlanIntervention {
+  id: string;
+  goalId: string;
+  carePlanId: string;
+  title: string;
+  description: string | null;
+  frequency: string | null;
+  responsible: string | null;
+  status: InterventionStatus;
+  assignedBy: string | null;
+  assignedTo: string | null;
+  dueDate: string | null;
+  completedBy: string | null;
+  completedDate: string | null;
+  sortOrder: number;
+  createdBy: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface CarePlanGoal {
+  id: string;
+  problemId: string;
+  carePlanId: string;
+  title: string;
+  description: string | null;
+  targetValue: string | null;
+  targetDate: string | null;
+  category: GoalCategory;
+  status: GoalStatus;
+  priority: GoalPriority;
+  cdseRuleId: string | null;
+  sortOrder: number;
+  interventions: CarePlanIntervention[];
+  createdBy: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface CarePlanProblem {
+  id: string;
+  carePlanId: string;
+  enrollmentId: string | null;
+  programId: string | null;
+  programName: string | null;
+  title: string;
+  description: string | null;
+  identifiedDate: string | null;
+  status: ProblemStatus;
+  sortOrder: number;
+  goals: CarePlanGoal[];
+  createdBy: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface CarePlan {
+  id: string;
+  citizenId: string;
+  citizenName: string | null;
+  status: CarePlanStatus;
+  title: string;
+  summary: string | null;
+  createdBy: string;
+  lastReviewedBy: string | null;
+  lastReviewedAt: string | null;
+  createdAt: string;
+  updatedAt: string;
+  problems: CarePlanProblem[];
+}
+
+export interface CarePlanSummary {
+  id: string;
+  citizenId: string;
+  status: CarePlanStatus;
+  title: string;
+  summary: string | null;
+  totalProblems: number;
+  activeProblems: number;
+  activeGoals: number;
+  achievedGoals: number;
+  lastReviewedAt: string | null;
+  updatedAt: string;
+}
+
+export interface CarePlanProgress {
+  id: string;
+  carePlanId: string;
+  goalId: string | null;
+  goalTitle: string | null;
+  problemTitle: string | null;
+  worklistItemId: string | null;
+  outcomeRecordId: string | null;
+  progressNote: string;
+  progressType: ProgressType;
+  recordedBy: string;
+  recordedAt: string;
+}
+
+export interface CdseGoalSuggestion {
+  cdseRuleId: string;
+  title: string;
+  description: string;
+  targetValue: string | null;
+  category: GoalCategory;
+  priority: GoalPriority;
+  cdsePriority: string;
+  alreadyAccepted: boolean;
+  lastDecision: CdseDecision | null;
+  lastDeclineReason: string | null;
+}
+
+export interface CdseDecisionEntry {
+  cdseRuleId: string;
+  recommendationTitle: string;
+  decision: CdseDecision;
+  declineReason?: string;
+  problemId?: string;
+}
+
+export interface CdseDecisionResult {
+  recorded: number;
+  goalsCreated: CarePlanGoal[];
+}
+
+// ── Care Plan API functions ───────────────────────────────────────────────────
+
+async function cpReq<T>(token: string, path: string, opts?: RequestInit): Promise<T> {
+  const res = await fetch(`${API_BASE}/api/${path}`, {
+    ...opts,
+    headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json', ...opts?.headers },
+  });
+  if (!res.ok) {
+    const msg = await res.text().catch(() => '');
+    throw new Error(msg || `Care plan request failed (${res.status})`);
+  }
+  if (res.status === 204) return undefined as T;
+  return res.json() as Promise<T>;
+}
+
+export const fetchCarePlan = (token: string, citizenId: string) =>
+  cpReq<CarePlan | null>(token, `citizens/${encodeURIComponent(citizenId)}/care-plan`);
+
+export const fetchCarePlanSummary = (token: string, citizenId: string) =>
+  cpReq<CarePlanSummary | null>(token, `citizens/${encodeURIComponent(citizenId)}/care-plan/summary`);
+
+export const createCarePlan = (token: string, citizenId: string, body: { title: string; summary?: string }) =>
+  cpReq<CarePlan>(token, `citizens/${encodeURIComponent(citizenId)}/care-plan`, {
+    method: 'POST', body: JSON.stringify(body),
+  });
+
+export const updateCarePlan = (token: string, carePlanId: string, body: { title?: string; summary?: string; status?: CarePlanStatus }) =>
+  cpReq<CarePlan>(token, `care-plans/${carePlanId}`, { method: 'PUT', body: JSON.stringify(body) });
+
+export const addProblem = (token: string, carePlanId: string, body: { title: string; description?: string; enrollmentId?: string; identifiedDate?: string; status?: ProblemStatus }) =>
+  cpReq<CarePlan>(token, `care-plans/${carePlanId}/problems`, { method: 'POST', body: JSON.stringify(body) });
+
+export const updateProblem = (token: string, carePlanId: string, problemId: string, body: { title: string; description?: string; enrollmentId?: string; identifiedDate?: string; status?: ProblemStatus }) =>
+  cpReq<CarePlan>(token, `care-plans/${carePlanId}/problems/${problemId}`, { method: 'PUT', body: JSON.stringify(body) });
+
+export const deleteProblem = (token: string, carePlanId: string, problemId: string) =>
+  cpReq<CarePlan>(token, `care-plans/${carePlanId}/problems/${problemId}`, { method: 'DELETE' });
+
+export const addGoal = (token: string, carePlanId: string, problemId: string, body: { title: string; category: GoalCategory; priority: GoalPriority; description?: string; targetValue?: string; targetDate?: string; status?: GoalStatus }) =>
+  cpReq<CarePlanGoal>(token, `care-plans/${carePlanId}/problems/${problemId}/goals`, { method: 'POST', body: JSON.stringify(body) });
+
+export const updateGoal = (token: string, carePlanId: string, goalId: string, body: { title: string; category: GoalCategory; priority: GoalPriority; description?: string; targetValue?: string; targetDate?: string; status?: GoalStatus }) =>
+  cpReq<CarePlan>(token, `care-plans/${carePlanId}/goals/${goalId}`, { method: 'PUT', body: JSON.stringify(body) });
+
+export const updateGoalStatus = (token: string, carePlanId: string, goalId: string, status: GoalStatus) =>
+  cpReq<CarePlan>(token, `care-plans/${carePlanId}/goals/${goalId}/status`, { method: 'PATCH', body: JSON.stringify({ status }) });
+
+export const deleteGoal = (token: string, carePlanId: string, goalId: string) =>
+  cpReq<CarePlan>(token, `care-plans/${carePlanId}/goals/${goalId}`, { method: 'DELETE' });
+
+export const addIntervention = (token: string, carePlanId: string, goalId: string, body: { title: string; description?: string; frequency?: string; responsible?: string; status?: InterventionStatus; assignedBy?: string; assignedTo?: string; dueDate?: string; completedBy?: string; completedDate?: string }) =>
+  cpReq<CarePlan>(token, `care-plans/${carePlanId}/goals/${goalId}/interventions`, { method: 'POST', body: JSON.stringify(body) });
+
+export const updateIntervention = (token: string, carePlanId: string, interventionId: string, body: { title: string; description?: string; frequency?: string; responsible?: string; status?: InterventionStatus; assignedBy?: string; assignedTo?: string; dueDate?: string; completedBy?: string; completedDate?: string }) =>
+  cpReq<CarePlan>(token, `care-plans/${carePlanId}/interventions/${interventionId}`, { method: 'PUT', body: JSON.stringify(body) });
+
+export const deleteIntervention = (token: string, carePlanId: string, interventionId: string) =>
+  cpReq<CarePlan>(token, `care-plans/${carePlanId}/interventions/${interventionId}`, { method: 'DELETE' });
+
+export const recordProgress = (token: string, carePlanId: string, body: { goalId?: string; worklistItemId?: string; outcomeRecordId?: string; progressNote: string; progressType: ProgressType }) =>
+  cpReq<CarePlanProgress>(token, `care-plans/${carePlanId}/progress`, { method: 'POST', body: JSON.stringify(body) });
+
+export const fetchProgress = (token: string, carePlanId: string) =>
+  cpReq<CarePlanProgress[]>(token, `care-plans/${carePlanId}/progress`);
+
+export const fetchCdseSuggestions = (token: string, carePlanId: string) =>
+  cpReq<CdseGoalSuggestion[]>(token, `care-plans/${carePlanId}/cdse-suggestions`);
+
+export const recordCdseDecisions = (token: string, carePlanId: string, decisions: CdseDecisionEntry[]) =>
+  cpReq<CdseDecisionResult>(token, `care-plans/${carePlanId}/cdse-decisions`, {
+    method: 'POST', body: JSON.stringify({ decisions }),
+  });

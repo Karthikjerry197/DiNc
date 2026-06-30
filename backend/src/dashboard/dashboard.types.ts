@@ -70,3 +70,21 @@ export interface AdminDashboardSummary {
   recentActivity: ActivityItem[];
   recentWorklist: WorklistRow[];
 }
+
+// ── Dashboard Layout ──────────────────────────────────────────────────────────
+
+/** One widget slot in a role layout — mirrors the frontend StudioLayoutItem. */
+export interface LayoutItem {
+  widgetId: string;
+  visible: boolean;
+  collapsed: boolean;
+  /** Grid column span 1–3. Optional for backward compatibility with saved rows. */
+  colSpan?: number;
+}
+
+export interface DashboardLayoutDto {
+  role: string;
+  layout: LayoutItem[];
+  updatedBy: string | null;
+  updatedAt: string | null;
+}

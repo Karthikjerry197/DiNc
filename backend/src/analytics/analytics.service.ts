@@ -5,6 +5,7 @@ import {
   AnalyticsFilters,
   ExecutiveSummaryDto,
   KnowledgeAnalyticsDto,
+  OperationsDashboardDto,
   ProgramAnalyticsRow,
   RegistrationAnalyticsDto,
   SchedulerAnalyticsDto,
@@ -75,6 +76,10 @@ export class AnalyticsService {
       completionRate: wl.completionRate,
       averageResponseHours: wl.averageResponseHours,
     };
+  }
+
+  operations(f: AnalyticsFilters): Promise<OperationsDashboardDto> {
+    return this.repo.operations(f);
   }
 
   programs(f: AnalyticsFilters): Promise<ProgramAnalyticsRow[]> {

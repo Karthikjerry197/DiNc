@@ -6,6 +6,7 @@ import { AnalyticsService, AnalyticsQuery } from './analytics.service';
 import {
   ExecutiveSummaryDto,
   KnowledgeAnalyticsDto,
+  OperationsDashboardDto,
   ProgramAnalyticsRow,
   RegistrationAnalyticsDto,
   SchedulerAnalyticsDto,
@@ -24,6 +25,12 @@ import {
 @UseGuards(JwtAuthGuard)
 export class AnalyticsController {
   constructor(private readonly analytics: AnalyticsService) {}
+
+  /** Single-round-trip endpoint for the Operations Dashboard. */
+  @Get('operations')
+  operations(@Query() q: AnalyticsQuery, @Req() req: Request): Promise<OperationsDashboardDto> {
+    return this.analytics.operations(this.filters(q, req));
+  }
 
   @Get('executive')
   executive(@Query() q: AnalyticsQuery, @Req() req: Request): Promise<ExecutiveSummaryDto> {

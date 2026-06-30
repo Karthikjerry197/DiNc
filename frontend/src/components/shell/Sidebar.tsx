@@ -36,13 +36,13 @@ export default function Sidebar({ onLogout }: SidebarProps) {
 
   return (
     <aside className="shell-sidebar">
-      <div className="shell-brand">
+      <Link href="/dashboard" className="shell-brand" aria-label="Go to Dashboard">
         <div className="shell-brand-badge">🏥</div>
         <div className="shell-brand-text">
           <div className="shell-brand-title">DiNC</div>
-          <div className="shell-brand-sub">Integrated Care</div>
+          <div className="shell-brand-sub">Digital Integrated Care Network (DiNC)</div>
         </div>
-      </div>
+      </Link>
 
       <nav className="shell-nav">
         {NAV_ITEMS.map((item) => {

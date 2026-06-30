@@ -28,6 +28,13 @@ const TILES: AdminTile[] = [
     enabled: true,
   },
   {
+    label: 'Scheduler',
+    description: 'Automation engine — runs due follow-ups, retries and escalations on a timer.',
+    href: '/administration/scheduler',
+    icon: '⏱',
+    enabled: true,
+  },
+  {
     label: 'Users & Roles',
     description: 'Manage healthcare workers, administrators and access.',
     href: '/administration',

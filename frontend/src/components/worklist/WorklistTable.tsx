@@ -9,18 +9,18 @@ interface WorklistTableProps {
   onOpenGuidebook: (itemId: string) => void;
   /** Opens the Report Duplicate dialog for a worklist item's citizen. */
   onReportDuplicate?: (item: WorklistItem) => void;
-  /** Opens the Teleconsultation window for a worklist item. */
+  /** Starts the consultation: opens the Consultation Workspace and initiates the call. */
   onStartCall?: (item: WorklistItem) => void;
 }
 
-/** Row action icons. Open / Guidebook / Duplicate are wired; others are placeholders. */
+/** Row action icons. Each key maps to a distinct clinical action. */
 const ROW_ACTIONS: { key: string; icon: string; label: string }[] = [
-  { key: 'open', icon: '↗', label: 'Open' },
-  { key: 'history', icon: '🕘', label: 'History' },
-  { key: 'guidebook', icon: '📘', label: 'Guidebook' },
-  { key: 'call', icon: '📞', label: 'Call' },
-  { key: 'duplicate', icon: '⚠', label: 'Report Duplicate' },
-  { key: 'more', icon: '⋯', label: 'More' },
+  { key: 'open',       icon: '↗',  label: 'Open Citizen Record' },
+  { key: 'call',       icon: '📞', label: 'Start Consultation' },
+  { key: 'guidebook',  icon: '📘', label: 'Guidebook' },
+  { key: 'history',    icon: '🕘', label: 'Patient History' },
+  { key: 'duplicate',  icon: '⚠',  label: 'Report Duplicate' },
+  { key: 'more',       icon: '⋯',  label: 'More' },
 ];
 
 function formatDate(iso: string | null): string {
@@ -106,8 +106,6 @@ export default function WorklistTable({
                 <div className="wl-row-actions">
                   {ROW_ACTIONS.map((action) => {
                     if (action.key === 'open') {
-                      // Open navigates into the Citizen Workspace, preselecting
-                      // this item's citizen when known.
                       return (
                         <Link
                           key={action.key}
@@ -120,15 +118,28 @@ export default function WorklistTable({
                         </Link>
                       );
                     }
+                    if (action.key === 'history') {
+                      // Opens the patient record / history view.
+                      return (
+                        <Link
+                          key={action.key}
+                          href={item.citizenId ? `/citizens?c=${item.citizenId}` : '/citizens'}
+                          className="wl-icon-btn"
+                          title="Patient History"
+                          aria-label="Patient History"
+                        >
+                          {action.icon}
+                        </Link>
+                      );
+                    }
                     if (action.key === 'call') {
-                      // Call opens the Teleconsultation workflow for this activity.
                       return (
                         <button
                           key={action.key}
                           type="button"
                           className="wl-icon-btn"
-                          title="Start teleconsultation"
-                          aria-label="Call"
+                          title="Start Consultation"
+                          aria-label="Start Consultation"
                           disabled={!onStartCall}
                           onClick={() => onStartCall?.(item)}
                         >

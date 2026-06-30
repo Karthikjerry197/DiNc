@@ -7,7 +7,7 @@
  * `outcome_types` (database-driven), and the clinical form from the event's
  * `outcome_templates` row — so any CPHC program is supported without code changes.
  */
-import type { GuidebookRef } from '../guidebooks/guidebooks.types';
+import type { GuidebookDetail } from '../guidebooks/guidebooks.types';
 import type { ActivityDto } from '../activity/activity.types';
 
 /** A single dynamic clinical field as stored in outcome_templates.fields. */
@@ -52,13 +52,52 @@ export interface OutcomeOption {
   category: string;
 }
 
+// ── Counselling engine (16B) ─────────────────────────────────────────────────
+
+/** One selectable counselling item within a wizard section. */
+export interface CounsellingItemDto {
+  id: string;
+  /** Display text shown to the field worker during counselling. */
+  body: string;
+  /** Text appended to the consultation note when this item is selected.
+   *  Defaults to `body` when not separately configured in the database. */
+  noteText: string;
+  sortOrder: number;
+}
+
+/**
+ * A logical grouping of counselling items (Lifestyle, Nutrition, Medicines, …).
+ * Section names and item content come entirely from the database; nothing is
+ * hardcoded in application code.
+ */
+export interface CounsellingSectionDto {
+  id: string;
+  name: string;
+  sortOrder: number;
+  items: CounsellingItemDto[];
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+
+/** A persisted consultation note (DRAFT or FINAL). */
+export interface ConsultationNoteDto {
+  id: string;
+  generatedNote: string;
+  noteVersion: number;
+  status: 'DRAFT' | 'FINAL';
+  recordedBy: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
 /** Everything the Teleconsultation window + outcome form need, in one payload. */
 export interface ConsultationContextDto {
   activity: ActivityDto;
   patient: PatientInfo;
   clinicalContext: ClinicalContext;
   dial: DialInfo;
-  guidebook: GuidebookRef | null;
+  /** Full guidebook detail (16A+): includes structured sections. Null when no guidebook matches. */
+  guidebook: GuidebookDetail | null;
   /** Dynamic, program-specific clinical fields (from the event's template). */
   clinicalForm: {
     templateId: string | null;
@@ -67,6 +106,14 @@ export interface ConsultationContextDto {
   };
   /** Configurable outcomes for this event (drives the workflow rules engine). */
   outcomeOptions: OutcomeOption[];
+  /** The most recent DRAFT note for this activity, if any (for workspace resume). */
+  previousNote: ConsultationNoteDto | null;
+  /**
+   * Database-driven counselling sections for the wizard (16B+).
+   * Empty array when the resolved guidebook has no counselling content yet.
+   * Section names and item content are fully managed in the database.
+   */
+  counsellingSections: CounsellingSectionDto[];
 }
 
 /**
@@ -102,4 +149,66 @@ export interface TimelineEntryDto {
   /** For activities: the consultation outcome recorded. */
   outcome: string | null;
   priority: string | null;
+}
+
+/**
+ * One entry in the Clinical Journey — a unified, reverse-chronological view
+ * of every clinical event for a citizen. Aggregated from enrollments,
+ * worklist_items, outcome_records, consultation_notes, and contact_outcomes.
+ * This is a read-only projection; no data is duplicated or modified.
+ */
+export interface ClinicalJourneyEntryDto {
+  id: string;
+  eventType: 'ENROLLMENT' | 'CONSULTATION' | 'ACTIVITY';
+  date: string | null;
+  program: string | null;
+  disease: string | null;
+  summary: string;
+  activityStatus: string | null;
+  outcomeName: string | null;
+  outcomeCategory: string | null;
+  clinicalNotes: string | null;
+  remarks: string | null;
+  generatedNote: string | null;
+  clinicalData: Record<string, unknown> | null;
+  recordedBy: string | null;
+  callCount: number;
+  enrollmentStatus: string | null;
+  eventName: string | null;
+}
+
+/**
+ * The first pending/active worklist activity for a citizen.
+ * Used by the Citizens module to determine whether a scheduled consultation
+ * exists before offering "Continue" or "Start New" options.
+ */
+export interface ActiveActivityDto {
+  activityId: string;
+  eventName: string | null;
+  programName: string | null;
+}
+
+/**
+ * A rich per-activity consultation history entry (16A+).
+ * Combines the worklist item, outcome record, and any FINAL consultation note
+ * so the workspace history panel can show a clinically meaningful summary.
+ */
+export interface ConsultationHistoryEntryDto {
+  activityId: string;
+  eventName: string;
+  program: string | null;
+  date: string | null;
+  activityStatus: string;
+  outcomeName: string | null;
+  outcomeCategory: string | null;
+  /** Free-text clinical notes from the outcome record. */
+  clinicalNotes: string | null;
+  /** Additional remarks from the outcome record. */
+  remarks: string | null;
+  /** Username of the worker who saved the outcome. */
+  recordedBy: string | null;
+  /** Structured clinical field values from the outcome record (key → value). */
+  clinicalData: Record<string, unknown> | null;
+  /** The FINAL generated note for this activity, if one was saved. */
+  generatedNote: string | null;
 }

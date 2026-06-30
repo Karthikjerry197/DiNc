@@ -435,6 +435,170 @@ export async function bulkRegisterPatients(
   return res.json() as Promise<BulkRegistrationResult>;
 }
 
+// ── Scheduler & Automation Engine (Administration) ───────────────────────────
+
+export interface SchedulerRun {
+  id: string;
+  startedAt: string;
+  finishedAt: string | null;
+  trigger: 'AUTO' | 'MANUAL';
+  dueFound: number;
+  rulesProcessed: number;
+  activitiesCreated: number;
+  retries: number;
+  escalations: number;
+  failures: number;
+  error: string | null;
+}
+
+export interface SchedulerStatus {
+  enabled: boolean;
+  intervalMs: number;
+  lastRun: SchedulerRun | null;
+  nextRunEstimate: string | null;
+  recentRuns: SchedulerRun[];
+  totals: {
+    runs: number;
+    activitiesCreated: number;
+    retries: number;
+    escalations: number;
+    failures: number;
+  };
+}
+
+export async function fetchSchedulerStatus(token: string): Promise<SchedulerStatus> {
+  const res = await fetch(`${API_BASE}/api/scheduler/status`, {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  if (!res.ok) throw await citizenError(res, 'Unable to load scheduler status.');
+  return res.json() as Promise<SchedulerStatus>;
+}
+
+export async function runSchedulerNow(token: string): Promise<SchedulerRun> {
+  const res = await fetch(`${API_BASE}/api/scheduler/run`, {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+    body: '{}',
+  });
+  if (!res.ok) throw await citizenError(res, 'Unable to run the scheduler.');
+  return res.json() as Promise<SchedulerRun>;
+}
+
+// ── Knowledge Hub (FAQ, Training, Emergency, Search) ─────────────────────────
+
+export interface KnowledgeFaq {
+  id: string;
+  category: string | null;
+  question: string;
+  answer: string;
+}
+export interface CategoryCount {
+  name: string;
+  count: number;
+}
+export interface FaqList {
+  faqs: KnowledgeFaq[];
+  categories: CategoryCount[];
+}
+export interface TrainingModule {
+  id: string;
+  code: string;
+  title: string;
+  category: string | null;
+  description: string | null;
+  durationMinutes: number | null;
+  content: string | null;
+}
+export interface EmergencyProtocol {
+  id: string;
+  code: string;
+  category: string;
+  title: string;
+  recognition: string | null;
+  immediateManagement: string[];
+  referralCriteria: string[];
+  notes: string | null;
+}
+export interface KnowledgeSearchHit {
+  id: string;
+  title: string;
+  snippet: string | null;
+  category: string | null;
+}
+export interface KnowledgeSearchResult {
+  query: string;
+  faqs: KnowledgeSearchHit[];
+  training: KnowledgeSearchHit[];
+  guidebooks: KnowledgeSearchHit[];
+}
+export interface FaqPayload {
+  question: string;
+  answer: string;
+  category?: string;
+}
+
+export async function fetchFaqs(token: string): Promise<FaqList> {
+  const res = await fetch(`${API_BASE}/api/knowledge/faqs`, {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  if (!res.ok) throw await citizenError(res, 'Unable to load FAQs.');
+  return res.json() as Promise<FaqList>;
+}
+
+export async function createFaq(token: string, payload: FaqPayload): Promise<KnowledgeFaq> {
+  const res = await fetch(`${API_BASE}/api/knowledge/faqs`, {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+  });
+  if (!res.ok) throw await citizenError(res, 'Unable to create FAQ.');
+  return res.json() as Promise<KnowledgeFaq>;
+}
+
+export async function updateFaq(token: string, id: string, payload: FaqPayload): Promise<KnowledgeFaq> {
+  const res = await fetch(`${API_BASE}/api/knowledge/faqs/${id}`, {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+  });
+  if (!res.ok) throw await citizenError(res, 'Unable to update FAQ.');
+  return res.json() as Promise<KnowledgeFaq>;
+}
+
+export async function deleteFaq(token: string, id: string): Promise<{ id: string; deleted: boolean }> {
+  const res = await fetch(`${API_BASE}/api/knowledge/faqs/${id}/delete`, {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+    body: '{}',
+  });
+  if (!res.ok) throw await citizenError(res, 'Unable to delete FAQ.');
+  return res.json() as Promise<{ id: string; deleted: boolean }>;
+}
+
+export async function fetchTrainingModules(token: string): Promise<TrainingModule[]> {
+  const res = await fetch(`${API_BASE}/api/knowledge/training`, {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  if (!res.ok) throw await citizenError(res, 'Unable to load training modules.');
+  return res.json() as Promise<TrainingModule[]>;
+}
+
+export async function fetchEmergencyProtocols(token: string): Promise<EmergencyProtocol[]> {
+  const res = await fetch(`${API_BASE}/api/knowledge/emergency`, {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  if (!res.ok) throw await citizenError(res, 'Unable to load emergency protocols.');
+  return res.json() as Promise<EmergencyProtocol[]>;
+}
+
+export async function searchKnowledge(token: string, q: string): Promise<KnowledgeSearchResult> {
+  const res = await fetch(`${API_BASE}/api/knowledge/search?q=${encodeURIComponent(q)}`, {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  if (!res.ok) throw await citizenError(res, 'Unable to search knowledge.');
+  return res.json() as Promise<KnowledgeSearchResult>;
+}
+
 // ── Guidebooks ───────────────────────────────────────────────────────────────
 
 export interface GuidebookListItem {
@@ -445,6 +609,14 @@ export interface GuidebookListItem {
   summary: string | null;
   status: 'Active' | 'Inactive';
 }
+
+/**
+ * Data-driven section map from guidebook_sections JSONB.
+ * Keys are arbitrary (e.g. "checklist", "counsellingPoints", "drugChart").
+ * Values are text strings or ordered lists. The renderer displays whatever
+ * keys exist — no frontend changes needed when new sections are added.
+ */
+export type GuidebookSections = Record<string, string | string[]>;
 
 export interface GuidebookDetail {
   id: string;
@@ -457,6 +629,8 @@ export interface GuidebookDetail {
   evidenceSource: string | null;
   keyRecommendations: string[];
   referralCriteria: string[];
+  /** Structured sections from guidebook_sections JSONB (16A+). Empty object on legacy rows. */
+  sections: GuidebookSections;
 }
 
 export async function fetchGuidebooksList(token: string): Promise<GuidebookListItem[]> {
@@ -999,12 +1173,44 @@ export interface OutcomeOption {
   category: string;
 }
 
+export interface ConsultationNote {
+  id: string;
+  generatedNote: string;
+  noteVersion: number;
+  status: 'DRAFT' | 'FINAL';
+  recordedBy: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+/** One selectable counselling item within a wizard section (16B+). */
+export interface CounsellingItem {
+  id: string;
+  /** Text displayed to the field worker on the selection row. */
+  body: string;
+  /** Text appended to the note when selected. Equals body when not separately configured. */
+  noteText: string;
+  sortOrder: number;
+}
+
+/**
+ * A logical counselling section (Lifestyle, Nutrition, Medicines, …).
+ * Names and content come entirely from the database — never hardcoded.
+ */
+export interface CounsellingSection {
+  id: string;
+  name: string;
+  sortOrder: number;
+  items: CounsellingItem[];
+}
+
 export interface ConsultationContext {
   activity: Activity;
   patient: ConsultationPatientInfo;
   clinicalContext: ConsultationClinicalContext;
   dial: DialInfo;
-  guidebook: GuidebookRef | null;
+  /** Full guidebook detail (16A+): includes structured sections. GuidebookRef fields (id, code, category, title) are always present. */
+  guidebook: GuidebookDetail | null;
   clinicalForm: {
     templateId: string | null;
     templateName: string | null;
@@ -1012,6 +1218,13 @@ export interface ConsultationContext {
   };
   /** Configurable outcomes for this event (drive the Workflow Rules Engine). */
   outcomeOptions: OutcomeOption[];
+  /** Most recent DRAFT note for this activity, if any (workspace resume). */
+  previousNote: ConsultationNote | null;
+  /**
+   * Database-driven counselling sections for the wizard (16B+).
+   * Empty array when no counselling content is configured for the matched guidebook.
+   */
+  counsellingSections: CounsellingSection[];
 }
 
 export interface StartCallResult {
@@ -1025,6 +1238,9 @@ export interface SaveConsultationPayload {
   clinicalNotes?: string;
   remarks?: string;
   clinicalData?: Record<string, unknown>;
+  /** Auto-generated (and optionally edited) note — persisted as FINAL alongside the outcome. */
+  generatedNote?: string;
+  noteStatus?: 'DRAFT' | 'FINAL';
 }
 
 export interface SaveConsultationResult {
@@ -1096,6 +1312,115 @@ export async function fetchCitizenTimeline(
   });
   if (!res.ok) throw await readError(res, 'Unable to load patient timeline.');
   return res.json() as Promise<TimelineEntry[]>;
+}
+
+/** Upserts a DRAFT consultation note (auto-save from the workspace). */
+export async function upsertConsultationNote(
+  token: string,
+  activityId: string,
+  generatedNote: string,
+): Promise<ConsultationNote> {
+  const res = await fetch(`${API_BASE}/api/activities/${activityId}/consultation-note`, {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ generatedNote }),
+  });
+  if (!res.ok) throw await readError(res, 'Unable to save note draft.');
+  return res.json() as Promise<ConsultationNote>;
+}
+
+/** Fetches the current DRAFT note for an activity, or null. */
+export async function fetchConsultationNote(
+  token: string,
+  activityId: string,
+): Promise<ConsultationNote | null> {
+  const res = await fetch(`${API_BASE}/api/activities/${activityId}/consultation-note`, {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  if (!res.ok) throw await readError(res, 'Unable to load consultation note.');
+  return res.json() as Promise<ConsultationNote | null>;
+}
+
+/** Enriched per-activity consultation history entry for the workspace history panel. */
+export interface ConsultationHistoryEntry {
+  activityId: string;
+  eventName: string;
+  program: string | null;
+  date: string | null;
+  activityStatus: string;
+  outcomeName: string | null;
+  outcomeCategory: string | null;
+  clinicalNotes: string | null;
+  remarks: string | null;
+  recordedBy: string | null;
+  /** Structured clinical field values (from outcome_records.data.fields). */
+  clinicalData: Record<string, unknown> | null;
+  /** The FINAL generated consultation note, if one was saved. */
+  generatedNote: string | null;
+}
+
+export async function fetchConsultationHistory(
+  token: string,
+  citizenId: string,
+): Promise<ConsultationHistoryEntry[]> {
+  const res = await fetch(`${API_BASE}/api/citizens/${citizenId}/consultation-history`, {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  if (!res.ok) throw await readError(res, 'Unable to load consultation history.');
+  return res.json() as Promise<ConsultationHistoryEntry[]>;
+}
+
+/**
+ * One entry in the Clinical Journey — a unified view of every clinical event
+ * for a citizen, aggregated server-side from existing tables. Read-only.
+ */
+export interface ClinicalJourneyEntry {
+  id: string;
+  eventType: 'ENROLLMENT' | 'CONSULTATION' | 'ACTIVITY';
+  date: string | null;
+  program: string | null;
+  disease: string | null;
+  summary: string;
+  activityStatus: string | null;
+  outcomeName: string | null;
+  outcomeCategory: string | null;
+  clinicalNotes: string | null;
+  remarks: string | null;
+  generatedNote: string | null;
+  clinicalData: Record<string, unknown> | null;
+  recordedBy: string | null;
+  callCount: number;
+  enrollmentStatus: string | null;
+  eventName: string | null;
+}
+
+export async function fetchClinicalJourney(
+  token: string,
+  citizenId: string,
+): Promise<ClinicalJourneyEntry[]> {
+  const res = await fetch(`${API_BASE}/api/citizens/${citizenId}/clinical-journey`, {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  if (!res.ok) throw await readError(res, 'Unable to load clinical journey.');
+  return res.json() as Promise<ClinicalJourneyEntry[]>;
+}
+
+/** The first pending/active worklist activity for a citizen, or null. */
+export interface ActiveActivity {
+  activityId: string;
+  eventName: string | null;
+  programName: string | null;
+}
+
+export async function fetchActiveActivity(
+  token: string,
+  citizenId: string,
+): Promise<ActiveActivity | null> {
+  const res = await fetch(`${API_BASE}/api/citizens/${citizenId}/active-activity`, {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  if (!res.ok) throw await readError(res, 'Unable to check for active consultation.');
+  return res.json() as Promise<ActiveActivity | null>;
 }
 
 // ── Workflow Rules Engine (Administration) ───────────────────────────────────
@@ -1179,3 +1504,159 @@ export async function updateWorkflowRule(
   if (!res.ok) throw await readError(res, 'Unable to update the workflow rule.');
   return res.json() as Promise<WorkflowRule>;
 }
+
+// ── Analytics Foundation ─────────────────────────────────────────────────────
+
+export interface AnalyticsQueryParams {
+  from?: string;
+  to?: string;
+  programId?: string;
+  diseaseId?: string;
+  district?: string;
+  worker?: string;
+}
+
+export interface ExecutiveSummary {
+  totalPatients: number | null;
+  todaysRegistrations: number | null;
+  activeEnrollments: number | null;
+  pendingActivities: number | null;
+  completedActivities: number | null;
+  overdueActivities: number | null;
+  escalatedCases: number | null;
+  duplicateRequests: number | null;
+  schedulerRunsToday: number | null;
+  workflowSuccessRate: number | null;
+  completionRate: number | null;
+  averageResponseHours: number | null;
+}
+
+export interface ProgramAnalyticsRow {
+  programId: string;
+  program: string;
+  registeredPatients: number;
+  activeEnrollments: number;
+  completedActivities: number;
+  pendingActivities: number;
+  overdueActivities: number;
+  completionRate: number;
+}
+
+export interface WorklistAnalytics {
+  pending: number;
+  completed: number;
+  overdue: number;
+  escalated: number;
+  totalRetries: number;
+  averageCompletionHours: number | null;
+  createdToday: number;
+  completedToday: number;
+  createdThisWeek: number;
+}
+
+export interface WorkerPerformanceRow {
+  username: string;
+  fullName: string;
+  role: string;
+  assigned: number;
+  completed: number;
+  pending: number;
+  overdue: number;
+  completionRate: number;
+  averageResponseHours: number | null;
+  escalations: number;
+  retries: number;
+}
+
+export interface NameCount {
+  name: string;
+  count: number;
+}
+
+export interface RegistrationAnalytics {
+  today: number;
+  thisWeek: number;
+  thisMonth: number;
+  byProgram: NameCount[];
+  byWorker: NameCount[];
+  duplicatesPrevented: number | null;
+  bulkUploads: number | null;
+}
+
+export interface KnowledgeItemStat {
+  id: string;
+  title: string;
+  category: string | null;
+  views: number | null;
+}
+export interface KnowledgeAnalytics {
+  totals: { guidebooks: number; faqs: number; training: number; emergency: number };
+  topGuidebooks: KnowledgeItemStat[];
+  topFaqs: KnowledgeItemStat[];
+  topTraining: KnowledgeItemStat[];
+  topEmergency: KnowledgeItemStat[];
+  tracking: boolean;
+}
+
+export interface SchedulerAnalytics {
+  totalRuns: number;
+  activitiesGenerated: number;
+  retries: number;
+  escalations: number;
+  failures: number;
+  averageRuntimeMs: number | null;
+  successRate: number | null;
+  runsToday: number;
+}
+
+export interface WorkflowAnalytics {
+  mostTriggeredOutcomes: NameCount[];
+  mostCommonOutcomes: NameCount[];
+  retrySuccessRate: number | null;
+  escalationRate: number | null;
+  averageDelayDays: number | null;
+  rulesExecutedToday: number;
+}
+
+export interface AnalyticsFilterOptions {
+  programs: { id: string; name: string }[];
+  workers: { username: string; fullName: string; role: string }[];
+  districts: string[];
+  diseases: { id: string; name: string }[];
+}
+
+function analyticsQuery(p: AnalyticsQueryParams): string {
+  const qs = new URLSearchParams();
+  Object.entries(p).forEach(([k, v]) => {
+    if (v && String(v).trim()) qs.set(k, String(v));
+  });
+  const s = qs.toString();
+  return s ? `?${s}` : '';
+}
+
+async function getAnalytics<T>(token: string, path: string, p: AnalyticsQueryParams = {}): Promise<T> {
+  const res = await fetch(`${API_BASE}/api/analytics/${path}${analyticsQuery(p)}`, {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  if (!res.ok) throw await readError(res, 'Unable to load analytics.');
+  return res.json() as Promise<T>;
+}
+
+export const fetchExecutiveSummary = (t: string, p?: AnalyticsQueryParams) =>
+  getAnalytics<ExecutiveSummary>(t, 'executive', p);
+export const fetchProgramAnalytics = (t: string, p?: AnalyticsQueryParams) =>
+  getAnalytics<ProgramAnalyticsRow[]>(t, 'programs', p);
+export const fetchWorklistAnalytics = (t: string, p?: AnalyticsQueryParams) =>
+  getAnalytics<WorklistAnalytics>(t, 'worklist', p);
+export const fetchWorkerPerformance = (t: string, p?: AnalyticsQueryParams) =>
+  getAnalytics<WorkerPerformanceRow[]>(t, 'workers', p);
+export const fetchRegistrationAnalytics = (t: string, p?: AnalyticsQueryParams) =>
+  getAnalytics<RegistrationAnalytics>(t, 'registrations', p);
+export const fetchSchedulerAnalytics = (t: string) =>
+  getAnalytics<SchedulerAnalytics>(t, 'scheduler');
+export const fetchWorkflowAnalytics = (t: string, p?: AnalyticsQueryParams) =>
+  getAnalytics<WorkflowAnalytics>(t, 'workflow', p);
+export const fetchKnowledgeAnalytics = (t: string) =>
+  getAnalytics<KnowledgeAnalytics>(t, 'knowledge');
+export const fetchAnalyticsFilterOptions = (t: string) =>
+  getAnalytics<AnalyticsFilterOptions>(t, 'filter-options');

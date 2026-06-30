@@ -13,13 +13,13 @@ interface CitizenSummaryProps {
   enrollmentDetailLoading: boolean;
   onAddProgram: () => void;
   onOpenGuidebook: () => void;
+  onStartConsultation: () => void;
   onComingSoon: (label: string) => void;
   onBack: () => void;
 }
 
-/** Action buttons. "Guidebook" is context-aware (opens the enrollment's
- *  guidebook); the rest remain UI-only this milestone. */
-const PRIMARY_ACTIONS = ['Guidebook', 'Call Next', 'Edit', 'Close', 'Remove'];
+/** Action buttons. "Guidebook" and "Start Consultation" are live; others remain UI-only. */
+const PRIMARY_ACTIONS = ['Guidebook', 'Start Consultation', 'Edit', 'Close', 'Remove'];
 const SECONDARY_ACTIONS = ['Guide Book', 'FAQs', 'Manage Activities'];
 
 function val(text: string | null | undefined): string {
@@ -46,6 +46,7 @@ export default function CitizenSummary({
   enrollmentDetailLoading,
   onAddProgram,
   onOpenGuidebook,
+  onStartConsultation,
   onComingSoon,
   onBack,
 }: CitizenSummaryProps) {
@@ -206,8 +207,20 @@ export default function CitizenSummary({
               key={label}
               type="button"
               className="wl-btn wl-btn-soft"
-              title={label === 'Guidebook' ? 'Open the guidebook for this enrollment' : label}
-              onClick={label === 'Guidebook' ? onOpenGuidebook : () => onComingSoon(label)}
+              title={
+                label === 'Guidebook'
+                  ? 'Open the guidebook for this enrollment'
+                  : label === 'Start Consultation'
+                    ? 'Start or continue a consultation for this citizen'
+                    : label
+              }
+              onClick={
+                label === 'Guidebook'
+                  ? onOpenGuidebook
+                  : label === 'Start Consultation'
+                    ? onStartConsultation
+                    : () => onComingSoon(label)
+              }
             >
               {label}
             </button>

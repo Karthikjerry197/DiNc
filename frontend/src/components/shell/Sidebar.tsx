@@ -21,9 +21,9 @@ export const NAV_ITEMS: NavItem[] = [
   { label: 'My Worklist', href: '/worklist', icon: '☑', enabled: false },
   { label: 'Citizens', href: '/citizens', icon: '👥', enabled: false },
   { label: 'Guidebooks', href: '/guidebooks', icon: '📘', enabled: false },
-  { label: 'Knowledge Base', href: '/knowledge-base', icon: '📚', enabled: false },
+  { label: 'Knowledge Base', href: '/knowledge-base', icon: '📚', enabled: true },
   { label: 'Notifications', href: '/notifications', icon: '🔔', enabled: false },
-  { label: 'Reports', href: '/reports', icon: '📊', enabled: false },
+  { label: 'Reports', href: '/reports', icon: '📊', enabled: true },
   { label: 'Administration', href: '/administration', icon: '⚙', enabled: true },
 ];
 

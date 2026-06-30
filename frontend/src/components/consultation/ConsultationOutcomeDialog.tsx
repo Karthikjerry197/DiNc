@@ -15,6 +15,12 @@ interface ConsultationOutcomeDialogProps {
   open: boolean;
   onClose: () => void;
   onSaved: (result: SaveConsultationResult) => void;
+  /**
+   * Live clinical note from the counselling wizard — pre-populated into the
+   * Remarks field so the worker can review and edit before saving. No copy-paste
+   * required.
+   */
+  generatedNote?: string;
 }
 
 /**
@@ -30,13 +36,15 @@ export default function ConsultationOutcomeDialog({
   open,
   onClose,
   onSaved,
+  generatedNote,
 }: ConsultationOutcomeDialogProps) {
   const options = context.outcomeOptions;
   const [outcomeTypeId, setOutcomeTypeId] = useState(
     () => options.find((o) => o.category === 'POSITIVE')?.id ?? options[0]?.id ?? '',
   );
   const [clinicalNotes, setClinicalNotes] = useState('');
-  const [remarks, setRemarks] = useState('');
+  // Pre-populated from the live counselling note — worker can edit before saving.
+  const [remarks, setRemarks] = useState(() => generatedNote ?? '');
   const [clinicalData, setClinicalData] = useState<Record<string, unknown>>({});
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
@@ -95,6 +103,8 @@ export default function ConsultationOutcomeDialog({
         clinicalNotes: clinicalNotes.trim() || undefined,
         remarks: remarks.trim() || undefined,
         clinicalData: showClinicalFields ? clinicalData : undefined,
+        generatedNote: remarks.trim() || undefined,
+        noteStatus: 'FINAL',
       });
       onSaved(result);
     } catch (err) {
@@ -174,14 +184,21 @@ export default function ConsultationOutcomeDialog({
               </div>
 
               <div className="fg">
-                <label className="fl" htmlFor="co-remarks">Additional Remarks</label>
+                <label className="fl" htmlFor="co-remarks">
+                  Consultation Note
+                  {generatedNote && (
+                    <span style={{ fontWeight: 400, color: '#6b7280', marginLeft: 6 }}>
+                      (pre-filled from counselling — edit if needed)
+                    </span>
+                  )}
+                </label>
                 <textarea
                   id="co-remarks"
-                  className="fc modal-textarea"
-                  placeholder="Follow-up notes, advice given, etc."
+                  className="fc modal-textarea co-note-textarea"
+                  placeholder="Consultation observations and counselling summary"
                   value={remarks}
                   disabled={saving}
-                  maxLength={4000}
+                  maxLength={8000}
                   onChange={(e) => setRemarks(e.target.value)}
                 />
               </div>

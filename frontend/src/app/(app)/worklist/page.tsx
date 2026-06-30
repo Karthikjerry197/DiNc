@@ -16,7 +16,6 @@ import WorklistTable from '@/components/worklist/WorklistTable';
 import ReportDuplicateDialog, {
   type ReportDuplicateTarget,
 } from '@/components/dataquality/ReportDuplicateDialog';
-import TeleconsultationWindow from '@/components/consultation/TeleconsultationWindow';
 import PatientActions from '@/components/patients/PatientActions';
 
 const EMPTY: WorklistOverview = {
@@ -45,7 +44,6 @@ export default function WorklistPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [reportTarget, setReportTarget] = useState<ReportDuplicateTarget | null>(null);
-  const [consultActivityId, setConsultActivityId] = useState<string | null>(null);
   const [toast, setToast] = useState('');
 
   const flash = useCallback((message: string) => {
@@ -59,8 +57,8 @@ export default function WorklistPage() {
   }, []);
 
   const startCall = useCallback((item: WorklistItem) => {
-    setConsultActivityId(item.id);
-  }, []);
+    router.push(`/worklist/${item.id}/consult`);
+  }, [router]);
 
   // Re-fetch the worklist (used on mount and after a consultation completes so the
   // list reflects new statuses and auto-generated activities without manual reload).
@@ -164,23 +162,6 @@ export default function WorklistPage() {
           onSubmitted={(request) => {
             setReportTarget(null);
             flash(`Duplicate request ${request.reference} submitted for review.`);
-          }}
-        />
-      )}
-
-      {consultActivityId && (
-        <TeleconsultationWindow
-          activityId={consultActivityId}
-          open={consultActivityId !== null}
-          onClose={() => setConsultActivityId(null)}
-          onCompleted={(result) => {
-            setConsultActivityId(null);
-            flash(
-              result.nextActivity
-                ? 'Consultation saved · next activity scheduled.'
-                : 'Consultation saved.',
-            );
-            reload();
           }}
         />
       )}

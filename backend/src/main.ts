@@ -12,13 +12,24 @@ async function bootstrap(): Promise<void> {
     new ValidationPipe({ whitelist: true, forbidNonWhitelisted: true, transform: true }),
   );
 
-  const origin = config.get<string>('FRONTEND_ORIGIN') ?? 'http://localhost:3000';
-  app.enableCors({ origin, methods: ['GET', 'POST'], credentials: false });
+  const origins = [
+  'http://localhost:3000',
+  'http://127.0.0.1:3000',
+  'http://192.168.31.44:3000',
+];
+
+app.enableCors({
+  origin: origins,
+  methods: ['GET', 'POST'],
+  credentials: false,
+});
 
   const port = Number(config.get<string>('PORT') ?? 4000);
-  await app.listen(port);
+  await app.listen(port, '0.0.0.0');
   // eslint-disable-next-line no-console
-  console.log(`DiNC backend listening on http://localhost:${port}/api`);
+  console.log(`DiNC backend listening on:
+  Local:   http://localhost:${port}/api
+  Network: http://192.168.31.44:${port}/api`);
 }
 
 void bootstrap();

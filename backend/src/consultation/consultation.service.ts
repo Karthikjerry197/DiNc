@@ -8,11 +8,16 @@ import {
 } from './consultation.repository';
 import { SaveConsultationDto } from './dto/save-consultation.dto';
 import {
+  ActiveActivityDto,
+  ClinicalJourneyEntryDto,
   ConsultationContextDto,
+  ConsultationHistoryEntryDto,
+  ConsultationNoteDto,
   SaveConsultationResultDto,
   StartCallResultDto,
   TimelineEntryDto,
 } from './consultation.types';
+import type { GuidebookDetail } from '../guidebooks/guidebooks.types';
 
 /**
  * Teleconsultation surface. It gathers the consultation context, records the
@@ -22,6 +27,12 @@ import {
  * Deliberately contains NO workflow logic: there is no `if (outcome === '...')`,
  * no next-activity scheduling and no lifecycle branching here. What happens after
  * an outcome is entirely database-driven via the engine + the `rules` table.
+ *
+ * 16A additions:
+ * - Guidebook resolution via guide_rules regex matching (program + disease + event).
+ * - Returns full GuidebookDetail (with sections) instead of GuidebookRef.
+ * - Loads any existing DRAFT note and returns it as `previousNote`.
+ * - Persists consultation note alongside the saved outcome record.
  */
 @Injectable()
 export class ConsultationService {
@@ -36,18 +47,24 @@ export class ConsultationService {
   async getContext(activityId: string): Promise<ConsultationContextDto> {
     const row = await this.requireContext(activityId);
 
-    const [activity, guidebook, template, outcomeTypes] = await Promise.all([
+    const [activity, guidebook, template, outcomeTypes, previousNote] = await Promise.all([
       this.activities.getById(activityId),
-      this.guidebooks.matchByText(ConsultationService.haystack(row)),
+      this.resolveGuidebook(row),
       row.outcome_template_id
         ? this.repo.findTemplate(row.outcome_template_id)
         : Promise.resolve(null),
       row.event_id ? this.repo.findOutcomeTypes(row.event_id) : Promise.resolve([]),
+      this.repo.findLatestDraftNote(activityId),
     ]);
 
     if (!activity) {
       throw new NotFoundException('Activity not found.');
     }
+
+    // Fetch counselling sections only after we know which guidebook applies.
+    const counsellingSections = guidebook
+      ? await this.repo.findCounsellingSections(guidebook.id).catch(() => [])
+      : [];
 
     return {
       activity,
@@ -74,8 +91,9 @@ export class ConsultationService {
         templateName: template?.name ?? null,
         fields: template?.fields ?? [],
       },
-      // Outcomes are sourced from the event's outcome_types — fully data-driven.
       outcomeOptions: outcomeTypes,
+      previousNote,
+      counsellingSections,
     };
   }
 
@@ -95,7 +113,6 @@ export class ConsultationService {
       notes: 'Call initiated',
       contactedBy: user,
     });
-    // Lifecycle transition is owned by the Activity module (reused, not duplicated).
     await this.activities.transition(activityId, 'IN_PROGRESS');
 
     const activity = await this.activities.getById(activityId);
@@ -108,6 +125,10 @@ export class ConsultationService {
    * outcome, then hands off to the Workflow Rules Engine which decides and applies
    * everything that follows (status change, next activity, retry, referral,
    * escalation, notifications).
+   *
+   * 16A: if `dto.generatedNote` is present, a FINAL consultation note is inserted
+   * linked to the outcome record. This is supplementary — note failure does not
+   * roll back the clinical record.
    */
   async save(
     activityId: string,
@@ -116,7 +137,6 @@ export class ConsultationService {
   ): Promise<SaveConsultationResultDto> {
     const row = await this.requireContext(activityId);
 
-    // Validate the chosen outcome belongs to this activity's event.
     const outcome = await this.repo.findOutcomeType(dto.outcomeTypeId);
     if (!outcome || (row.event_id && outcome.event_id !== row.event_id)) {
       throw new NotFoundException('Selected outcome does not apply to this activity.');
@@ -143,7 +163,20 @@ export class ConsultationService {
       });
     }
 
-    // 2) Log the call result alongside the attempt history.
+    // 2) Persist the generated note as FINAL (if provided by the workspace).
+    if (dto.generatedNote?.trim() && outcomeRecordId) {
+      await this.repo.insertFinalNote(
+        activityId,
+        dto.generatedNote.trim(),
+        outcomeRecordId,
+        user,
+      ).catch(() => {
+        // Note persistence is supplementary: a failure must not roll back the
+        // clinical outcome record which is the authoritative clinical record.
+      });
+    }
+
+    // 3) Log the call result alongside the attempt history.
     const attemptNumber = await this.repo.nextAttemptNumber(activityId);
     await this.repo.insertContactOutcome({
       activityId,
@@ -153,7 +186,7 @@ export class ConsultationService {
       contactedBy: user,
     });
 
-    // 3) Hand off ALL workflow decisions to the Workflow Rules Engine.
+    // 4) Hand off ALL workflow decisions to the Workflow Rules Engine.
     const execution = await this.workflow.execute({
       activityId,
       enrollmentId: row.enrollment_id,
@@ -184,6 +217,54 @@ export class ConsultationService {
     };
   }
 
+  /** Upserts a DRAFT consultation note for auto-save from the workspace. */
+  async upsertDraftNote(
+    activityId: string,
+    generatedNote: string,
+    user: string | null,
+  ): Promise<ConsultationNoteDto> {
+    await this.requireContext(activityId);
+    return this.repo.upsertDraftNote(activityId, generatedNote, user);
+  }
+
+  /** Returns the current DRAFT note for an activity, or null. */
+  async getConsultationNote(activityId: string): Promise<ConsultationNoteDto | null> {
+    await this.requireContext(activityId);
+    return this.repo.findLatestDraftNote(activityId);
+  }
+
+  /**
+   * Returns the full Clinical Journey for a citizen: enrollments, activities,
+   * and completed consultations, newest first. Read-only aggregation over
+   * existing tables; no records are created, copied, or modified.
+   */
+  async getClinicalJourney(citizenId: string): Promise<ClinicalJourneyEntryDto[]> {
+    return this.repo.findClinicalJourney(citizenId);
+  }
+
+  /**
+   * Returns enriched per-activity consultation history for the history panel.
+   * Additive — does not affect the existing timeline endpoint.
+   */
+  async getConsultationHistory(citizenId: string): Promise<ConsultationHistoryEntryDto[]> {
+    return this.repo.findConsultationHistory(citizenId);
+  }
+
+  /**
+   * Returns the first pending/active worklist activity for a citizen, or null
+   * when no scheduled consultation exists. Used by the Citizens module to
+   * determine whether to show the "Continue Scheduled" or "Start New" dialog.
+   */
+  async getActiveActivity(citizenId: string): Promise<ActiveActivityDto | null> {
+    const row = await this.repo.findActiveActivity(citizenId);
+    if (!row) return null;
+    return {
+      activityId: row.activity_id,
+      eventName: row.event_name,
+      programName: row.program_name,
+    };
+  }
+
   /** Builds the patient's chronological timeline. */
   async getTimeline(citizenId: string): Promise<TimelineEntryDto[]> {
     const rows = await this.repo.findTimeline(citizenId);
@@ -205,6 +286,19 @@ export class ConsultationService {
       throw new NotFoundException('Activity not found.');
     }
     return row;
+  }
+
+  /**
+   * Resolves the guidebook for a consultation context using the existing
+   * guide_rules table: each rule holds a regex pattern; the first rule whose
+   * pattern matches the clinical context text (program + code + disease + event)
+   * wins. Returns full GuidebookDetail (with sections), or null when no rule
+   * matches.
+   */
+  private async resolveGuidebook(row: ConsultationContextRow): Promise<GuidebookDetail | null> {
+    const ref = await this.guidebooks.matchByText(ConsultationService.haystack(row));
+    if (!ref) return null;
+    return this.guidebooks.detail(ref.id);
   }
 
   /** Clinical-context text for guidebook resolution (reuses the matcher). */

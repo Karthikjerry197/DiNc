@@ -1,4 +1,5 @@
 import {
+  IsIn,
   IsObject,
   IsOptional,
   IsString,
@@ -13,6 +14,9 @@ import {
  * What happens next is decided entirely by the Workflow Rules Engine — this DTO
  * carries no lifecycle/branching hints. `clinicalData` is an open key/value map
  * because the clinical fields are defined by the event's outcome template.
+ *
+ * `generatedNote` and `noteStatus` are 16A additions: if provided, the note is
+ * persisted to `consultation_notes` as a FINAL record linked to the outcome.
  */
 export class SaveConsultationDto {
   @IsUUID('4', { message: 'A valid consultation outcome must be selected.' })
@@ -32,4 +36,14 @@ export class SaveConsultationDto {
   @IsOptional()
   @IsObject({ message: 'Clinical data must be an object.' })
   clinicalData?: Record<string, unknown>;
+
+  /** Auto-generated (and optionally edited) consultation note. */
+  @IsOptional()
+  @IsString()
+  generatedNote?: string;
+
+  /** Defaults to FINAL when persisting alongside a saved consultation outcome. */
+  @IsOptional()
+  @IsIn(['DRAFT', 'FINAL'])
+  noteStatus?: 'DRAFT' | 'FINAL';
 }

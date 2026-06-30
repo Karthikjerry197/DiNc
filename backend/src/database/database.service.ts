@@ -1,4 +1,4 @@
-import { Injectable, OnModuleDestroy, OnModuleInit } from '@nestjs/common';
+import { Injectable, OnModuleDestroy } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { Pool, PoolClient, QueryResult, QueryResultRow } from 'pg';
 
@@ -8,12 +8,10 @@ export interface TxClient {
 }
 
 @Injectable()
-export class DatabaseService implements OnModuleInit, OnModuleDestroy {
-  private pool!: Pool;
+export class DatabaseService implements OnModuleDestroy {
+  private readonly pool: Pool;
 
-  constructor(private readonly config: ConfigService) {}
-
-  onModuleInit(): void {
+  constructor(private readonly config: ConfigService) {
     this.pool = new Pool({
       host: this.config.get<string>('PGHOST'),
       port: Number(this.config.get<string>('PGPORT') ?? 5432),

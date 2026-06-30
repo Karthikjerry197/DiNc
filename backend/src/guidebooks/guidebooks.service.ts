@@ -1,22 +1,91 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
 import { DatabaseService } from '../database/database.service';
 import {
   GuidebookDetail,
   GuidebookListItem,
   GuidebookRef,
+  GuidebookSections,
 } from './guidebooks.types';
 
 /**
  * Read-only data source for the Guidebooks workspace.
  *
- * Issues only SELECT statements against the existing public.guidebooks table.
- * No writes, uploads, approvals or schema changes are performed anywhere.
+ * On startup: idempotently adds guidebook_sections JSONB to the guidebooks
+ * table (if not already present) and backfills it from the legacy text columns
+ * (summary, key_steps, escalation_criteria). This completes the Milestone 16A
+ * schema migration automatically without requiring a manual script run.
  */
 @Injectable()
-export class GuidebooksService {
+export class GuidebooksService implements OnModuleInit {
   private readonly logger = new Logger(GuidebooksService.name);
 
   constructor(private readonly db: DatabaseService) {}
+
+  async onModuleInit(): Promise<void> {
+    await this.migrateGuidebookSections();
+  }
+
+  /**
+   * Adds guidebook_sections JSONB column (idempotent) and backfills it from
+   * legacy text columns. Only updates rows where guidebook_sections IS NULL,
+   * so any values already set by an administrator are never overwritten.
+   *
+   * Column mapping:
+   *   summary             → sections.summary           (text)
+   *   key_steps           → sections.checklist         (array, split on ; / newline)
+   *   escalation_criteria → sections.referralGuidance  (array, split on ; / newline)
+   */
+  private async migrateGuidebookSections(): Promise<void> {
+    try {
+      await this.db.query(`
+        ALTER TABLE public.guidebooks
+          ADD COLUMN IF NOT EXISTS guidebook_sections JSONB
+      `);
+
+      const result = await this.db.query(`
+        UPDATE public.guidebooks
+        SET guidebook_sections = jsonb_strip_nulls(jsonb_build_object(
+          'summary',
+            CASE WHEN trim(coalesce(summary, '')) <> ''
+                 THEN to_jsonb(trim(summary))
+                 ELSE NULL::jsonb END,
+          'checklist',
+            CASE WHEN trim(coalesce(key_steps, '')) <> ''
+                 THEN (
+                   SELECT to_jsonb(array_agg(s ORDER BY ord))
+                   FROM (
+                     SELECT trim(e) AS s, row_number() OVER () AS ord
+                     FROM regexp_split_to_table(key_steps, E'[;\\n]+') e
+                     WHERE trim(e) <> ''
+                   ) t
+                 )
+                 ELSE NULL::jsonb END,
+          'referralGuidance',
+            CASE WHEN trim(coalesce(escalation_criteria, '')) <> ''
+                 THEN (
+                   SELECT to_jsonb(array_agg(s ORDER BY ord))
+                   FROM (
+                     SELECT trim(e) AS s, row_number() OVER () AS ord
+                     FROM regexp_split_to_table(escalation_criteria, E'[;\\n]+') e
+                     WHERE trim(e) <> ''
+                   ) t
+                 )
+                 ELSE NULL::jsonb END
+        ))
+        WHERE guidebook_sections IS NULL
+      `);
+
+      if (result.rowCount) {
+        this.logger.log(
+          `guidebook_sections backfilled for ${result.rowCount} guidebook(s).`,
+        );
+      }
+    } catch (error) {
+      this.logger.error(
+        `guidebook_sections migration failed: ${(error as Error).message}`,
+      );
+    }
+  }
 
   async list(): Promise<GuidebookListItem[]> {
     try {
@@ -61,9 +130,11 @@ export class GuidebooksService {
         source: string | null;
         is_active: boolean;
         updated_at: Date;
+        guidebook_sections: unknown;
       }>(
         `SELECT id, code, category, title, summary, key_steps,
-                escalation_criteria, source, is_active, updated_at
+                escalation_criteria, source, is_active, updated_at,
+                guidebook_sections
          FROM public.guidebooks
          WHERE id = $1
          LIMIT 1`,
@@ -82,6 +153,7 @@ export class GuidebooksService {
         evidenceSource: row.source,
         keyRecommendations: GuidebooksService.toList(row.key_steps),
         referralCriteria: GuidebooksService.toList(row.escalation_criteria),
+        sections: GuidebooksService.parseSections(row.guidebook_sections),
       };
     } catch (error) {
       this.logger.warn(`Guidebook detail query failed: ${(error as Error).message}`);
@@ -122,5 +194,26 @@ export class GuidebooksService {
       .split(/[;\n]+/)
       .map((part) => part.trim())
       .filter((part) => part.length > 0);
+  }
+
+  /**
+   * Parses guidebook_sections JSONB into a data-driven section map.
+   * Every key found in the JSON is included — the renderer decides how to display
+   * each section. String values become text paragraphs; array values become lists.
+   * Keys with nested objects or null values are silently skipped.
+   */
+  private static parseSections(raw: unknown): GuidebookSections {
+    if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return {};
+    const obj = raw as Record<string, unknown>;
+    const sections: GuidebookSections = {};
+    for (const [key, val] of Object.entries(obj)) {
+      if (typeof val === 'string') {
+        sections[key] = val;
+      } else if (Array.isArray(val)) {
+        const items = val.filter((s): s is string => typeof s === 'string');
+        if (items.length > 0) sections[key] = items;
+      }
+    }
+    return sections;
   }
 }

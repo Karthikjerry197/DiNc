@@ -1,5 +1,6 @@
 import { Module } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
+import { ScheduleModule } from '@nestjs/schedule';
 import { DatabaseModule } from './database/database.module';
 import { UsersModule } from './users/users.module';
 import { AuthModule } from './auth/auth.module';
@@ -13,10 +14,14 @@ import { DataQualityModule } from './data-quality/data-quality.module';
 import { ConsultationModule } from './consultation/consultation.module';
 import { WorkflowModule } from './workflow/workflow.module';
 import { RegistrationModule } from './registration/registration.module';
+import { SchedulerModule } from './scheduler/scheduler.module';
+import { KnowledgeModule } from './knowledge/knowledge.module';
+import { AnalyticsModule } from './analytics/analytics.module';
 
 @Module({
   imports: [
     ConfigModule.forRoot({ isGlobal: true }),
+    ScheduleModule.forRoot(),
     DatabaseModule,
     UsersModule,
     AuthModule,
@@ -30,6 +35,9 @@ import { RegistrationModule } from './registration/registration.module';
     ConsultationModule,
     WorkflowModule,
     RegistrationModule,
+    SchedulerModule,
+    KnowledgeModule,
+    AnalyticsModule,
   ],
 })
 export class AppModule {}

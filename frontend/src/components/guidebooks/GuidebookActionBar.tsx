@@ -36,14 +36,6 @@ export default function GuidebookActionBar({ onComingSoon }: GuidebookActionBarP
             {label}
           </button>
         ))}
-        <button
-          type="button"
-          className="wl-btn wl-btn-primary"
-          title="Open Care Entry"
-          onClick={() => onComingSoon('Open Care Entry')}
-        >
-          Open Care Entry
-        </button>
       </div>
     </div>
   );

@@ -7541,3 +7541,181 @@ a.wl-icon-btn {
 }
 .notif-alert-status--active   { background: #fee2e2; color: #991b1b; }
 .notif-alert-status--resolved { background: #f3f4f6; color: #6b7280; }
+
+/* ══════════════════════════════════════════════════════════════════════════
+ * Milestone 27 — Workspace shell primitives (M27.5)
+ * Dormant infrastructure: Workspace / WorkspaceHeader / WorkspaceGrid.
+ * No page consumes these yet — see docs/milestone27_implementation_contract.md
+ * Part C.1–C.3. Height flows from the shell via flexbox; scrolling happens only
+ * inside a PanelContent (a later commit), never here.
+ * ════════════════════════════════════════════════════════════════════════ */
+
+/* ── Workspace (C.1): fixed, viewport-filling page root; never scrolls ── */
+.ws {
+  flex: 1;
+  min-height: 0;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+.ws--padded {
+  padding: var(--ws-pad);
+  gap: var(--ws-gap);
+}
+.ws--flush {
+  padding: 0;
+}
+
+/* ── WorkspaceHeader (C.2): fixed page header inside the Workspace ── */
+.wsh {
+  flex-shrink: 0;
+  width: 100%;
+}
+.wsh-bar {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-4);
+  min-height: var(--shell-header-h);
+}
+.wsh-lead {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: var(--sp-1);
+  min-width: 0;
+}
+.wsh-breadcrumb {
+  font-size: var(--fs-xs);
+  color: var(--ts);
+}
+.wsh-breadcrumb-list {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--sp-1);
+  list-style: none;
+}
+.wsh-breadcrumb-item {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--sp-1);
+}
+.wsh-breadcrumb-item + .wsh-breadcrumb-item::before {
+  content: '/';
+  color: var(--bd);
+}
+.wsh-breadcrumb-link {
+  color: var(--ts);
+  text-decoration: none;
+}
+.wsh-breadcrumb-link:hover {
+  color: var(--p);
+}
+.wsh-breadcrumb-current {
+  color: var(--tp);
+  font-weight: var(--fw-medium);
+}
+.wsh-title {
+  font-size: var(--fs-xl);
+  font-weight: var(--fw-bold);
+  line-height: var(--lh-tight);
+  letter-spacing: -0.02em;
+  color: var(--tp);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.wsh-search {
+  flex: 1 1 auto;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+}
+.wsh-actions {
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  flex-shrink: 0;
+}
+.wsh-tabs {
+  display: flex;
+  align-items: flex-end;
+}
+
+@media (max-width: 768px) {
+  .wsh-bar {
+    flex-wrap: wrap;
+  }
+  .wsh-search {
+    order: 3;
+    flex-basis: 100%;
+  }
+}
+
+/* ── WorkspaceGrid (C.3): fixed frame arranging panels; never scrolls ── */
+.wsg {
+  flex: 1;
+  min-height: 0;
+  min-width: 0;
+  display: grid;
+  gap: var(--ws-gap);
+}
+/* 1fr cells must be allowed to shrink so their PanelContent can scroll. */
+.wsg > * {
+  min-height: 0;
+  min-width: 0;
+}
+
+.wsg--single {
+  grid-template-columns: 1fr;
+}
+.wsg--list-detail {
+  grid-template-columns: var(--list-col-w) 1fr;
+}
+.wsg--primary-inspector {
+  grid-template-columns: 1fr var(--inspector-w);
+}
+.wsg--list-primary-inspector {
+  grid-template-columns: var(--list-col-w) 1fr var(--inspector-w);
+}
+.wsg--ribbon-primary-inspector {
+  grid-template-columns: 1fr var(--inspector-w);
+  grid-template-rows: var(--kpi-h) 1fr;
+}
+/* The KpiRibbon (first child) spans the full width above the primary/inspector row. */
+.wsg--ribbon-primary-inspector > :first-child {
+  grid-column: 1 / -1;
+}
+
+/* Responsive collapse (Part C.3). The inspector/list drawer overlay behaviors are
+ * owned by InspectorPanel and the migrating page in later commits; the grid here
+ * only stops reserving columns as width narrows. */
+@media (max-width: 1535px) {
+  .wsg--primary-inspector,
+  .wsg--ribbon-primary-inspector {
+    grid-template-columns: 1fr min(var(--inspector-w), 30vw);
+  }
+  .wsg--list-primary-inspector {
+    grid-template-columns: var(--list-col-w) 1fr min(var(--inspector-w), 30vw);
+  }
+}
+@media (max-width: 1023px) {
+  .wsg--primary-inspector,
+  .wsg--ribbon-primary-inspector,
+  .wsg--list-primary-inspector {
+    grid-template-columns: 1fr;
+  }
+  .wsg--ribbon-primary-inspector {
+    grid-template-rows: var(--kpi-h) 1fr;
+  }
+  .wsg--list-detail {
+    grid-template-columns: var(--list-col-w) 1fr;
+  }
+}
+@media (max-width: 767px) {
+  .wsg--list-detail {
+    grid-template-columns: 1fr;
+  }
+}

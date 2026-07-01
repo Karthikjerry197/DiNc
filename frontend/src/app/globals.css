@@ -477,73 +477,103 @@ body {
   background: var(--bg);
 }
 
-/* ── Sidebar ── */
+/* ── Sidebar (Milestone 27 — collapsible: expanded / collapsed / hover overlay) ──
+ * .shell-sidebar is the flex-flow box: it reserves layout width (expanded or
+ * collapsed) so collapsing gives the workspace more room. .shell-sidebar-inner is
+ * the visible panel, absolutely positioned so HOVER/FOCUS expansion overlays the
+ * content WITHOUT reflowing it. Widths come from tokens (--sb-w-*). */
 .shell-sidebar {
-  width: 224px;
+  position: relative;
   flex-shrink: 0;
-  background: #fff;
-  border-right: 1px solid var(--bd);
+  width: var(--sb-w-expanded);
+  z-index: var(--z-sidebar-hover);
+}
+.shell-sidebar[data-collapsed="true"] { width: var(--sb-w-collapsed); }
+.shell-sidebar[data-ready="true"] { transition: width 0.18s ease; }
+
+.shell-sidebar-inner {
+  position: absolute;
+  top: 0;
+  left: 0;
+  bottom: 0;
+  width: var(--sb-w-expanded);
   display: flex;
   flex-direction: column;
-  padding: 16px 12px;
-  gap: 4px;
+  gap: var(--sp-1);
+  padding: var(--sp-4) var(--sp-3);
+  background: #fff;
+  border-right: 1px solid var(--bd);
+  overflow: hidden;
+}
+.shell-sidebar[data-ready="true"] .shell-sidebar-inner {
+  transition: width 0.18s ease, box-shadow 0.18s ease;
+}
+/* Collapsed (and not hovered/focused): inner shrinks to the icon-rail width. */
+.shell-sidebar[data-expanded="false"] .shell-sidebar-inner { width: var(--sb-w-collapsed); }
+/* Hover/focus over a collapsed sidebar: inner expands as an overlay (no reflow). */
+.shell-sidebar[data-collapsed="true"][data-expanded="true"] .shell-sidebar-inner {
+  width: var(--sb-w-expanded);
+  box-shadow: var(--shadow-md);
 }
 
+/* ── Brand ── */
 .shell-brand {
   display: flex;
   align-items: center;
-  gap: 10px;
-  padding: 6px 8px 16px;
+  gap: var(--sp-2);
+  padding: 6px 8px var(--sp-4);
   border-bottom: 1px solid var(--bd);
-  margin-bottom: 12px;
+  margin-bottom: var(--sp-3);
   cursor: pointer;
   text-decoration: none;
   color: inherit;
-  border-radius: 8px;
+  border-radius: var(--radius-sm);
   transition: background 0.12s;
 }
-.shell-brand:hover { background: #edf8f0; }
+.shell-brand:hover { background: var(--bg); }
 
 .shell-brand-badge {
   width: 38px;
   height: 38px;
-  border-radius: 10px;
+  flex-shrink: 0;
+  border-radius: var(--radius-md);
   background: linear-gradient(135deg, #24a148, #43b96b);
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: 18px;
+  font-size: var(--fs-lg);
   box-shadow: 0 4px 12px rgba(36, 161, 72, 0.25);
 }
 
-.shell-brand-title {
-  font-weight: 800;
-  font-size: 16px;
-  letter-spacing: -0.02em;
+.shell-brand-text {
+  min-width: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  transition: opacity 0.14s ease;
 }
+.shell-brand-title { font-weight: var(--fw-bold); font-size: var(--fs-lg); letter-spacing: -0.02em; }
+.shell-brand-sub { font-size: 8.5px; color: var(--p); font-weight: var(--fw-medium); line-height: 1.3; }
 
-.shell-brand-sub {
-  font-size: 8.5px;
-  color: var(--p);
-  font-weight: 500;
-  line-height: 1.3;
-}
-
+/* ── Nav ── */
 .shell-nav {
   display: flex;
   flex-direction: column;
   gap: 2px;
   flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  overflow-x: hidden;
 }
 
 .shell-nav-item {
+  position: relative;
   display: flex;
   align-items: center;
-  gap: 11px;
+  gap: var(--sp-3);
   padding: 9px 11px;
-  border-radius: 9px;
-  font-size: 12.5px;
-  font-weight: 600;
+  border-radius: var(--radius-md);
+  font-size: var(--fs-xs);
+  font-weight: var(--fw-semibold);
   color: #4b5563;
   text-decoration: none;
   border: none;
@@ -551,38 +581,56 @@ body {
   cursor: pointer;
   width: 100%;
   text-align: left;
+  white-space: nowrap;
   transition: background 0.15s, color 0.15s;
 }
-
-.shell-nav-item:hover {
-  background: #edf8f0;
-  color: var(--ps);
+.shell-nav-item:hover { background: var(--bg); color: var(--ps); }
+.shell-nav-item.active { background: var(--pl); color: var(--ps); }
+/* Active accent bar for clearer visual hierarchy. */
+.shell-nav-item.active::before {
+  content: "";
+  position: absolute;
+  left: 3px;
+  top: 8px;
+  bottom: 8px;
+  width: 3px;
+  border-radius: var(--radius-pill);
+  background: var(--ps);
 }
 
-.shell-nav-item.active {
-  background: var(--pl);
-  color: var(--ps);
+.shell-nav-icon { width: 18px; text-align: center; font-size: var(--fs-md); flex-shrink: 0; }
+.shell-nav-label { min-width: 0; overflow: hidden; transition: opacity 0.14s ease; }
+
+/* Collapsed visuals: fade labels/brand text and center the icons. */
+.shell-sidebar[data-expanded="false"] .shell-nav-label,
+.shell-sidebar[data-expanded="false"] .shell-brand-text {
+  opacity: 0;
+  pointer-events: none;
+}
+.shell-sidebar[data-expanded="false"] .shell-nav-item {
+  justify-content: center;
+  gap: 0;
+  padding-left: 0;
+  padding-right: 0;
+}
+.shell-sidebar[data-expanded="false"] .shell-brand {
+  justify-content: center;
+  padding-left: 0;
+  padding-right: 0;
 }
 
-.shell-nav-icon {
-  width: 18px;
-  text-align: center;
-  font-size: 14px;
-  flex-shrink: 0;
-}
-
-.shell-logout {
+/* ── Footer (collapse toggle + logout) ── */
+.shell-sidebar-footer {
   margin-top: auto;
   border-top: 1px solid var(--bd);
-  border-radius: 0;
-  padding-top: 14px;
-  color: var(--er);
+  padding-top: var(--sp-3);
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
 }
-
-.shell-logout:hover {
-  background: #fef2f2;
-  color: var(--er);
-}
+.shell-sidebar-toggle { color: #4b5563; }
+.shell-logout { color: var(--er); }
+.shell-logout:hover { background: #fef2f2; color: var(--er); }
 
 /* ── Main column ── */
 .shell-main {

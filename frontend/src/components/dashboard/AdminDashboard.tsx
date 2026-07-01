@@ -13,12 +13,21 @@ import ReportDuplicateDialog, {
   type ReportDuplicateTarget,
 } from '@/components/dataquality/ReportDuplicateDialog';
 import TeleconsultationWindow from '@/components/consultation/TeleconsultationWindow';
+import Workspace from '@/components/workspace/Workspace';
+import WorkspaceHeader from '@/components/workspace/WorkspaceHeader';
+import WorkspaceGrid from '@/components/workspace/WorkspaceGrid';
+import Panel from '@/components/workspace/Panel';
+import PanelContent from '@/components/workspace/PanelContent';
+import { useWorkspaceShell } from '@/components/workspace/useWorkspaceShell';
 import DashboardDesigner from './DashboardDesigner';
 
 /**
- * Admin Dashboard — owns data fetching and global dialogs.
- * All widget rendering is delegated to DashboardDesigner so this component
- * stays focussed on data concerns (not layout concerns).
+ * Admin Dashboard — the reference workspace migration (M27).
+ *
+ * Owns data fetching and global dialogs; delegates all widget rendering to
+ * DashboardDesigner. The page is a single fixed-viewport Workspace: the header
+ * band stays fixed and the widget grid scrolls only inside its PanelContent —
+ * there is no page/body scroll and no `calc(100vh - Npx)` math.
  */
 export default function AdminDashboard() {
   const [data, setData]               = useState<AdminDashboardSummary | null>(null);
@@ -34,6 +43,9 @@ export default function AdminDashboard() {
   const { user, can } = useUser();
   const role    = user.role;
   const isAdmin = can('dashboard.edit');
+
+  // Opt this route into the fixed, non-scrolling workspace shell (Part D).
+  useWorkspaceShell();
 
   const flash = useCallback((message: string) => {
     setToast(message);
@@ -64,37 +76,45 @@ export default function AdminDashboard() {
 
   if (loading) {
     return (
-      <div className="page">
-        <div className="page-head">
-          <h1 className="page-title">Dashboard</h1>
-        </div>
-        <div className="dash-loading">Loading dashboard&hellip;</div>
-      </div>
+      <Workspace aria-label="Dashboard">
+        <WorkspaceHeader title="Dashboard" />
+        <WorkspaceGrid template="single">
+          <Panel variant="subtle" aria-label="Dashboard">
+            <PanelContent>
+              <div className="dash-loading">Loading dashboard&hellip;</div>
+            </PanelContent>
+          </Panel>
+        </WorkspaceGrid>
+      </Workspace>
     );
   }
 
   return (
-    <div className="page">
-      <div className="page-head">
-        <div>
-          <h1 className="page-title">Dashboard</h1>
-          <p className="page-subtitle">Operations command centre · live system summary</p>
-        </div>
-      </div>
-
-      {error && <div className="dash-error">{error}</div>}
-
-      <DashboardDesigner
-        token={token}
-        role={role}
-        isAdmin={isAdmin}
-        data={data}
-        worklistItems={worklist}
-        onLoad={load}
-        onFlash={flash}
-        onConsult={(activityId) => setConsultActivityId(activityId)}
-        onDuplicate={(target) => setReportTarget(target)}
+    <Workspace aria-label="Dashboard">
+      <WorkspaceHeader
+        title="Dashboard"
+        subtitle="Operations command centre • Live system summary"
       />
+
+      <WorkspaceGrid template="single">
+        <Panel variant="subtle" aria-label="Dashboard widgets">
+          <PanelContent>
+            {error && <div className="dash-error">{error}</div>}
+
+            <DashboardDesigner
+              token={token}
+              role={role}
+              isAdmin={isAdmin}
+              data={data}
+              worklistItems={worklist}
+              onLoad={load}
+              onFlash={flash}
+              onConsult={(activityId) => setConsultActivityId(activityId)}
+              onDuplicate={(target) => setReportTarget(target)}
+            />
+          </PanelContent>
+        </Panel>
+      </WorkspaceGrid>
 
       {reportTarget && (
         <ReportDuplicateDialog
@@ -126,6 +146,6 @@ export default function AdminDashboard() {
       )}
 
       {toast && <div className="cz-toast">{toast}</div>}
-    </div>
+    </Workspace>
   );
 }

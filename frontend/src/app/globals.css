@@ -992,6 +992,8 @@ body {
 }
 
 .shell-content--workspace {
+  display: flex;
+  flex-direction: column;
   overflow: hidden;
   padding: 0;
 }
@@ -7622,6 +7624,14 @@ a.wl-icon-btn {
   line-height: var(--lh-tight);
   letter-spacing: -0.02em;
   color: var(--tp);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.wsh-subtitle {
+  font-size: var(--fs-xs);
+  line-height: var(--lh-tight);
+  color: var(--ts);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;

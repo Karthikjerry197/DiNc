@@ -11,6 +11,8 @@ export interface WorkspaceBreadcrumb {
 export interface WorkspaceHeaderProps {
   /** The page title; rendered as the page `<h1>`. */
   title: ReactNode;
+  /** Concise context line rendered directly beneath the title (not inside the h1). */
+  subtitle?: ReactNode;
   /** Optional breadcrumb trail rendered above/left of the title. */
   breadcrumb?: WorkspaceBreadcrumb[];
   /** Search slot. M27 passes the EXISTING (disabled) search unchanged. */
@@ -36,6 +38,7 @@ export interface WorkspaceHeaderProps {
  */
 export default function WorkspaceHeader({
   title,
+  subtitle,
   breadcrumb,
   search,
   actions,
@@ -71,6 +74,7 @@ export default function WorkspaceHeader({
             </nav>
           )}
           <h1 className="wsh-title">{title}</h1>
+          {subtitle && <p className="wsh-subtitle">{subtitle}</p>}
         </div>
 
         {search && <div className="wsh-search">{search}</div>}

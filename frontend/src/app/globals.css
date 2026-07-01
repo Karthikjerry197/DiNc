@@ -7719,3 +7719,181 @@ a.wl-icon-btn {
     grid-template-columns: 1fr;
   }
 }
+
+/* ══════════════════════════════════════════════════════════════════════════
+ * Milestone 27 — Panel primitives (M27.6)
+ * Dormant infrastructure: Panel / PanelHeader / PanelContent / InspectorPanel.
+ * See docs/milestone27_implementation_contract.md Part C.4–C.7. Scrolling happens
+ * ONLY inside .panel-content; Panel and PanelHeader never scroll.
+ * ════════════════════════════════════════════════════════════════════════ */
+
+/* ── Panel (C.4): self-contained region; owns its scroll via PanelContent ── */
+.panel {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  min-width: 0;
+  height: 100%;
+  background: var(--card);
+  border: 1px solid var(--bd);
+  border-radius: var(--radius-md);
+  overflow: hidden; /* the Panel frame never scrolls */
+}
+/* `flush` is a semantic marker for table panels (its PanelContent is unpadded);
+ * it shares the default surface. `subtle` is the nested/inspector surface. */
+.panel--subtle {
+  background: var(--bg);
+}
+
+/* ── PanelHeader (C.5): sticky within the panel; never scrolls ── */
+.panel-header {
+  position: sticky;
+  top: 0;
+  z-index: var(--z-panel-header);
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  gap: var(--sp-3);
+  min-height: var(--panel-header-h);
+  padding: 0 var(--panel-pad);
+  border-bottom: 1px solid var(--bd);
+  background: var(--card);
+}
+.panel--subtle .panel-header {
+  background: var(--bg);
+}
+.panel-header-text {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+.panel-header-title {
+  font-size: var(--fs-sm);
+  font-weight: var(--fw-semibold);
+  line-height: var(--lh-tight);
+  color: var(--tp);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.panel-header-subtitle {
+  font-size: var(--fs-xs);
+  color: var(--ts);
+  line-height: var(--lh-tight);
+}
+.panel-header-actions {
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  flex-shrink: 0;
+}
+@media (max-width: 640px) {
+  /* Tighten actions on narrow panels; a full "⋯" overflow menu is page-owned. */
+  .panel-header-actions {
+    gap: var(--sp-1);
+  }
+}
+
+/* ── PanelContent (C.6): the ONLY scroll region inside a panel ── */
+.panel-content {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  scrollbar-width: thin;
+}
+.panel-content--padded {
+  padding: var(--panel-pad);
+}
+.panel-content--flush {
+  padding: 0;
+}
+.panel-content::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+.panel-content::-webkit-scrollbar-thumb {
+  background: #d1d5db;
+  border-radius: var(--radius-pill);
+}
+.panel-content::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+/* ── InspectorPanel (C.7): specialization of Panel(subtle) ── */
+.insp {
+  position: relative; /* anchors the absolute collapse toggle */
+  flex-shrink: 0;
+}
+.insp-collapse,
+.insp-rail-toggle {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  border: 1px solid var(--bd);
+  border-radius: var(--radius-sm);
+  background: var(--card);
+  color: var(--ts);
+  font-size: var(--fs-sm);
+  line-height: 1;
+  cursor: pointer;
+}
+.insp-collapse:hover,
+.insp-rail-toggle:hover {
+  color: var(--p);
+  border-color: var(--p);
+}
+.insp-collapse {
+  position: absolute;
+  top: var(--sp-2);
+  right: var(--sp-2);
+  z-index: var(--z-panel-header);
+}
+
+/* Collapsed rail (desktop) */
+.insp-rail {
+  flex-shrink: 0;
+  width: var(--sp-8);
+  height: 100%;
+  display: flex;
+  justify-content: center;
+  padding-top: var(--sp-2);
+  background: var(--card);
+  border: 1px solid var(--bd);
+  border-radius: var(--radius-md);
+}
+
+/* Overlay drawer (<1024) */
+.insp-drawer-layer {
+  position: fixed;
+  inset: 0;
+  z-index: var(--z-dialog);
+  display: flex;
+  justify-content: flex-end;
+}
+.insp-drawer-backdrop {
+  position: absolute;
+  inset: 0;
+  background: rgba(16, 24, 40, 0.35);
+}
+.insp-drawer-frame {
+  position: relative;
+  width: min(var(--inspector-w), 92vw);
+  max-width: 100vw;
+  height: 100%;
+  display: flex;
+  box-shadow: var(--shadow-md);
+  outline: none;
+}
+.insp--drawer {
+  width: 100%;
+  border-radius: 0;
+}
+@media (max-width: 767px) {
+  .insp-drawer-frame {
+    width: 100vw; /* full-width drawer on the smallest screens */
+  }
+}

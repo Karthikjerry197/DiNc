@@ -38,7 +38,7 @@
   --z-sidebar-hover: 60; --z-dropdown: 70; --z-dialog: 100; --z-toast: 120;
 
   /* Shell geometry */
-  --shell-header-h: 58px;
+  --shell-header-h: 52px; /* reduced from 58px in M27.4 for a denser header */
   --sb-w-expanded: 224px;
   --sb-w-collapsed: 60px;
 
@@ -642,74 +642,59 @@ body {
 }
 
 .shell-topbar {
-  height: 58px;
+  height: var(--shell-header-h);
   flex-shrink: 0;
   background: #fff;
   border-bottom: 1px solid var(--bd);
   display: flex;
   align-items: center;
-  gap: 18px;
-  padding: 0 22px;
+  gap: var(--sp-4);
+  padding: 0 var(--sp-5);
 }
 
 .shell-topbar-title {
-  font-size: 13px;
-  font-weight: 700;
+  font-size: var(--fs-sm);
+  font-weight: var(--fw-bold);
   color: var(--tp);
   white-space: nowrap;
   text-decoration: none;
   cursor: pointer;
-  padding: 4px 6px;
-  border-radius: 6px;
+  padding: 4px var(--sp-2);
+  border-radius: var(--radius-sm);
   transition: background 0.12s;
 }
-.shell-topbar-title:hover { background: #edf8f0; }
+.shell-topbar-title:hover { background: var(--bg); }
 
 .shell-topbar-tag {
   color: var(--p);
-  font-weight: 600;
+  font-weight: var(--fw-semibold);
 }
 
-.shell-search {
-  flex: 1;
-  max-width: 460px;
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  background: #f4f8f5;
-  border: 1px solid var(--bd);
-  border-radius: 9px;
-  padding: 7px 12px;
-}
-
-.shell-search-icon {
-  font-size: 12px;
-  opacity: 0.6;
-}
-
-.shell-search-input {
-  border: none;
-  background: transparent;
-  outline: none;
-  font-size: 12px;
-  color: var(--tp);
-  width: 100%;
-}
+/* The global search box was removed in M27.4 — global search is out of scope for
+ * Milestone 27 (see docs/milestone27_implementation_contract.md Part H). A command
+ * palette will be introduced in a later milestone. */
 
 .shell-topbar-right {
   margin-left: auto;
   display: flex;
   align-items: center;
-  gap: 14px;
+  gap: var(--sp-3);
+}
+
+/* Compact TopBar on narrow viewports: drop the account name/role text + tag. */
+@media (max-width: 768px) {
+  .shell-topbar { gap: var(--sp-3); padding: 0 var(--sp-3); }
+  .shell-user-meta { display: none; }
+  .shell-topbar-tag { display: none; }
 }
 
 .shell-icon-btn {
   background: transparent;
   border: 1px solid var(--bd);
-  border-radius: 9px;
+  border-radius: var(--radius-md);
   width: 34px;
   height: 34px;
-  font-size: 15px;
+  font-size: var(--fs-lg);
   cursor: pointer;
   display: flex;
   align-items: center;

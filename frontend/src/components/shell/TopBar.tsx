@@ -151,17 +151,6 @@ export default function TopBar({ user, onLogout, onSwitchUser }: TopBarProps) {
         Digital Integrated Care Network <span className="shell-topbar-tag">(DiNC)</span>
       </Link>
 
-      <div className="shell-search">
-        <span className="shell-search-icon" aria-hidden="true">🔍</span>
-        <input
-          type="text"
-          className="shell-search-input"
-          placeholder="Search citizens, programs, knowledge…"
-          aria-label="Global search (coming soon)"
-          disabled
-        />
-      </div>
-
       <div className="shell-topbar-right">
         {/* ── Notification Bell ── */}
         <div className="bell-wrap" ref={bellRef}>

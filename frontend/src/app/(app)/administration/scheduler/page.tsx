@@ -7,7 +7,8 @@ import {
   runSchedulerNow,
   type SchedulerStatus,
 } from '@/lib/api';
-import { getCurrentUser, getToken } from '@/lib/session';
+import { getToken } from '@/lib/session';
+import { useUser } from '@/lib/UserContext';
 import ComingSoon from '@/components/shell/ComingSoon';
 
 function dt(iso: string | null): string {
@@ -29,8 +30,8 @@ function interval(ms: number): string {
  * Administrators only.
  */
 export default function SchedulerPage() {
-  const user = getCurrentUser();
-  const isAdmin = user?.role === 'ADMIN';
+  const { can } = useUser();
+  const isAdmin = can('admin.scheduler');
 
   const [data, setData] = useState<SchedulerStatus | null>(null);
   const [loading, setLoading] = useState(true);

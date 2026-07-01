@@ -7,7 +7,8 @@ import {
   type AdminDashboardSummary,
   type WorklistItem,
 } from '@/lib/api';
-import { getToken, getCurrentUser } from '@/lib/session';
+import { getToken } from '@/lib/session';
+import { useUser } from '@/lib/UserContext';
 import ReportDuplicateDialog, {
   type ReportDuplicateTarget,
 } from '@/components/dataquality/ReportDuplicateDialog';
@@ -30,9 +31,9 @@ export default function AdminDashboard() {
   const toastTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const token   = getToken() ?? '';
-  const user    = getCurrentUser();
-  const role    = user?.role ?? 'ADMIN';
-  const isAdmin = role === 'ADMIN';
+  const { user, can } = useUser();
+  const role    = user.role;
+  const isAdmin = can('dashboard.edit');
 
   const flash = useCallback((message: string) => {
     setToast(message);

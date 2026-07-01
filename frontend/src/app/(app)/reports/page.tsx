@@ -1,7 +1,8 @@
 'use client';
 
 import { useCallback, useEffect, useState } from 'react';
-import { getCurrentUser, getToken } from '@/lib/session';
+import { getToken } from '@/lib/session';
+import { useUser } from '@/lib/UserContext';
 import {
   fetchAnalyticsFilterOptions,
   type AnalyticsFilterOptions,
@@ -37,9 +38,18 @@ const EMPTY_PARAMS: AnalyticsQueryParams = {};
 const FILTER_TABS: Tab[] = ['operations', 'executive', 'programs', 'worklist', 'workers', 'registrations', 'workflow'];
 
 export default function ReportsPage() {
-  const user = getCurrentUser();
-  const isAdmin = user?.role === 'ADMIN';
+  const { can } = useUser();
+  const isAdmin = can('reports.admin');
   const token = getToken() ?? '';
+
+  if (!can('reports.view')) {
+    return (
+      <div className="page">
+        <div className="page-head"><div><h1 className="page-title">Reports &amp; Analytics</h1></div></div>
+        <p style={{ padding: '2rem', color: '#6b7280' }}>Reports are not available for your role.</p>
+      </div>
+    );
+  }
 
   const [tab, setTab] = useState<Tab>('operations');
   const [params, setParams] = useState<AnalyticsQueryParams>(EMPTY_PARAMS);

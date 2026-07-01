@@ -1,7 +1,7 @@
 'use client';
 
 import { useCallback, useRef, useState } from 'react';
-import { getCurrentUser } from '@/lib/session';
+import { useUser } from '@/lib/UserContext';
 import KnowledgeSearch from '@/components/knowledge/KnowledgeSearch';
 import FaqModule from '@/components/knowledge/FaqModule';
 import TrainingCatalogue from '@/components/knowledge/TrainingModule';
@@ -21,7 +21,8 @@ const TABS: { key: Tab; label: string; icon: string }[] = [
  * training_modules, guidebooks); nothing is hardcoded.
  */
 export default function KnowledgeHubPage() {
-  const isAdmin = getCurrentUser()?.role === 'ADMIN';
+  const { can } = useUser();
+  const isAdmin = can('admin.pages');
   const [tab, setTab] = useState<Tab>('faq');
   const [toast, setToast] = useState('');
   const toastTimer = useRef<ReturnType<typeof setTimeout> | null>(null);

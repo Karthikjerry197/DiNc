@@ -7,7 +7,8 @@ import {
   type WorkflowRule,
   type WorkflowRulesOverview,
 } from '@/lib/api';
-import { getCurrentUser, getToken } from '@/lib/session';
+import { getToken } from '@/lib/session';
+import { useUser } from '@/lib/UserContext';
 import ComingSoon from '@/components/shell/ComingSoon';
 import RuleEditorDialog from '@/components/workflow/RuleEditorDialog';
 
@@ -22,8 +23,8 @@ function value(text: string | null): string {
  * only. All workflow behaviour is configured here, not in code.
  */
 export default function WorkflowRulesPage() {
-  const user = getCurrentUser();
-  const isAdmin = user?.role === 'ADMIN';
+  const { can } = useUser();
+  const isAdmin = can('admin.workflow');
 
   const [data, setData] = useState<WorkflowRulesOverview | null>(null);
   const [loading, setLoading] = useState(true);

@@ -9,6 +9,8 @@ import {
   type WorklistOverview,
 } from '@/lib/api';
 import { getToken } from '@/lib/session';
+import { useUser } from '@/lib/UserContext';
+import ComingSoon from '@/components/shell/ComingSoon';
 import WorklistToolbar from '@/components/worklist/WorklistToolbar';
 import WorklistFilters from '@/components/worklist/WorklistFilters';
 import TeamMonitoring from '@/components/worklist/TeamMonitoring';
@@ -39,6 +41,7 @@ const EMPTY: WorklistOverview = {
  * data is read-only and filters/actions are presentational.
  */
 export default function WorklistPage() {
+  const { can } = useUser();
   const router = useRouter();
   const [data, setData] = useState<WorklistOverview>(EMPTY);
   const [loading, setLoading] = useState(true);
@@ -119,6 +122,15 @@ export default function WorklistPage() {
       active = false;
     };
   }, []);
+
+  if (!can('worklist.view')) {
+    return (
+      <ComingSoon
+        title="My Worklist"
+        description="The worklist is not available for your role."
+      />
+    );
+  }
 
   return (
     <div className="page wl-page">

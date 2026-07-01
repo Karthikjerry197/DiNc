@@ -126,6 +126,71 @@ export async function fetchDashboardLayout(
   return res.json() as Promise<DashboardLayoutResponse>;
 }
 
+// ── Dev user switching ────────────────────────────────────────────────────────
+// These functions call dev-only backend endpoints that bypass password checks.
+// They are used exclusively by the Switch User development feature.
+
+export interface DevUser {
+  username: string;
+  full_name: string;
+  role: string;
+}
+
+/** Returns all active users in the system — populates the Switch User menu. */
+export async function fetchDevUsers(token: string): Promise<DevUser[]> {
+  const res = await fetch(`${API_BASE}/api/auth/dev/users`, {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  if (!res.ok) throw new Error('Failed to fetch dev users.');
+  return res.json() as Promise<DevUser[]>;
+}
+
+/**
+ * Issues a real JWT for the target user without requiring their password.
+ * Returns the same shape as login — a complete new session for the switched user.
+ */
+export async function devSwitchUser(
+  token: string,
+  targetUsername: string,
+): Promise<LoginResponse> {
+  const res = await fetch(`${API_BASE}/api/auth/dev/switch-user`, {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${token}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({ username: targetUsername }),
+  });
+  if (!res.ok) throw new Error(`Failed to switch to user '${targetUsername}'.`);
+  return res.json() as Promise<LoginResponse>;
+}
+
+/** Change the current user's password. Throws on wrong current password or other error. */
+export async function changePassword(
+  token: string,
+  currentPassword: string,
+  newPassword: string,
+): Promise<void> {
+  const res = await fetch(`${API_BASE}/api/auth/change-password`, {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${token}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({ currentPassword, newPassword }),
+  });
+  if (!res.ok) {
+    let message = 'Failed to change password.';
+    try {
+      const body = (await res.json()) as { message?: string | string[] };
+      if (body?.message) {
+        message = Array.isArray(body.message) ? body.message.join(' ') : body.message;
+      }
+    } catch { /* keep default */ }
+    throw new Error(message);
+  }
+}
+
 /** Persist a role's layout. Admin-only on the backend. */
 export async function saveDashboardLayout(
   token: string,

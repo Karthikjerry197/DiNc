@@ -8,6 +8,8 @@ import TopBar from './TopBar';
 interface AppShellProps {
   user: AuthUser;
   onLogout: () => void;
+  /** Dev-only: switch the authenticated session to a different user by username. */
+  onSwitchUser: (username: string) => void;
   children: ReactNode;
 }
 
@@ -17,12 +19,12 @@ interface AppShellProps {
  * Pages render only their own content into `children` — they never recreate
  * this layout.
  */
-export default function AppShell({ user, onLogout, children }: AppShellProps) {
+export default function AppShell({ user, onLogout, onSwitchUser, children }: AppShellProps) {
   return (
     <div className="shell">
-      <Sidebar onLogout={onLogout} />
+      <Sidebar user={user} onLogout={onLogout} />
       <div className="shell-main">
-        <TopBar user={user} onLogout={onLogout} />
+        <TopBar user={user} onLogout={onLogout} onSwitchUser={onSwitchUser} />
         <main className="shell-content">{children}</main>
       </div>
     </div>

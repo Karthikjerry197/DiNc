@@ -649,6 +649,7 @@ body {
   color: var(--ts);
 }
 
+/* .shell-topbar-logout is kept for backward compat but unused — Account Menu owns logout */
 .shell-topbar-logout {
   background: #fff;
   border: 1px solid var(--bd);
@@ -664,6 +665,229 @@ body {
 .shell-topbar-logout:hover {
   background: #f4f8f5;
   border-color: #c0d4c2;
+}
+
+/* ── Account Menu (.acm-) ── */
+
+.acm-wrap {
+  position: relative;
+}
+
+.acm-trigger {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 8px 4px 4px;
+  border: 1px solid transparent;
+  border-radius: 10px;
+  background: transparent;
+  cursor: pointer;
+  transition: all 0.15s;
+  min-width: 0;
+}
+.acm-trigger:hover,
+.acm-trigger--open {
+  background: #f4f8f5;
+  border-color: var(--bd);
+}
+.acm-trigger:focus-visible {
+  outline: 2px solid var(--p);
+  outline-offset: 2px;
+}
+
+.acm-chevron {
+  font-size: 9px;
+  color: #9ca3af;
+  flex-shrink: 0;
+}
+
+.acm-dropdown {
+  position: absolute;
+  top: calc(100% + 6px);
+  right: 0;
+  z-index: 200;
+  min-width: 220px;
+  background: #fff;
+  border: 1px solid var(--bd);
+  border-radius: 12px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.12), 0 2px 8px rgba(0, 0, 0, 0.06);
+  overflow: hidden;
+  animation: acm-open 0.15s ease;
+}
+@keyframes acm-open {
+  from { opacity: 0; transform: translateY(-6px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+/* Header: avatar + name + role */
+.acm-header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 14px 16px 12px;
+  background: #f9fafb;
+}
+
+.acm-hd-avatar {
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  background: var(--pl);
+  color: var(--ps);
+  font-size: 11px;
+  font-weight: 800;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.acm-hd-info {
+  min-width: 0;
+}
+
+.acm-hd-name {
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--tp);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.acm-hd-role {
+  font-size: 11px;
+  color: var(--ts);
+  margin-top: 1px;
+}
+
+.acm-divider {
+  height: 1px;
+  background: var(--bd);
+  margin: 2px 0;
+}
+
+/* Generic menu item — works for both <button> and <a> via global reset */
+.acm-item {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  width: 100%;
+  padding: 9px 16px;
+  border: none;
+  background: transparent;
+  text-align: left;
+  font-size: 13px;
+  color: var(--tp);
+  cursor: pointer;
+  text-decoration: none;
+  transition: background 0.12s;
+  font-family: var(--font);
+}
+.acm-item:hover:not(:disabled):not(.acm-item--disabled) {
+  background: #f4f8f5;
+}
+.acm-item:focus-visible {
+  outline: 2px solid var(--p);
+  outline-offset: -2px;
+}
+
+.acm-item--disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.acm-item--danger { color: #dc2626; }
+.acm-item--danger:hover:not(:disabled) { background: #fef2f2; }
+
+.acm-item--expand { justify-content: flex-start; }
+
+.acm-item-icon {
+  font-size: 14px;
+  flex-shrink: 0;
+  width: 20px;
+  text-align: center;
+}
+
+.acm-item-label {
+  flex: 1;
+  min-width: 0;
+}
+
+.acm-arrow {
+  font-size: 9px;
+  color: #9ca3af;
+  margin-left: auto;
+}
+
+.acm-dev-badge {
+  font-size: 9px;
+  font-weight: 800;
+  padding: 1px 5px;
+  background: #fef3c7;
+  color: #92400e;
+  border-radius: 4px;
+  letter-spacing: 0.04em;
+  flex-shrink: 0;
+}
+
+.acm-coming {
+  font-size: 10px;
+  font-weight: 600;
+  padding: 1px 6px;
+  background: #f3f4f6;
+  color: #6b7280;
+  border-radius: 4px;
+  margin-left: auto;
+}
+
+/* Switch User submenu */
+.acm-sub {
+  background: #f9fafb;
+  border-top: 1px solid var(--bd);
+  border-bottom: 1px solid var(--bd);
+  padding: 2px 0;
+}
+
+.acm-sub-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 7px 16px 7px 28px;
+  border: none;
+  background: transparent;
+  text-align: left;
+  font-size: 12px;
+  color: var(--tp);
+  cursor: pointer;
+  transition: background 0.12s;
+  font-family: var(--font);
+}
+.acm-sub-item:hover { background: #edf8f0; }
+.acm-sub-item--active {
+  color: var(--p);
+  font-weight: 700;
+}
+.acm-sub-name { flex: 1; }
+.acm-sub-role {
+  font-size: 0.7rem;
+  color: #888;
+  margin-left: 6px;
+  white-space: nowrap;
+}
+.acm-sub-loading {
+  font-size: 0.8rem;
+  color: #999;
+  padding: 6px 10px;
+  pointer-events: none;
+}
+
+.acm-sub-check {
+  width: 14px;
+  font-size: 11px;
+  color: var(--p);
+  flex-shrink: 0;
 }
 
 /* ── Content area ── */

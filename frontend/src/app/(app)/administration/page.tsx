@@ -1,7 +1,7 @@
 'use client';
 
 import Link from 'next/link';
-import { getCurrentUser } from '@/lib/session';
+import { useUser } from '@/lib/UserContext';
 import ComingSoon from '@/components/shell/ComingSoon';
 
 interface AdminTile {
@@ -35,6 +35,13 @@ const TILES: AdminTile[] = [
     enabled: true,
   },
   {
+    label: 'Account Settings',
+    description: 'Manage your profile, security, dashboard layout, and personal preferences.',
+    href: '/administration/account-settings',
+    icon: '👤',
+    enabled: true,
+  },
+  {
     label: 'Users & Roles',
     description: 'Manage healthcare workers, administrators and access.',
     href: '/administration',
@@ -55,9 +62,9 @@ const TILES: AdminTile[] = [
  * see a professional access notice rather than the management surfaces.
  */
 export default function AdministrationPage() {
-  const user = getCurrentUser();
+  const { can } = useUser();
 
-  if (user?.role !== 'ADMIN') {
+  if (!can('admin.pages')) {
     return (
       <ComingSoon
         title="Administration"

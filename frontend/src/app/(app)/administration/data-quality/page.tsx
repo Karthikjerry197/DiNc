@@ -9,7 +9,8 @@ import {
   duplicateReasonLabel,
   type DuplicateRequest,
 } from '@/lib/api';
-import { getCurrentUser, getToken } from '@/lib/session';
+import { getToken } from '@/lib/session';
+import { useUser } from '@/lib/UserContext';
 import ComingSoon from '@/components/shell/ComingSoon';
 import CompareRecordsDialog from '@/components/dataquality/CompareRecordsDialog';
 import ReviewDecisionDialog, {
@@ -85,8 +86,8 @@ const STATUS_LABEL: Record<string, string> = {
  * reject, and (after approval) merge or delete. Administrators only.
  */
 export default function DataQualityPage() {
-  const user = getCurrentUser();
-  const isAdmin = user?.role === 'ADMIN';
+  const { can } = useUser();
+  const isAdmin = can('admin.data-quality');
 
   const [requests, setRequests] = useState<DuplicateRequest[]>([]);
   const [loading, setLoading] = useState(true);

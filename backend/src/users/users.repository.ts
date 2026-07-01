@@ -16,4 +16,21 @@ export class UsersRepository {
     );
     return result.rows[0] ?? null;
   }
+
+  async updatePassword(username: string, newPasswordHash: string): Promise<void> {
+    await this.db.query(
+      `UPDATE public.users SET password_hash = $1 WHERE username = $2`,
+      [newPasswordHash, username],
+    );
+  }
+
+  async findAllActive(): Promise<{ username: string; full_name: string; role: string }[]> {
+    const result = await this.db.query<{ username: string; full_name: string; role: string }>(
+      `SELECT username, full_name, role
+       FROM public.users
+       WHERE is_active = true
+       ORDER BY role, username`,
+    );
+    return result.rows;
+  }
 }

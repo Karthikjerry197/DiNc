@@ -16,6 +16,8 @@ import {
   type EnrollmentSummary,
 } from '@/lib/api';
 import { getToken } from '@/lib/session';
+import { useUser } from '@/lib/UserContext';
+import ComingSoon from '@/components/shell/ComingSoon';
 import CitizenList from '@/components/citizens/CitizenList';
 import CitizenSummary from '@/components/citizens/CitizenSummary';
 import ActivityWorkspace from '@/components/citizens/ActivityWorkspace';
@@ -33,6 +35,7 @@ import ClinicalDecisionPanel from '@/components/consultation/ClinicalDecisionPan
  * and every non-navigation action surfaces a "coming soon" notice.
  */
 export default function CitizensPage() {
+  const { can } = useUser();
   const router = useRouter();
   const [citizens, setCitizens] = useState<CitizenListItem[]>([]);
   const [selectedId, setSelectedId] = useState<string | null>(null);
@@ -268,6 +271,15 @@ export default function CitizensPage() {
       if (toastTimer.current) clearTimeout(toastTimer.current);
     };
   }, []);
+
+  if (!can('citizens.view')) {
+    return (
+      <ComingSoon
+        title="Citizens"
+        description="The citizen registry is not available for your role."
+      />
+    );
+  }
 
   return (
     <div className="page cz-page">

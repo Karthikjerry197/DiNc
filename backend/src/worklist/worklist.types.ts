@@ -31,6 +31,8 @@ export interface WorklistItem {
   isEscalation: boolean;
   status: string;
   assignedTo: string | null;
+  /** Current clinical risk level from active alerts (null = no alert / NONE). */
+  riskLevel: string | null;
 }
 
 export interface ProgramOption {

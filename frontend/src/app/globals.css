@@ -6845,3 +6845,376 @@ a.wl-icon-btn {
   opacity: 0.75;
   margin-top: 2px;
 }
+
+/* ── Account Settings (.as-) ─────────────────────────────────────────────── */
+
+.as-layout {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+  max-width: 760px;
+}
+
+.as-section {
+  background: #fff;
+  border: 1px solid var(--bd);
+  border-radius: 12px;
+  overflow: hidden;
+}
+
+.as-section-head {
+  padding: 16px 20px 14px;
+  border-bottom: 1px solid var(--bd);
+  background: #f9fafb;
+}
+
+.as-section-title {
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--tp);
+}
+
+.as-section-sub {
+  font-size: 12px;
+  color: var(--ts);
+  margin-top: 3px;
+}
+
+.as-section-body {
+  padding: 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.as-field-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px;
+}
+@media (max-width: 600px) {
+  .as-field-row { grid-template-columns: 1fr; }
+}
+
+.as-field {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+
+.as-label {
+  font-size: 12px;
+  font-weight: 600;
+  color: #374151;
+}
+
+.as-input,
+.as-select {
+  padding: 8px 12px;
+  border: 1px solid #d1d5db;
+  border-radius: 8px;
+  font-size: 13px;
+  color: var(--tp);
+  background: #fff;
+  outline: none;
+  transition: border-color 0.15s;
+  font-family: var(--font);
+  width: 100%;
+}
+.as-input:focus,
+.as-select:focus {
+  border-color: var(--p);
+  box-shadow: 0 0 0 3px rgba(36, 161, 72, 0.1);
+}
+.as-input--readonly {
+  background: #f9fafb;
+  color: #6b7280;
+  cursor: default;
+}
+
+.as-field-help {
+  font-size: 11px;
+  color: #9ca3af;
+}
+
+.as-field-error {
+  font-size: 12px;
+  color: var(--er);
+  background: #fef2f2;
+  border: 1px solid #fecaca;
+  border-radius: 7px;
+  padding: 8px 12px;
+}
+
+.as-body-text {
+  font-size: 13px;
+  color: var(--ts);
+  line-height: 1.5;
+}
+
+.as-actions {
+  display: flex;
+  gap: 10px;
+  padding-top: 4px;
+}
+
+.as-btn {
+  padding: 8px 18px;
+  border-radius: 9px;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  border: 1px solid #d1d5db;
+  background: #fff;
+  color: var(--tp);
+  transition: all 0.15s;
+  font-family: var(--font);
+}
+.as-btn:hover:not(:disabled) {
+  border-color: var(--p);
+  color: var(--p);
+}
+.as-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+.as-btn:focus-visible {
+  outline: 2px solid var(--p);
+  outline-offset: 2px;
+}
+
+.as-btn--primary {
+  background: var(--p);
+  border-color: var(--p);
+  color: #fff;
+}
+.as-btn--primary:hover:not(:disabled) {
+  background: var(--ps);
+  border-color: var(--ps);
+  color: #fff;
+}
+
+.as-btn--warning {
+  background: #fff;
+  border-color: #f59e0b;
+  color: #92400e;
+}
+.as-btn--warning:hover:not(:disabled) {
+  background: #fffbeb;
+  border-color: #d97706;
+  color: #78350f;
+}
+
+/* Error toast variant */
+.cz-toast--err {
+  background: #dc2626;
+}
+
+/* ── CDSE Risk Badges (Milestone 25) ─────────────────────────────────────── */
+
+.cdse-risk-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 0.7rem;
+  font-weight: 700;
+  padding: 3px 8px;
+  border-radius: 999px;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+}
+.cdse-risk-badge--none {
+  background: #f3f4f6; color: #6b7280;
+  border: 1px solid #d1d5db;
+}
+.cdse-risk-badge--low {
+  background: #d1fae5; color: #065f46;
+  border: 1px solid #6ee7b7;
+}
+.cdse-risk-badge--moderate {
+  background: #fef3c7; color: #92400e;
+  border: 1px solid #fcd34d;
+}
+.cdse-risk-badge--severe {
+  background: #fee2e2; color: #991b1b;
+  border: 1px solid #fca5a5;
+}
+
+/* CDSE Panel — redesigned for Milestone 25 */
+.cdse-risk-detail {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 10px 12px;
+  border-radius: 6px;
+  margin-bottom: 8px;
+}
+.cdse-risk-detail--low {
+  background: #f0fdf4;
+  border: 1px solid #bbf7d0;
+}
+.cdse-risk-detail-icon { font-size: 1.1rem; color: #16a34a; }
+.cdse-risk-detail-title { font-weight: 700; font-size: 0.8rem; color: #166534; margin-bottom: 2px; }
+.cdse-risk-detail-sub   { font-size: 0.75rem; color: #4b7c59; }
+
+.cdse-alert-card {
+  border-radius: 6px;
+  padding: 12px;
+  margin-bottom: 8px;
+}
+.cdse-alert-card--moderate {
+  background: #fffbeb;
+  border: 1px solid #fcd34d;
+}
+.cdse-alert-card--severe {
+  background: #fff1f2;
+  border: 1px solid #fca5a5;
+}
+.cdse-alert-header {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 6px;
+}
+.cdse-alert-icon { font-size: 1rem; }
+.cdse-alert-title {
+  font-weight: 700;
+  font-size: 0.8rem;
+}
+.cdse-alert-card--severe .cdse-alert-title  { color: #991b1b; }
+.cdse-alert-card--moderate .cdse-alert-title { color: #92400e; }
+.cdse-alert-disease { font-size: 0.75rem; color: #6b7280; margin-bottom: 4px; }
+.cdse-alert-reason  { font-size: 0.75rem; margin-bottom: 6px; line-height: 1.4; }
+.cdse-alert-date    { font-size: 0.7rem; color: #9ca3af; }
+
+/* ── Notification Bell (Milestone 25) ────────────────────────────────────── */
+
+.bell-wrap { position: relative; }
+
+.bell-btn { position: relative; }
+.bell-btn--active { color: #dc2626; }
+
+.bell-badge {
+  position: absolute;
+  top: 2px;
+  right: 2px;
+  min-width: 16px;
+  height: 16px;
+  padding: 0 4px;
+  border-radius: 999px;
+  background: #dc2626;
+  color: #fff;
+  font-size: 0.6rem;
+  font-weight: 700;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  line-height: 1;
+  pointer-events: none;
+}
+
+.bell-dropdown {
+  position: absolute;
+  top: calc(100% + 6px);
+  right: 0;
+  width: 300px;
+  background: #fff;
+  border: 1px solid var(--bd);
+  border-radius: 8px;
+  box-shadow: 0 8px 24px rgba(0,0,0,0.12);
+  z-index: 900;
+  overflow: hidden;
+}
+.bell-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 14px;
+  border-bottom: 1px solid var(--bd);
+}
+.bell-title   { font-size: 0.8rem; font-weight: 700; color: var(--tp); }
+.bell-view-all { font-size: 0.75rem; color: var(--p); text-decoration: none; }
+.bell-loading, .bell-empty {
+  padding: 14px;
+  font-size: 0.78rem;
+  color: var(--ts);
+  text-align: center;
+}
+.bell-alert {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 10px 14px;
+  border-bottom: 1px solid var(--bd);
+}
+.bell-alert:last-child { border-bottom: none; }
+.bell-alert--severe   { background: #fff1f2; }
+.bell-alert--moderate { background: #fffbeb; }
+.bell-alert-icon  { font-size: 1rem; flex-shrink: 0; }
+.bell-alert-name  { font-size: 0.78rem; font-weight: 600; color: var(--tp); }
+.bell-alert-meta  { font-size: 0.7rem; color: var(--ts); }
+
+/* ── Notifications Page (Milestone 25) ───────────────────────────────────── */
+
+.notif-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 60px 20px;
+  text-align: center;
+}
+.notif-empty-icon { font-size: 2.5rem; color: #16a34a; margin-bottom: 12px; }
+.notif-empty-text { font-size: 1rem; font-weight: 700; color: var(--tp); margin-bottom: 6px; }
+.notif-empty-sub  { font-size: 0.85rem; color: var(--ts); }
+
+.notif-section { margin-bottom: 24px; }
+.notif-section-title {
+  font-size: 0.85rem;
+  font-weight: 700;
+  margin-bottom: 10px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.notif-section-title--severe   { color: #991b1b; }
+.notif-section-title--moderate { color: #92400e; }
+
+.notif-list { display: flex; flex-direction: column; gap: 8px; }
+
+.notif-alert-card {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 14px 16px;
+  border-radius: 8px;
+  border: 1px solid transparent;
+}
+.notif-alert-card--severe   { background: #fff1f2; border-color: #fca5a5; }
+.notif-alert-card--moderate { background: #fffbeb; border-color: #fcd34d; }
+
+.notif-alert-icon { font-size: 1.4rem; flex-shrink: 0; }
+.notif-alert-body { flex: 1; min-width: 0; }
+.notif-alert-citizen {
+  font-size: 0.9rem;
+  font-weight: 700;
+  color: var(--tp);
+  margin-bottom: 4px;
+}
+.notif-alert-uhid { font-weight: 400; color: var(--ts); }
+.notif-alert-risk {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 4px;
+}
+.notif-alert-disease { font-size: 0.78rem; color: var(--ts); }
+.notif-alert-time { font-size: 0.72rem; color: #9ca3af; }
+
+.notif-alert-status {
+  font-size: 0.68rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  padding: 2px 8px;
+  border-radius: 999px;
+  flex-shrink: 0;
+}
+.notif-alert-status--active   { background: #fee2e2; color: #991b1b; }
+.notif-alert-status--resolved { background: #f3f4f6; color: #6b7280; }

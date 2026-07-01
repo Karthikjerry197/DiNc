@@ -493,9 +493,12 @@ export default function ConsultationWorkspacePage() {
           context={ctx}
           open={outcomeOpen}
           generatedNote={displayNote || undefined}
+          checkedItemIds={[...selectedIds]}
+          counsellingItemIds={(ctx.counsellingSections ?? []).flatMap((s) =>
+            s.items.map((i) => i.id),
+          )}
           onClose={() => {
             setOutcomeOpen(false);
-            // If call was ended, let the worker re-open from the call bar
           }}
           onSaved={handleOutcomeSaved}
         />

@@ -180,6 +180,8 @@ export interface WorklistItem {
   isEscalation: boolean;
   status: string;
   assignedTo: string | null;
+  /** Clinical risk level from active alerts. Null means NONE. */
+  riskLevel: string | null;
 }
 
 export interface ProgramOption {
@@ -1289,6 +1291,10 @@ export interface SaveConsultationPayload {
   /** Auto-generated (and optionally edited) note — persisted as FINAL alongside the outcome. */
   generatedNote?: string;
   noteStatus?: 'DRAFT' | 'FINAL';
+  /** Counselling item IDs the worker checked during the session (for CDSE classification). */
+  checkedItemIds?: string[];
+  /** All counselling item IDs available during the session (full protocol set for CDSE). */
+  counsellingItemIds?: string[];
 }
 
 export interface SaveConsultationResult {
@@ -1733,7 +1739,68 @@ export interface OperationsDashboard {
 export const fetchOperationsDashboard = (t: string, p?: AnalyticsQueryParams) =>
   getAnalytics<OperationsDashboard>(t, 'operations', p);
 
-// ── Clinical Decision Support Engine (CDSE) ───────────────────────────────────
+// ── Clinical Decision Support Engine (CDSE) — Milestone 25 ───────────────────
+
+/** Four-level risk classification produced by the CDSE after each consultation. */
+export type CdseRiskLevel = 'NONE' | 'LOW' | 'MODERATE' | 'SEVERE';
+
+export interface ClinicalAlert {
+  id: string;
+  citizenId: string;
+  activityId: string | null;
+  disease: string | null;
+  riskLevel: 'MODERATE' | 'SEVERE';
+  status: 'ACTIVE' | 'RESOLVED';
+  triggeredAt: string;
+  resolvedAt: string | null;
+}
+
+export interface AlertWithCitizen extends ClinicalAlert {
+  citizenName: string | null;
+  uhid: string | null;
+}
+
+export interface CitizenRiskSummary {
+  citizenId: string;
+  riskLevel: CdseRiskLevel;
+  disease: string | null;
+  evaluatedAt: string | null;
+  activeAlert: ClinicalAlert | null;
+}
+
+export async function fetchCitizenRisk(
+  token: string,
+  citizenId: string,
+): Promise<CitizenRiskSummary> {
+  const res = await fetch(
+    `${API_BASE}/api/citizens/${encodeURIComponent(citizenId)}/risk`,
+    { headers: { Authorization: `Bearer ${token}` } },
+  );
+  if (!res.ok) throw new Error('Failed to load citizen risk');
+  return res.json() as Promise<CitizenRiskSummary>;
+}
+
+export async function fetchCitizenAlerts(
+  token: string,
+  citizenId: string,
+): Promise<ClinicalAlert[]> {
+  const res = await fetch(
+    `${API_BASE}/api/citizens/${encodeURIComponent(citizenId)}/alerts`,
+    { headers: { Authorization: `Bearer ${token}` } },
+  );
+  if (!res.ok) throw new Error('Failed to load citizen alerts');
+  return res.json() as Promise<ClinicalAlert[]>;
+}
+
+export async function fetchActiveAlerts(token: string): Promise<AlertWithCitizen[]> {
+  const res = await fetch(`${API_BASE}/api/alerts/active`, {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  if (!res.ok) throw new Error('Failed to load active alerts');
+  return res.json() as Promise<AlertWithCitizen[]>;
+}
+
+// ── Backward-compat types — used by Care Plan panel ───────────────────────────
 
 export type RecommendationPriority =
   | 'CRITICAL'

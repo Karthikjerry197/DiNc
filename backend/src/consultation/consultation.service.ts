@@ -1,5 +1,6 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { ActivityService } from '../activity/activity.service';
+import { CdseService } from '../cdse/cdse.service';
 import { GuidebooksService } from '../guidebooks/guidebooks.service';
 import { WorkflowEngine } from '../workflow/workflow.engine';
 import {
@@ -39,6 +40,7 @@ export class ConsultationService {
   constructor(
     private readonly repo: ConsultationRepository,
     private readonly activities: ActivityService,
+    private readonly cdse: CdseService,
     private readonly guidebooks: GuidebooksService,
     private readonly workflow: WorkflowEngine,
   ) {}
@@ -186,7 +188,14 @@ export class ConsultationService {
       contactedBy: user,
     });
 
-    // 4) Hand off ALL workflow decisions to the Workflow Rules Engine.
+    // 4) Trigger CDSE classification — non-blocking, never fails the save.
+    void this.cdse.classifyAfterConsultation(
+      activityId,
+      dto.checkedItemIds ?? [],
+      dto.counsellingItemIds ?? [],
+    );
+
+    // 5) Hand off ALL workflow decisions to the Workflow Rules Engine.
     const execution = await this.workflow.execute({
       activityId,
       enrollmentId: row.enrollment_id,

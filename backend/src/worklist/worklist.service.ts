@@ -10,6 +10,7 @@ import {
   WorklistOverview,
   WorklistStats,
 } from './worklist.types';
+import { CdseRepository } from '../cdse/cdse.repository';
 
 /**
  * Read-only data source for the Worklist page.
@@ -34,6 +35,7 @@ export class WorklistService {
   constructor(
     private readonly db: DatabaseService,
     private readonly guidebooks: GuidebooksService,
+    private readonly cdseRepo: CdseRepository,
   ) {}
 
   /**
@@ -72,7 +74,15 @@ export class WorklistService {
       this.monitoring(),
     ]);
 
-    return { stats, items, programs, assignees, monitoring };
+    // Enrich items with clinical risk level from active alerts
+    const citizenIds = [...new Set(items.map((i) => i.citizenId).filter(Boolean) as string[])];
+    const riskMap = await this.cdseRepo.getRiskMapForCitizens(citizenIds).catch(() => new Map());
+    const enriched = items.map((item) => ({
+      ...item,
+      riskLevel: item.citizenId ? (riskMap.get(item.citizenId)?.riskLevel ?? null) : null,
+    }));
+
+    return { stats, items: enriched, programs, assignees, monitoring };
   }
 
   private async stats(): Promise<WorklistStats> {
@@ -175,6 +185,7 @@ export class WorklistService {
         isEscalation: row.is_escalation,
         status: row.status,
         assignedTo: row.assigned_to,
+        riskLevel: null,
       }));
     } catch (error) {
       this.logger.warn(`Worklist items query failed: ${(error as Error).message}`);

@@ -17,10 +17,13 @@ interface ConsultationOutcomeDialogProps {
   onSaved: (result: SaveConsultationResult) => void;
   /**
    * Live clinical note from the counselling wizard — pre-populated into the
-   * Remarks field so the worker can review and edit before saving. No copy-paste
-   * required.
+   * Remarks field so the worker can review and edit before saving.
    */
   generatedNote?: string;
+  /** Counselling item IDs the worker checked during the session (for CDSE). */
+  checkedItemIds?: string[];
+  /** All item IDs available during the session (full protocol for CDSE). */
+  counsellingItemIds?: string[];
 }
 
 /**
@@ -37,6 +40,8 @@ export default function ConsultationOutcomeDialog({
   onClose,
   onSaved,
   generatedNote,
+  checkedItemIds,
+  counsellingItemIds,
 }: ConsultationOutcomeDialogProps) {
   const options = context.outcomeOptions;
   const [outcomeTypeId, setOutcomeTypeId] = useState(
@@ -105,6 +110,8 @@ export default function ConsultationOutcomeDialog({
         clinicalData: showClinicalFields ? clinicalData : undefined,
         generatedNote: remarks.trim() || undefined,
         noteStatus: 'FINAL',
+        checkedItemIds: checkedItemIds ?? [],
+        counsellingItemIds: counsellingItemIds ?? [],
       });
       onSaved(result);
     } catch (err) {

@@ -115,6 +115,13 @@ CREATE TABLE IF NOT EXISTS public.consultation_responses (
   created_at          TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
+-- Column upgrades for pre-existing partial tables (CREATE TABLE IF NOT EXISTS
+-- never alters an existing table). Idempotent; adds any missing column.
+ALTER TABLE public.consultation_responses ADD COLUMN IF NOT EXISTS response_options JSONB;
+ALTER TABLE public.consultation_responses ADD COLUMN IF NOT EXISTS risk_category VARCHAR(25);
+ALTER TABLE public.consultation_responses ADD COLUMN IF NOT EXISTS triggered_risk BOOLEAN NOT NULL DEFAULT false;
+ALTER TABLE public.consultation_responses ADD COLUMN IF NOT EXISTS recorded_by TEXT;
+
 -- One response per question per consultation.
 CREATE UNIQUE INDEX IF NOT EXISTS idx_consultation_responses_record_item
   ON public.consultation_responses(outcome_record_id, counselling_item_id);

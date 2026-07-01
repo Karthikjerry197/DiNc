@@ -1,4 +1,4 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { ActivityService } from '../activity/activity.service';
 import { CdseService } from '../cdse/cdse.service';
 import { GuidebooksService } from '../guidebooks/guidebooks.service';
@@ -14,6 +14,7 @@ import {
   ConsultationContextDto,
   ConsultationHistoryEntryDto,
   ConsultationNoteDto,
+  ConsultationResponseInput,
   SaveConsultationResultDto,
   StartCallResultDto,
   TimelineEntryDto,
@@ -37,6 +38,8 @@ import type { GuidebookDetail } from '../guidebooks/guidebooks.types';
  */
 @Injectable()
 export class ConsultationService {
+  private readonly logger = new Logger(ConsultationService.name);
+
   constructor(
     private readonly repo: ConsultationRepository,
     private readonly activities: ActivityService,
@@ -178,6 +181,31 @@ export class ConsultationService {
       });
     }
 
+    // 2b) Persist explicit consultation_responses — the single source of truth
+    //     (Milestone 25A, Step 2). One row per DISPLAYED counselling question
+    //     (ANSWERED / NOT_ASSESSED). Supplementary to the outcome record: a
+    //     failure must never roll back the authoritative clinical record, and it
+    //     runs ALONGSIDE the existing checkedItemIds dual-read (CDSE unchanged).
+    if (outcomeRecordId && row.citizen_id) {
+      try {
+        const written = await this.repo.persistConsultationResponses({
+          outcomeRecordId,
+          activityId,
+          citizenId: row.citizen_id,
+          responses: ConsultationService.toConsultationResponses(dto),
+          recordedBy: user,
+        });
+        this.logger.log(
+          `[25A] Persisted ${written} consultation_response(s) for activity ${activityId}`,
+        );
+      } catch (err) {
+        this.logger.error(
+          `[25A] consultation_responses persistence failed for activity ${activityId}`,
+          (err as Error).message,
+        );
+      }
+    }
+
     // 3) Log the call result alongside the attempt history.
     const attemptNumber = await this.repo.nextAttemptNumber(activityId);
     await this.repo.insertContactOutcome({
@@ -287,6 +315,31 @@ export class ConsultationService {
       outcome: row.outcome,
       priority: row.priority,
     }));
+  }
+
+  /**
+   * UI adapter (Milestone 25A). Translates the current checkbox questionnaire —
+   * `counsellingItemIds` (all displayed) + `checkedItemIds` (confirmed) — into the
+   * abstract, response-type-agnostic ConsultationResponseInput model the
+   * persistence layer consumes. This is the ONLY place the "checked ⇒ 'YES'"
+   * convention lives; the API contract and frontend behaviour are unchanged.
+   * When richer response types arrive, only this adapter changes.
+   */
+  private static toConsultationResponses(
+    dto: SaveConsultationDto,
+  ): ConsultationResponseInput[] {
+    const checked = new Set(dto.checkedItemIds ?? []);
+    const displayed = [
+      ...new Set([...(dto.counsellingItemIds ?? []), ...(dto.checkedItemIds ?? [])]),
+    ];
+    return displayed.map((counsellingItemId) => {
+      const answered = checked.has(counsellingItemId);
+      return {
+        counsellingItemId,
+        responseStatus: answered ? 'ANSWERED' : 'NOT_ASSESSED',
+        responseValue: answered ? 'YES' : null,
+      };
+    });
   }
 
   private async requireContext(activityId: string): Promise<ConsultationContextRow> {

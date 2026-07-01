@@ -359,6 +359,27 @@ export class CdseRepository implements OnModuleInit {
       )
     `);
 
+    // Column upgrades — CREATE TABLE IF NOT EXISTS never alters a pre-existing
+    // table, so add any column an earlier partial version of this table may be
+    // missing (idempotent). response_options in particular was added after the
+    // table's first creation on some databases.
+    await this.db.query(`
+      ALTER TABLE public.consultation_responses
+        ADD COLUMN IF NOT EXISTS response_options JSONB
+    `);
+    await this.db.query(`
+      ALTER TABLE public.consultation_responses
+        ADD COLUMN IF NOT EXISTS risk_category VARCHAR(25)
+    `);
+    await this.db.query(`
+      ALTER TABLE public.consultation_responses
+        ADD COLUMN IF NOT EXISTS triggered_risk BOOLEAN NOT NULL DEFAULT false
+    `);
+    await this.db.query(`
+      ALTER TABLE public.consultation_responses
+        ADD COLUMN IF NOT EXISTS recorded_by TEXT
+    `);
+
     // One response per question per consultation.
     await this.db.query(`
       CREATE UNIQUE INDEX IF NOT EXISTS idx_consultation_responses_record_item

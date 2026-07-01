@@ -5,6 +5,7 @@ import {
   ClinicalJourneyEntryDto,
   ConsultationHistoryEntryDto,
   ConsultationNoteDto,
+  ConsultationResponseInput,
   CounsellingSectionDto,
 } from './consultation.types';
 
@@ -1199,6 +1200,114 @@ export class ConsultationRepository implements OnModuleInit {
       ],
     );
     return result.rows[0].id;
+  }
+
+  // ── Consultation Responses (Milestone 25A, Step 2) ──────────────────────────
+
+  /**
+   * Persists the explicit consultation_responses for a saved consultation — the
+   * new single source of truth. The caller supplies an abstract, response-type-
+   * agnostic collection (`ConsultationResponseInput[]`): one entry per counselling
+   * question DISPLAYED during the session, each carrying its own responseStatus
+   * (ANSWERED / NOT_ASSESSED / NOT_PRESENTED) and responseValue. This layer makes
+   * NO assumption that an answer is "YES" — that translation belongs to the caller
+   * (today the checkbox UI adapter in ConsultationService), so future response
+   * types (BOOLEAN, NUMBER, CHOICE, TEXT, YES_NO_UNKNOWN) need no persistence
+   * redesign.
+   *
+   * Each row SNAPSHOTS the item's current metadata (question_text, response_type,
+   * response_options, risk_category) so a historical consultation stays fully
+   * reproducible even if the item is later edited or removed. `triggered_risk`
+   * records whether the supplied responseValue matches the item's own configured
+   * risk_trigger_values — a per-row fact, NOT a classification decision.
+   *
+   * This runs ALONGSIDE the existing checkedItemIds dual-read: CDSE classification
+   * is untouched. Idempotent via the (outcome_record_id, counselling_item_id)
+   * unique index. Returns the number of response rows written.
+   */
+  async persistConsultationResponses(input: {
+    outcomeRecordId: string;
+    activityId: string; // worklist_item_id
+    citizenId: string;
+    responses: ConsultationResponseInput[];
+    recordedBy: string | null;
+  }): Promise<number> {
+    // De-duplicate by item (the unique index allows one row per item per record);
+    // keep the first occurrence for a stable result.
+    const byItem = new Map<string, ConsultationResponseInput>();
+    for (const r of input.responses) {
+      if (!byItem.has(r.counsellingItemId)) byItem.set(r.counsellingItemId, r);
+    }
+    if (byItem.size === 0) return 0;
+
+    // Snapshot the current metadata for every referenced item.
+    const itemIds = [...byItem.keys()];
+    const meta = await this.db.query<{
+      id: string;
+      body: string;
+      response_type: string;
+      response_options: unknown;
+      risk_category: string | null;
+      risk_trigger_values: unknown;
+    }>(
+      `SELECT id, body, response_type, response_options, risk_category, risk_trigger_values
+       FROM public.counselling_items
+       WHERE id = ANY($1)`,
+      [itemIds],
+    );
+    if (meta.rows.length === 0) return 0;
+
+    const rows: string[] = [];
+    const params: unknown[] = [];
+    let p = 1;
+    let written = 0;
+    for (const it of meta.rows) {
+      const response = byItem.get(it.id);
+      if (!response) continue; // item exists but was not among the responses
+      const value = response.responseValue;
+      const triggers = Array.isArray(it.risk_trigger_values)
+        ? (it.risk_trigger_values as unknown[])
+        : [];
+      const triggeredRisk = value !== null && triggers.includes(value);
+      rows.push(
+        `($${p++}, $${p++}, $${p++}, $${p++}, $${p++}, $${p++}, $${p++}::jsonb, $${p++}, $${p++}, $${p++}, $${p++}, $${p++})`,
+      );
+      params.push(
+        input.outcomeRecordId,
+        input.activityId,
+        input.citizenId,
+        it.id,
+        it.body,
+        it.response_type,
+        it.response_options == null ? null : JSON.stringify(it.response_options),
+        response.responseStatus,
+        value,
+        it.risk_category,
+        triggeredRisk,
+        input.recordedBy,
+      );
+      written++;
+    }
+    if (written === 0) return 0;
+
+    await this.db.query(
+      `INSERT INTO public.consultation_responses
+         (outcome_record_id, worklist_item_id, citizen_id, counselling_item_id,
+          question_text, response_type, response_options, response_status,
+          response_value, risk_category, triggered_risk, recorded_by)
+       VALUES ${rows.join(', ')}
+       ON CONFLICT (outcome_record_id, counselling_item_id) DO UPDATE SET
+         question_text    = EXCLUDED.question_text,
+         response_type    = EXCLUDED.response_type,
+         response_options = EXCLUDED.response_options,
+         response_status  = EXCLUDED.response_status,
+         response_value   = EXCLUDED.response_value,
+         risk_category    = EXCLUDED.risk_category,
+         triggered_risk   = EXCLUDED.triggered_risk,
+         recorded_by      = EXCLUDED.recorded_by`,
+      params,
+    );
+    return written;
   }
 
   // ── Consultation Notes (16A) ────────────────────────────────────────────────

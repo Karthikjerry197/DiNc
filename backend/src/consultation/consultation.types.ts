@@ -19,6 +19,29 @@ export interface ClinicalFieldDef {
   sortOrder: number;
 }
 
+/** Explicit status of a displayed counselling question (Milestone 25A). */
+export type ConsultationResponseStatus =
+  | 'ANSWERED'
+  | 'NOT_ASSESSED'
+  | 'NOT_PRESENTED';
+
+/**
+ * Abstract, response-type-agnostic input for persisting one consultation_response.
+ *
+ * This decouples the persistence layer from the legacy checkedItemIds / "YES"
+ * model. The CALLER translates whatever the UI produces into this model — today
+ * ConsultationService maps checkbox `checkedItemIds` to
+ * `{ ANSWERED, responseValue: 'YES' }` and displayed-but-unchecked items to
+ * `{ NOT_ASSESSED, responseValue: null }`. Future response types (BOOLEAN,
+ * NUMBER, CHOICE, TEXT, YES_NO_UNKNOWN) can supply their own values here without
+ * any change to the persistence layer.
+ */
+export interface ConsultationResponseInput {
+  counsellingItemId: string;
+  responseStatus: ConsultationResponseStatus;
+  responseValue: string | null;
+}
+
 export interface PatientInfo {
   citizenId: string | null;
   uhid: string | null;

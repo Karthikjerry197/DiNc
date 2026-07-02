@@ -7737,8 +7737,11 @@ a.wl-icon-btn {
  * ONLY inside .panel-content; Panel and PanelHeader never scroll.
  * ════════════════════════════════════════════════════════════════════════ */
 
-/* ── Panel (C.4): self-contained region; owns its scroll via PanelContent ── */
-.panel {
+/* ── Panel (C.4): self-contained region; owns its scroll via PanelContent ──
+ * Root class is `ws-panel` (not bare `panel`) to avoid colliding with the
+ * pre-existing legacy `.panel` utility used by analytics/reports and the
+ * citizens PatientTimeline. Namespaced per Rule A8. */
+.ws-panel {
   display: flex;
   flex-direction: column;
   min-height: 0;
@@ -7751,7 +7754,7 @@ a.wl-icon-btn {
 }
 /* `flush` is a semantic marker for table panels (its PanelContent is unpadded);
  * it shares the default surface. `subtle` is the nested/inspector surface. */
-.panel--subtle {
+.ws-panel--subtle {
   background: var(--bg);
 }
 
@@ -7769,7 +7772,7 @@ a.wl-icon-btn {
   border-bottom: 1px solid var(--bd);
   background: var(--card);
 }
-.panel--subtle .panel-header {
+.ws-panel--subtle .panel-header {
   background: var(--bg);
 }
 .panel-header-text {

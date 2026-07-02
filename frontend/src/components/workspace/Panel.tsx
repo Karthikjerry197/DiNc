@@ -32,7 +32,7 @@ export default function Panel({
   className,
   style,
 }: PanelProps) {
-  const cls = ['panel', `panel--${variant}`, className].filter(Boolean).join(' ');
+  const cls = ['ws-panel', `ws-panel--${variant}`, className].filter(Boolean).join(' ');
 
   return (
     <section className={cls} aria-label={ariaLabel} style={style}>

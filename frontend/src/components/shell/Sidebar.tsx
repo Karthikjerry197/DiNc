@@ -2,14 +2,28 @@
 
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useState, type ReactNode } from 'react';
+import {
+  LayoutDashboard,
+  ClipboardList,
+  UsersRound,
+  BookOpen,
+  Library,
+  Bell,
+  BarChart3,
+  Settings,
+  HeartPulse,
+  ChevronsLeft,
+  ChevronsRight,
+  LogOut,
+} from 'lucide-react';
 import type { AuthUser } from '@/lib/api';
 import { can } from '@/lib/permissions';
 
 export interface NavItem {
   label: string;
   href: string;
-  icon: string;
+  icon: ReactNode;
   /** Functional pages render real content; false = "coming soon" placeholder. */
   enabled: boolean;
   /**
@@ -25,15 +39,16 @@ export interface NavItem {
  * Items with a permission are shown only to roles that hold it.
  * The enabled flag controls whether the destination page is functional (not sidebar visibility).
  */
+const NAV_ICON = 18;
 export const NAV_ITEMS: NavItem[] = [
-  { label: 'Dashboard',      href: '/dashboard',      icon: '▦',  enabled: true },
-  { label: 'My Worklist',    href: '/worklist',       icon: '☑',  enabled: true,  permission: 'worklist.view' },
-  { label: 'Citizens',       href: '/citizens',       icon: '👥', enabled: true,  permission: 'citizens.view' },
-  { label: 'Guidebooks',     href: '/guidebooks',     icon: '📘', enabled: false },
-  { label: 'Knowledge Base', href: '/knowledge-base', icon: '📚', enabled: true },
-  { label: 'Notifications',  href: '/notifications',  icon: '🔔', enabled: true },
-  { label: 'Reports',        href: '/reports',        icon: '📊', enabled: true,  permission: 'reports.view' },
-  { label: 'Administration', href: '/administration', icon: '⚙',  enabled: true,  permission: 'admin.pages' },
+  { label: 'Dashboard',      href: '/dashboard',      icon: <LayoutDashboard size={NAV_ICON} />, enabled: true },
+  { label: 'My Worklist',    href: '/worklist',       icon: <ClipboardList size={NAV_ICON} />,   enabled: true,  permission: 'worklist.view' },
+  { label: 'Citizens',       href: '/citizens',       icon: <UsersRound size={NAV_ICON} />,      enabled: true,  permission: 'citizens.view' },
+  { label: 'Guidebooks',     href: '/guidebooks',     icon: <BookOpen size={NAV_ICON} />,        enabled: false },
+  { label: 'Knowledge Base', href: '/knowledge-base', icon: <Library size={NAV_ICON} />,         enabled: true },
+  { label: 'Notifications',  href: '/notifications',  icon: <Bell size={NAV_ICON} />,            enabled: true },
+  { label: 'Reports',        href: '/reports',        icon: <BarChart3 size={NAV_ICON} />,       enabled: true,  permission: 'reports.view' },
+  { label: 'Administration', href: '/administration', icon: <Settings size={NAV_ICON} />,        enabled: true,  permission: 'admin.pages' },
 ];
 
 interface SidebarProps {
@@ -93,6 +108,12 @@ export default function Sidebar({ user, onLogout }: SidebarProps) {
       }
       return next;
     });
+    // An explicit toggle is authoritative: clear any transient hover/focus
+    // expansion so the new state is applied cleanly and the collapsed state
+    // sticks even though the pointer (and the toggle button's focus) is still
+    // inside the sidebar immediately after the click.
+    setHovering(false);
+    setFocused(false);
   }, []);
 
   // `[` toggles the sidebar — ignored while typing in a field.
@@ -124,14 +145,22 @@ export default function Sidebar({ user, onLogout }: SidebarProps) {
       data-ready={ready ? 'true' : 'false'}
       onMouseEnter={() => { if (collapsed) setHovering(true); }}
       onMouseLeave={() => setHovering(false)}
-      onFocus={() => { if (collapsed) setFocused(true); }}
+      onFocus={(e) => {
+        // Only KEYBOARD focus (focus-visible) expands a collapsed sidebar. A
+        // mouse click that also focuses a nav item/toggle must not keep the
+        // sidebar expanded after the pointer leaves — that was the "won't stay
+        // collapsed / expands again" behavior.
+        if (collapsed && (e.target as HTMLElement).matches?.(':focus-visible')) {
+          setFocused(true);
+        }
+      }}
       onBlur={(e) => {
         if (!e.currentTarget.contains(e.relatedTarget as Node | null)) setFocused(false);
       }}
     >
       <div className="shell-sidebar-inner">
         <Link href="/dashboard" className="shell-brand" aria-label="Go to Dashboard">
-          <div className="shell-brand-badge">🏥</div>
+          <div className="shell-brand-badge"><HeartPulse size={20} aria-hidden="true" /></div>
           <div className="shell-brand-text">
             <div className="shell-brand-title">DiNC</div>
             <div className="shell-brand-sub">Digital Integrated Care Network (DiNC)</div>
@@ -161,12 +190,14 @@ export default function Sidebar({ user, onLogout }: SidebarProps) {
           <button
             type="button"
             className="shell-nav-item shell-sidebar-toggle"
-            onClick={toggle}
+            onClick={(e) => { toggle(); e.currentTarget.blur(); }}
             aria-label={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}
             aria-pressed={collapsed}
             title={collapsed ? 'Expand sidebar ( [ )' : 'Collapse sidebar ( [ )'}
           >
-            <span className="shell-nav-icon" aria-hidden="true">{collapsed ? '»' : '«'}</span>
+            <span className="shell-nav-icon" aria-hidden="true">
+              {collapsed ? <ChevronsRight size={NAV_ICON} /> : <ChevronsLeft size={NAV_ICON} />}
+            </span>
             <span className="shell-nav-label">Collapse</span>
           </button>
 
@@ -177,7 +208,7 @@ export default function Sidebar({ user, onLogout }: SidebarProps) {
             aria-label="Logout"
             title="Logout"
           >
-            <span className="shell-nav-icon" aria-hidden="true">⎋</span>
+            <span className="shell-nav-icon" aria-hidden="true"><LogOut size={NAV_ICON} /></span>
             <span className="shell-nav-label">Logout</span>
           </button>
         </div>

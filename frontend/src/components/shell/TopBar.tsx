@@ -2,6 +2,7 @@
 
 import Link from 'next/link';
 import { useEffect, useRef, useState } from 'react';
+import { Bell, Settings, Palette, HelpCircle, Info, LogOut, TriangleAlert, CircleAlert, RefreshCw, Check } from 'lucide-react';
 import type { AlertWithCitizen, AuthUser, DevUser } from '@/lib/api';
 import { fetchActiveAlerts, fetchDevUsers } from '@/lib/api';
 import { getToken } from '@/lib/session';
@@ -160,7 +161,7 @@ export default function TopBar({ user, onLogout, onSwitchUser }: TopBarProps) {
             aria-label={`Notifications — ${alertCount} active alert${alertCount !== 1 ? 's' : ''}`}
             onClick={() => { void handleBellClick(); }}
           >
-            🔔
+            <Bell size={18} aria-hidden="true" />
             {alertCount > 0 && (
               <span className="bell-badge" aria-hidden="true">
                 {alertCount > 9 ? '9+' : alertCount}
@@ -188,7 +189,9 @@ export default function TopBar({ user, onLogout, onSwitchUser }: TopBarProps) {
                   className={`bell-alert bell-alert--${a.riskLevel.toLowerCase()}`}
                 >
                   <span className="bell-alert-icon" aria-hidden="true">
-                    {a.riskLevel === 'SEVERE' ? '⚠' : '◈'}
+                    {a.riskLevel === 'SEVERE'
+                      ? <TriangleAlert size={16} />
+                      : <CircleAlert size={16} />}
                   </span>
                   <div className="bell-alert-info">
                     <div className="bell-alert-name">{a.citizenName ?? 'Patient'}</div>
@@ -247,7 +250,7 @@ export default function TopBar({ user, onLogout, onSwitchUser }: TopBarProps) {
                 aria-expanded={showSwitch}
                 onClick={() => { void handleShowSwitch(); }}
               >
-                <span className="acm-item-icon" aria-hidden="true">🔄</span>
+                <span className="acm-item-icon" aria-hidden="true"><RefreshCw size={16} /></span>
                 <span className="acm-item-label">Switch User</span>
                 <span className="acm-dev-badge">DEV</span>
                 <span className="acm-arrow" aria-hidden="true">{showSwitch ? '▴' : '▾'}</span>
@@ -275,7 +278,7 @@ export default function TopBar({ user, onLogout, onSwitchUser }: TopBarProps) {
                       onClick={() => handleSwitchUser(u.username)}
                     >
                       <span className="acm-sub-check" aria-hidden="true">
-                        {user.username === u.username ? '✓' : ''}
+                        {user.username === u.username ? <Check size={14} /> : null}
                       </span>
                       <span className="acm-sub-name">{u.full_name}</span>
                       <span className="acm-sub-role">{roleLabel(u.role)}</span>
@@ -291,7 +294,7 @@ export default function TopBar({ user, onLogout, onSwitchUser }: TopBarProps) {
                 role="menuitem"
                 onClick={close}
               >
-                <span className="acm-item-icon" aria-hidden="true">⚙️</span>
+                <span className="acm-item-icon" aria-hidden="true"><Settings size={16} /></span>
                 <span className="acm-item-label">Account Settings</span>
               </Link>
 
@@ -301,7 +304,7 @@ export default function TopBar({ user, onLogout, onSwitchUser }: TopBarProps) {
                 role="menuitem"
                 onClick={close}
               >
-                <span className="acm-item-icon" aria-hidden="true">🎨</span>
+                <span className="acm-item-icon" aria-hidden="true"><Palette size={16} /></span>
                 <span className="acm-item-label">Preferences</span>
               </Link>
 
@@ -312,7 +315,7 @@ export default function TopBar({ user, onLogout, onSwitchUser }: TopBarProps) {
                 disabled
                 aria-disabled="true"
               >
-                <span className="acm-item-icon" aria-hidden="true">❓</span>
+                <span className="acm-item-icon" aria-hidden="true"><HelpCircle size={16} /></span>
                 <span className="acm-item-label">Help &amp; Documentation</span>
                 <span className="acm-coming">Soon</span>
               </button>
@@ -324,7 +327,7 @@ export default function TopBar({ user, onLogout, onSwitchUser }: TopBarProps) {
                 disabled
                 aria-disabled="true"
               >
-                <span className="acm-item-icon" aria-hidden="true">ℹ️</span>
+                <span className="acm-item-icon" aria-hidden="true"><Info size={16} /></span>
                 <span className="acm-item-label">About DiNC</span>
                 <span className="acm-coming">Soon</span>
               </button>
@@ -338,7 +341,7 @@ export default function TopBar({ user, onLogout, onSwitchUser }: TopBarProps) {
                 role="menuitem"
                 onClick={() => { close(); onLogout(); }}
               >
-                <span className="acm-item-icon" aria-hidden="true">↩</span>
+                <span className="acm-item-icon" aria-hidden="true"><LogOut size={16} /></span>
                 <span className="acm-item-label">Logout</span>
               </button>
 

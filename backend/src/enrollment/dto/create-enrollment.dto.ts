@@ -39,4 +39,10 @@ export class CreateEnrollmentDto {
   @IsString()
   @MaxLength(2000, { message: 'Remarks must be 2000 characters or fewer.' })
   remarks?: string;
+
+  /** Care worker (username) responsible for this enrollment and its activities. */
+  @IsOptional()
+  @IsString()
+  @MaxLength(100, { message: 'Assignee must be 100 characters or fewer.' })
+  assignedTo?: string;
 }

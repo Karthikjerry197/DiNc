@@ -2,12 +2,14 @@ import { Injectable, Logger } from '@nestjs/common';
 import { DatabaseService } from '../database/database.service';
 import {
   AnalyticsFilters,
+  DiseaseAnalyticsRow,
   KnowledgeAnalyticsDto,
   KnowledgeItemStat,
   NameCount,
   OperationsDashboardDto,
   ProgramAnalyticsRow,
   RegistrationAnalyticsDto,
+  RiskAnalyticsDto,
   SchedulerAnalyticsDto,
   WorkerPerformanceRow,
   WorkflowAnalyticsDto,
@@ -632,6 +634,172 @@ export class AnalyticsRepository {
         consultationsCompletedToday: 0, consultationsPending: 0, referralsToday: 0,
         programs: [], workers: [],
       },
+    );
+  }
+
+  // ── Clinical Risk analytics (M34) ──────────────────────────────────────────
+
+  /**
+   * Alert-context filter fragment (ca = clinical_alerts). Reuses the shared
+   * [from,to,programId,diseaseId,district,assignedTo] param order. Alerts hold
+   * the disease NAME (written by the CDSE), so diseaseId resolves via the
+   * diseases table; program/worker scope resolves through the citizen's
+   * enrollments, matching the M31 assignment model.
+   */
+  private static readonly ALERT_WHERE = `
+    ($1::date IS NULL OR ca.triggered_at::date >= $1::date)
+    AND ($2::date IS NULL OR ca.triggered_at::date <= $2::date)
+    AND ($3::uuid IS NULL OR EXISTS (
+      SELECT 1 FROM public.enrollments pe
+      WHERE pe.citizen_id = ca.citizen_id AND pe.program_id = $3::uuid))
+    AND ($4::uuid IS NULL OR ca.disease = (SELECT name FROM public.diseases WHERE id = $4::uuid))
+    AND ($5::text IS NULL OR EXISTS (
+      SELECT 1 FROM public.citizens cc
+      WHERE cc.id = ca.citizen_id AND cc.district = $5::text))
+    AND ($6::text IS NULL OR EXISTS (
+      SELECT 1 FROM public.enrollments we
+      WHERE we.citizen_id = ca.citizen_id AND we.assigned_worker = $6::text))`;
+
+  /**
+   * Clinical Risk snapshot. Reuses the M32 risk semantics verbatim — severe and
+   * moderate count citizens once at their severest ACTIVE alert level; low is
+   * the Dashboard's "consulted, no active alert" fallback. No risk is computed
+   * here: the CDSE remains the only writer of clinical_alerts.
+   */
+  risk(f: AnalyticsFilters): Promise<RiskAnalyticsDto> {
+    return this.safe(
+      'risk',
+      async () => {
+        const counts = await this.db.query<{
+          severe: number; moderate: number; active_alerts: number; resolved_alerts: number;
+        }>(
+          `WITH scoped AS (
+             SELECT ca.citizen_id, ca.risk_level, ca.status
+             FROM public.clinical_alerts ca
+             WHERE ${AnalyticsRepository.ALERT_WHERE}
+           ),
+           severest AS (
+             SELECT citizen_id, bool_or(risk_level = 'SEVERE') AS has_severe
+             FROM scoped WHERE status = 'ACTIVE' GROUP BY citizen_id
+           )
+           SELECT (SELECT count(*)::int FROM severest WHERE has_severe)      AS severe,
+                  (SELECT count(*)::int FROM severest WHERE NOT has_severe)  AS moderate,
+                  (SELECT count(*)::int FROM scoped WHERE status='ACTIVE')   AS active_alerts,
+                  (SELECT count(*)::int FROM scoped WHERE status='RESOLVED') AS resolved_alerts`,
+          AnalyticsRepository.wlParams(f),
+        );
+
+        // Low = consulted (outcome recorded) with no active alert — mirrors
+        // DashboardService.riskBreakdown / CdseService.getLatestRisk fallback.
+        const low = await this.db.query<{ c: number }>(
+          `SELECT count(DISTINCT e.citizen_id)::int AS c
+           FROM public.outcome_records orec
+           JOIN public.worklist_items w ON w.id = orec.worklist_item_id
+           JOIN public.enrollments e ON e.id = w.enrollment_id
+           LEFT JOIN public.citizens c ON c.id = e.citizen_id
+           WHERE NOT EXISTS (
+               SELECT 1 FROM public.clinical_alerts ca
+               WHERE ca.citizen_id = e.citizen_id AND ca.status = 'ACTIVE')
+             AND ($1::date IS NULL OR orec.recorded_at::date >= $1::date)
+             AND ($2::date IS NULL OR orec.recorded_at::date <= $2::date)
+             AND ($3::uuid IS NULL OR e.program_id = $3::uuid)
+             AND ($4::uuid IS NULL OR e.disease_id = $4::uuid)
+             AND ($5::text IS NULL OR c.district = $5::text)
+             AND ($6::text IS NULL OR e.assigned_worker = $6::text)`,
+          AnalyticsRepository.wlParams(f),
+        );
+
+        // Fixed 30-day trend of alerts triggered per day (independent of
+        // from/to so the chart always shows a full window).
+        const trend = await this.db.query<{ date: string; moderate: number; severe: number }>(
+          `SELECT to_char(d.day, 'YYYY-MM-DD') AS date,
+                  count(ca.id) FILTER (WHERE ca.risk_level = 'MODERATE')::int AS moderate,
+                  count(ca.id) FILTER (WHERE ca.risk_level = 'SEVERE')::int   AS severe
+           FROM generate_series(CURRENT_DATE - INTERVAL '29 days', CURRENT_DATE, '1 day') AS d(day)
+           LEFT JOIN public.clinical_alerts ca ON ca.triggered_at::date = d.day::date
+             AND ($1::uuid IS NULL OR EXISTS (
+               SELECT 1 FROM public.enrollments pe
+               WHERE pe.citizen_id = ca.citizen_id AND pe.program_id = $1::uuid))
+             AND ($2::uuid IS NULL OR ca.disease = (SELECT name FROM public.diseases WHERE id = $2::uuid))
+             AND ($3::text IS NULL OR EXISTS (
+               SELECT 1 FROM public.citizens cc
+               WHERE cc.id = ca.citizen_id AND cc.district = $3::text))
+             AND ($4::text IS NULL OR EXISTS (
+               SELECT 1 FROM public.enrollments we
+               WHERE we.citizen_id = ca.citizen_id AND we.assigned_worker = $4::text))
+           GROUP BY d.day ORDER BY d.day`,
+          [f.programId, f.diseaseId, f.district, f.assignedTo],
+        );
+
+        const row = counts.rows[0];
+        const activeAlerts = row?.active_alerts ?? 0;
+        const resolvedAlerts = row?.resolved_alerts ?? 0;
+        return {
+          low: low.rows[0]?.c ?? 0,
+          moderate: row?.moderate ?? 0,
+          severe: row?.severe ?? 0,
+          activeAlerts,
+          resolvedAlerts,
+          trend: trend.rows,
+          distribution: [
+            { name: 'Active', count: activeAlerts },
+            { name: 'Resolved', count: resolvedAlerts },
+          ],
+        };
+      },
+      {
+        low: 0, moderate: 0, severe: 0, activeAlerts: 0, resolvedAlerts: 0,
+        trend: [], distribution: [],
+      },
+    );
+  }
+
+  // ── Disease analytics (M34) ────────────────────────────────────────────────
+
+  /**
+   * Per-disease patient breakdown over existing enrollments. High risk reuses
+   * the CDSE's ACTIVE SEVERE clinical_alerts (matched on the disease name the
+   * CDSE writes) — no risk calculation is duplicated here.
+   */
+  diseases(f: AnalyticsFilters): Promise<DiseaseAnalyticsRow[]> {
+    return this.safe(
+      'diseases',
+      async () => {
+        const r = await this.db.query<{
+          disease_id: string; disease: string; total: number; active: number;
+          completed: number; high_risk: number;
+        }>(
+          `SELECT d.id AS disease_id, d.name AS disease,
+                  count(DISTINCT e.citizen_id)::int AS total,
+                  count(DISTINCT e.citizen_id) FILTER (WHERE e.status = 'ACTIVE')::int    AS active,
+                  count(DISTINCT e.citizen_id) FILTER (WHERE e.status = 'COMPLETED')::int AS completed,
+                  count(DISTINCT ca.citizen_id)::int AS high_risk
+           FROM public.diseases d
+           LEFT JOIN public.enrollments e ON e.disease_id = d.id
+             AND ($1::date IS NULL OR e.created_at::date >= $1::date)
+             AND ($2::date IS NULL OR e.created_at::date <= $2::date)
+             AND ($3::uuid IS NULL OR e.program_id = $3::uuid)
+             AND ($5::text IS NULL OR EXISTS (
+               SELECT 1 FROM public.citizens c
+               WHERE c.id = e.citizen_id AND c.district = $5::text))
+             AND ($6::text IS NULL OR e.assigned_worker = $6::text)
+           LEFT JOIN public.clinical_alerts ca ON ca.citizen_id = e.citizen_id
+             AND ca.disease = d.name AND ca.status = 'ACTIVE' AND ca.risk_level = 'SEVERE'
+           WHERE d.is_active = true AND ($4::uuid IS NULL OR d.id = $4::uuid)
+           GROUP BY d.id, d.name
+           ORDER BY total DESC, d.name`,
+          AnalyticsRepository.wlParams(f),
+        );
+        return r.rows.map((row) => ({
+          diseaseId: row.disease_id,
+          disease: row.disease,
+          totalPatients: row.total,
+          activePatients: row.active,
+          completedPatients: row.completed,
+          highRiskPatients: row.high_risk,
+        }));
+      },
+      [],
     );
   }
 

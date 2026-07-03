@@ -29,6 +29,12 @@ export interface RuleConditions {
   retryPolicy?: string | null;
   escalationRole?: string | null;
   notificationRole?: string | null;
+  /**
+   * Responsible role stamped onto workflow-generated activities
+   * (worklist_items.assigned_role). When unset, the assigned worker's own role
+   * is used (M31).
+   */
+  assignedRole?: string | null;
   /** Reserved for future conditional branching / extensions. */
   [key: string]: unknown;
 }
@@ -80,6 +86,23 @@ export interface WorkflowExecutionResult {
 
 // ── Admin (read/write) DTOs ──────────────────────────────────────────────────
 
+/**
+ * Read-only view of the retry_config the engine would apply for a rule's
+ * program + disease (resolved via outcome → event → disease → program). Admin
+ * display only — this is what RETRY_ACTIVITY actually uses at execution time.
+ * Null when no active retry_config exists for that program/disease.
+ */
+export interface ResolvedRetryConfigDto {
+  // Core contract: the effective retry policy the engine applies.
+  retryIntervalHours: number;
+  maxAttempts: number;
+  escalationAfterAttempts: number;
+  escalationRole: string | null;
+  // Optional presentation context (which program/disease this policy is for).
+  program?: string | null;
+  disease?: string | null;
+}
+
 /** A workflow rule resolved to human-readable values for the admin table. */
 export interface WorkflowRuleDto {
   id: string;
@@ -96,8 +119,15 @@ export interface WorkflowRuleDto {
   retryPolicy: string | null;
   escalationRole: string | null;
   notificationRole: string | null;
+  assignedRole: string | null;
   conditions: RuleConditions | null;
   isActive: boolean;
+  /**
+   * The effective retry_config for this rule's program + disease, resolved
+   * read-only for administrator display. RETRY_ACTIVITY derives its timing from
+   * here (not from delayDays); null when none is configured.
+   */
+  retryConfig: ResolvedRetryConfigDto | null;
 }
 
 export interface EventOptionDto {

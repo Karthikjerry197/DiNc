@@ -147,8 +147,11 @@ export class CdseService {
     return this.repo.getAllAlerts(citizenId);
   }
 
-  async getActiveAlertsForBell(limit = 20): Promise<AlertWithCitizen[]> {
-    return this.repo.getActiveAlertsForBell(limit);
+  async getActiveAlertsForBell(
+    limit = 20,
+    status: 'ACTIVE' | 'RESOLVED' = 'ACTIVE',
+  ): Promise<AlertWithCitizen[]> {
+    return this.repo.getActiveAlertsForBell(limit, status);
   }
 
   // ── Backward-compat shim for Care Plan module ─────────────────────────────────

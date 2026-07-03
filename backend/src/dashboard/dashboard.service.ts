@@ -1,9 +1,11 @@
 import { Injectable, Logger } from '@nestjs/common';
+import { hasPermission } from '../auth/permissions';
 import { DatabaseService } from '../database/database.service';
 import {
   ActivityItem,
   AdminDashboardSummary,
   ProgramSummaryItem,
+  RiskBreakdown,
   ServiceItem,
   WorklistRow,
 } from './dashboard.types';
@@ -30,9 +32,31 @@ export class DashboardService {
   private static readonly LINKED_ENROLLMENT =
     'EXISTS (SELECT 1 FROM public.enrollments en WHERE en.id = w.enrollment_id)';
 
+  /**
+   * Viewer scope fragment (M31): `$1` is the viewer's username, or NULL for
+   * viewers holding `dashboard.view.all` (scope disabled).
+   */
+  private static readonly ASSIGNEE_SCOPE =
+    '($1::varchar IS NULL OR w.assigned_to = $1)';
+
   constructor(private readonly db: DatabaseService) {}
 
-  async getAdminSummary(): Promise<AdminDashboardSummary> {
+  /**
+   * Dashboard summary, scoped by permission (M31): viewers holding
+   * `dashboard.view.all` see every activity; everyone else sees only the
+   * worklist items assigned to them (and their own recorded outcomes).
+   * Population-level stats (citizens, enrollments, programmes, knowledge,
+   * services, notifications) are not per-user activities and stay global.
+   */
+  async getAdminSummary(viewer: {
+    username: string;
+    role: string;
+  }): Promise<AdminDashboardSummary> {
+    const scopeTo = hasPermission(viewer.role, 'dashboard.view.all')
+      ? null
+      : viewer.username;
+    // `($1 IS NULL OR column = $1)` — NULL disables the scope (view-all).
+    const scope = [scopeTo];
     const [
       registeredCitizens,
       activeEnrollments,
@@ -76,39 +100,55 @@ export class DashboardService {
       ),
       this.count(
         `SELECT count(*)::int AS c FROM public.worklist_items w
-         WHERE w.status = 'PENDING' AND ${DashboardService.LINKED_ENROLLMENT}`,
+         WHERE w.status = 'PENDING' AND ${DashboardService.LINKED_ENROLLMENT}
+           AND ${DashboardService.ASSIGNEE_SCOPE}`,
+        scope,
       ),
       this.count(
         `SELECT count(*)::int AS c FROM public.worklist_items w
-         WHERE w.status = 'PENDING' AND w.due_date < CURRENT_DATE AND ${DashboardService.LINKED_ENROLLMENT}`,
+         WHERE w.status = 'PENDING' AND w.due_date < CURRENT_DATE AND ${DashboardService.LINKED_ENROLLMENT}
+           AND ${DashboardService.ASSIGNEE_SCOPE}`,
+        scope,
       ),
       this.count(
         `SELECT count(*)::int AS c FROM public.worklist_items w
-         WHERE w.status = 'COMPLETED' AND ${DashboardService.LINKED_ENROLLMENT}`,
+         WHERE w.status = 'COMPLETED' AND ${DashboardService.LINKED_ENROLLMENT}
+           AND ${DashboardService.ASSIGNEE_SCOPE}`,
+        scope,
       ),
       this.count(
         `SELECT count(*)::int AS c FROM public.worklist_items w
          WHERE w.status = 'COMPLETED' AND w.outcome_recorded_at::date = CURRENT_DATE
-           AND ${DashboardService.LINKED_ENROLLMENT}`,
+           AND ${DashboardService.LINKED_ENROLLMENT}
+           AND ${DashboardService.ASSIGNEE_SCOPE}`,
+        scope,
       ),
       this.count(
         `SELECT count(*)::int AS c FROM public.worklist_items w
-         WHERE w.status = 'REFERRED' AND ${DashboardService.LINKED_ENROLLMENT}`,
+         WHERE w.status = 'REFERRED' AND ${DashboardService.LINKED_ENROLLMENT}
+           AND ${DashboardService.ASSIGNEE_SCOPE}`,
+        scope,
       ),
       this.count(
         `SELECT count(*)::int AS c FROM public.outcome_records orr
          WHERE orr.data ->> 'outcomeCategory' = 'NEGATIVE'
-           AND orr.recorded_at::date = CURRENT_DATE`,
+           AND orr.recorded_at::date = CURRENT_DATE
+           AND ($1::varchar IS NULL OR orr.recorded_by = $1)`,
+        scope,
       ),
       this.count(
         `SELECT count(*)::int AS c FROM public.worklist_items w
-         WHERE w.status = 'EMERGENCY' AND ${DashboardService.LINKED_ENROLLMENT}`,
+         WHERE w.status = 'EMERGENCY' AND ${DashboardService.LINKED_ENROLLMENT}
+           AND ${DashboardService.ASSIGNEE_SCOPE}`,
+        scope,
       ),
       this.services(),
       this.programs(),
       this.recentActivity(),
-      this.recentWorklist(),
+      this.recentWorklist(scopeTo),
     ]);
+
+    const risk = await this.riskBreakdown();
 
     return {
       stats: {
@@ -123,6 +163,7 @@ export class DashboardService {
         pendingTasks,
         overdueTasks,
       },
+      risk,
       worklist: {
         pending: pendingTasks,
         overdue: overdueTasks,
@@ -165,10 +206,47 @@ export class DashboardService {
     }
   }
 
+  /**
+   * Population-level clinical risk counts (M32), one citizen counted once at
+   * their severest level. NO new risk logic: severe/moderate read the ACTIVE
+   * clinical_alerts the CDSE already writes, and low mirrors
+   * CdseService.getLatestRisk's fallback (has a consultation, no active alert).
+   */
+  private async riskBreakdown(): Promise<RiskBreakdown> {
+    const [severe, moderate, low] = await Promise.all([
+      this.count(
+        `SELECT count(DISTINCT citizen_id)::int AS c
+         FROM public.clinical_alerts
+         WHERE status = 'ACTIVE' AND risk_level = 'SEVERE'`,
+      ),
+      this.count(
+        `SELECT count(DISTINCT ca.citizen_id)::int AS c
+         FROM public.clinical_alerts ca
+         WHERE ca.status = 'ACTIVE' AND ca.risk_level = 'MODERATE'
+           AND NOT EXISTS (
+             SELECT 1 FROM public.clinical_alerts s
+             WHERE s.citizen_id = ca.citizen_id
+               AND s.status = 'ACTIVE' AND s.risk_level = 'SEVERE'
+           )`,
+      ),
+      this.count(
+        `SELECT count(DISTINCT e.citizen_id)::int AS c
+         FROM public.outcome_records orec
+         JOIN public.worklist_items w ON w.id = orec.worklist_item_id
+         JOIN public.enrollments e ON e.id = w.enrollment_id
+         WHERE NOT EXISTS (
+           SELECT 1 FROM public.clinical_alerts ca
+           WHERE ca.citizen_id = e.citizen_id AND ca.status = 'ACTIVE'
+         )`,
+      ),
+    ]);
+    return { low, moderate, severe };
+  }
+
   /** Runs a single-row `count(*) AS c` query, returning the count or `null` on failure. */
-  private async count(sql: string): Promise<number | null> {
+  private async count(sql: string, params: unknown[] = []): Promise<number | null> {
     try {
-      const result = await this.db.query<{ c: number }>(sql);
+      const result = await this.db.query<{ c: number }>(sql, params);
       return result.rows[0]?.c ?? 0;
     } catch (error) {
       this.logger.warn(`Dashboard count query failed: ${(error as Error).message}`);
@@ -249,8 +327,11 @@ export class DashboardService {
     }
   }
 
-  /** A handful of upcoming worklist items, joined to citizen + activity for context. */
-  private async recentWorklist(): Promise<WorklistRow[]> {
+  /**
+   * A handful of upcoming worklist items, joined to citizen + activity for
+   * context. `assignedTo` scopes the list to one user's items (null = all).
+   */
+  private async recentWorklist(assignedTo: string | null): Promise<WorklistRow[]> {
     try {
       const result = await this.db.query<{
         uhid: string | null;
@@ -270,8 +351,10 @@ export class DashboardService {
          JOIN public.enrollments e ON e.id = w.enrollment_id
          LEFT JOIN public.citizens c ON c.id = e.citizen_id
          LEFT JOIN public.events ev ON ev.id = w.event_id
+         WHERE ${DashboardService.ASSIGNEE_SCOPE}
          ORDER BY w.due_date ASC NULLS LAST
          LIMIT 6`,
+        [assignedTo],
       );
       return result.rows.map((row) => ({
         uhid: row.uhid,

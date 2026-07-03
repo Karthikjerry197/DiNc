@@ -111,6 +111,8 @@ export interface CreateEnrollmentInput {
   status: string;
   remarks: string | null;
   enrolledBy: string | null;
+  /** Care worker responsible for this enrollment (enrollments.assigned_worker). */
+  assignedTo: string | null;
 }
 
 /**

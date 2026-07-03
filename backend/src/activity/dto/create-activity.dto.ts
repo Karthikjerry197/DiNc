@@ -29,6 +29,12 @@ export class CreateActivityDto {
   @MaxLength(100, { message: 'Assignee must be 100 characters or fewer.' })
   assignedTo?: string;
 
+  /** Responsible role (worklist_items.assigned_role). Set by the Workflow Engine. */
+  @IsOptional()
+  @IsString()
+  @MaxLength(50, { message: 'Assigned role must be 50 characters or fewer.' })
+  assignedRole?: string;
+
   @IsOptional()
   @IsIn(ACTIVITY_PRIORITIES, { message: 'Invalid priority.' })
   priority?: string;

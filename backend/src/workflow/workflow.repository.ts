@@ -2,12 +2,35 @@ import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
 import { DatabaseService } from '../database/database.service';
 import {
   EventOptionDto,
+  ResolvedRetryConfigDto,
   RetryConfigDto,
   RetryPolicy,
   RuleConditions,
   RuleRow,
   WorkflowRuleDto,
 } from './workflow.types';
+
+/** Row shape for the admin rule reads (list + single), incl. resolved retry_config. */
+interface RuleQueryRow {
+  id: string;
+  outcome: string;
+  outcome_code: string;
+  category: string;
+  for_event: string | null;
+  generated_event_id: string | null;
+  next_activity: string | null;
+  delay_days: number;
+  priority: string;
+  conditions: RuleConditions | null;
+  is_active: boolean;
+  // Resolved retry_config context (read-only; null when none configured).
+  retry_program: string | null;
+  retry_disease: string | null;
+  retry_interval_hours: number | null;
+  retry_max_attempts: number | null;
+  retry_escalation_after: number | null;
+  retry_escalation_role: string | null;
+}
 
 /**
  * Data-access layer for the Workflow Rules Engine. The ONLY place holding SQL for
@@ -23,6 +46,27 @@ import {
 @Injectable()
 export class WorkflowRepository implements OnModuleInit {
   private readonly logger = new Logger(WorkflowRepository.name);
+
+  /**
+   * Read-only SELECT columns that resolve the retry_config applicable to a rule
+   * (via the outcome's event → disease → program). Shared by the list and
+   * single-rule reads. Purely additive — no execution/behaviour impact.
+   */
+  private static readonly RETRY_COLUMNS = `
+    rp.name AS retry_program,
+    rd.name AS retry_disease,
+    rc.retry_interval_hours AS retry_interval_hours,
+    rc.max_attempts AS retry_max_attempts,
+    rc.escalation_after_attempts AS retry_escalation_after,
+    rc.escalation_role AS retry_escalation_role`;
+
+  /** The joins backing {@link RETRY_COLUMNS}. All LEFT — a rule always returns. */
+  private static readonly RETRY_JOINS = `
+    LEFT JOIN public.diseases rd ON rd.id = fe.disease_id
+    LEFT JOIN public.sub_programs rsp ON rsp.id = rd.sub_program_id
+    LEFT JOIN public.programs rp ON rp.id = rsp.program_id
+    LEFT JOIN public.retry_config rc
+      ON rc.program_id = rp.id AND rc.disease_id = rd.id AND rc.is_active = true`;
 
   /** Programs treated as acute → Urgent retry policy when seeding retry_config. */
   private static readonly URGENT_PROGRAM_CODES = [
@@ -100,21 +144,14 @@ export class WorkflowRepository implements OnModuleInit {
 
   // ── Admin reads/writes ─────────────────────────────────────────────────────
 
-  /** All rules resolved to human-readable values for the Administration table. */
+  /**
+   * All rules resolved to human-readable values for the Administration table.
+   * Read-only: also resolves the retry_config the engine would apply for each
+   * rule's program + disease (outcome → event → disease → program) so the admin
+   * UI can display the effective retry timing for RETRY_ACTIVITY rules.
+   */
   async listRules(): Promise<WorkflowRuleDto[]> {
-    const result = await this.db.query<{
-      id: string;
-      outcome: string;
-      outcome_code: string;
-      category: string;
-      for_event: string | null;
-      generated_event_id: string | null;
-      next_activity: string | null;
-      delay_days: number;
-      priority: string;
-      conditions: RuleConditions | null;
-      is_active: boolean;
-    }>(
+    const result = await this.db.query<RuleQueryRow>(
       `SELECT r.id,
               ot.name AS outcome,
               ot.code AS outcome_code,
@@ -125,11 +162,13 @@ export class WorkflowRepository implements OnModuleInit {
               r.delay_days,
               r.priority,
               r.conditions,
-              r.is_active
+              r.is_active,
+              ${WorkflowRepository.RETRY_COLUMNS}
        FROM public.rules r
        JOIN public.outcome_types ot ON ot.id = r.outcome_type_id
        LEFT JOIN public.events fe ON fe.id = ot.event_id
        LEFT JOIN public.events ge ON ge.id = r.generated_event_id
+       ${WorkflowRepository.RETRY_JOINS}
        ORDER BY fe.name NULLS LAST, ot.category, ot.name
        LIMIT 1000`,
     );
@@ -137,26 +176,16 @@ export class WorkflowRepository implements OnModuleInit {
   }
 
   async findRuleById(id: string): Promise<WorkflowRuleDto | null> {
-    const result = await this.db.query<{
-      id: string;
-      outcome: string;
-      outcome_code: string;
-      category: string;
-      for_event: string | null;
-      generated_event_id: string | null;
-      next_activity: string | null;
-      delay_days: number;
-      priority: string;
-      conditions: RuleConditions | null;
-      is_active: boolean;
-    }>(
+    const result = await this.db.query<RuleQueryRow>(
       `SELECT r.id, ot.name AS outcome, ot.code AS outcome_code, ot.category,
               fe.name AS for_event, r.generated_event_id, ge.name AS next_activity,
-              r.delay_days, r.priority, r.conditions, r.is_active
+              r.delay_days, r.priority, r.conditions, r.is_active,
+              ${WorkflowRepository.RETRY_COLUMNS}
        FROM public.rules r
        JOIN public.outcome_types ot ON ot.id = r.outcome_type_id
        LEFT JOIN public.events fe ON fe.id = ot.event_id
        LEFT JOIN public.events ge ON ge.id = r.generated_event_id
+       ${WorkflowRepository.RETRY_JOINS}
        WHERE r.id = $1
        LIMIT 1`,
       [id],
@@ -310,20 +339,19 @@ export class WorkflowRepository implements OnModuleInit {
     }
   }
 
-  private static toRuleDto(row: {
-    id: string;
-    outcome: string;
-    outcome_code: string;
-    category: string;
-    for_event: string | null;
-    generated_event_id: string | null;
-    next_activity: string | null;
-    delay_days: number;
-    priority: string;
-    conditions: RuleConditions | null;
-    is_active: boolean;
-  }): WorkflowRuleDto {
+  private static toRuleDto(row: RuleQueryRow): WorkflowRuleDto {
     const c = row.conditions ?? {};
+    const retryConfig: ResolvedRetryConfigDto | null =
+      row.retry_interval_hours == null
+        ? null
+        : {
+            retryIntervalHours: row.retry_interval_hours,
+            maxAttempts: row.retry_max_attempts ?? 0,
+            escalationAfterAttempts: row.retry_escalation_after ?? 0,
+            escalationRole: row.retry_escalation_role,
+            program: row.retry_program,
+            disease: row.retry_disease,
+          };
     return {
       id: row.id,
       outcome: row.outcome,
@@ -338,8 +366,10 @@ export class WorkflowRepository implements OnModuleInit {
       retryPolicy: (c.retryPolicy as string) ?? null,
       escalationRole: (c.escalationRole as string) ?? null,
       notificationRole: (c.notificationRole as string) ?? null,
+      assignedRole: (c.assignedRole as string) ?? null,
       conditions: row.conditions,
       isActive: row.is_active,
+      retryConfig,
     };
   }
 }

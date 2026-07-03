@@ -1,6 +1,7 @@
 import { Module } from '@nestjs/common';
 import { AuthModule } from '../auth/auth.module';
 import { ActivityModule } from '../activity/activity.module';
+import { CdseModule } from '../cdse/cdse.module';
 import { EnrollmentModule } from '../enrollment/enrollment.module';
 import { WorkflowController } from './workflow.controller';
 import { WorkflowEngine } from './workflow.engine';
@@ -17,7 +18,7 @@ import { WorkflowService } from './workflow.service';
  * processing to it instead of containing workflow logic of its own.
  */
 @Module({
-  imports: [AuthModule, ActivityModule, EnrollmentModule],
+  imports: [AuthModule, ActivityModule, CdseModule, EnrollmentModule],
   controllers: [WorkflowController],
   providers: [WorkflowEngine, WorkflowService, WorkflowRepository],
   exports: [WorkflowEngine],

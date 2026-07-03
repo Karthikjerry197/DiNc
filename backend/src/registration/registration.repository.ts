@@ -185,10 +185,13 @@ export class RegistrationRepository implements OnModuleInit {
 
         // Initial activity for the program's first event (same shape as
         // ActivityService.insertActivity) — created inside the same transaction.
+        // assigned_role mirrors the M31 resolver: the assigned worker's own role.
         const act = await tx.query<{ id: string }>(
           `INSERT INTO public.worklist_items
-             (enrollment_id, event_id, program_id, disease_id, assigned_to, due_date, priority, status, version)
-           VALUES ($1,$2,$3,$4,$5,$6,'NORMAL','PENDING',1)
+             (enrollment_id, event_id, program_id, disease_id, assigned_to, assigned_role, due_date, priority, status, version)
+           VALUES ($1,$2,$3,$4,$5,
+                   (SELECT u.role FROM public.users u WHERE u.username = $5 AND u.is_active = true),
+                   $6,'NORMAL','PENDING',1)
            RETURNING id`,
           [enrollmentId, target.eventId, target.programId, target.diseaseId, assignedTo, today],
         );

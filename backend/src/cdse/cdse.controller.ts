@@ -1,4 +1,4 @@
-import { Controller, Get, NotFoundException, Param, UseGuards } from '@nestjs/common';
+import { Controller, Get, NotFoundException, Param, Query, UseGuards } from '@nestjs/common';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { CdseService } from './cdse.service';
 
@@ -32,9 +32,13 @@ export class CdseController {
     return this.cdse.getAllAlerts(citizenId);
   }
 
+  /** SEVERE alerts feed. `?status=RESOLVED` returns resolved history instead of active. */
   @Get('alerts/active')
-  getActiveAlerts() {
-    return this.cdse.getActiveAlertsForBell();
+  getActiveAlerts(@Query('status') status?: string) {
+    return this.cdse.getActiveAlertsForBell(
+      20,
+      status?.toUpperCase() === 'RESOLVED' ? 'RESOLVED' : 'ACTIVE',
+    );
   }
 
   @Get('citizens/:citizenId/cdse-recommendations')

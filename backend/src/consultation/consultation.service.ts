@@ -306,7 +306,10 @@ export class ConsultationService {
   async getTimeline(citizenId: string): Promise<TimelineEntryDto[]> {
     const rows = await this.repo.findTimeline(citizenId);
     return rows.map((row) => ({
-      kind: row.kind === 'ENROLLMENT' ? 'ENROLLMENT' : 'ACTIVITY',
+      kind:
+        row.kind === 'ENROLLMENT' || row.kind === 'COMPLETION'
+          ? (row.kind as 'ENROLLMENT' | 'COMPLETION')
+          : 'ACTIVITY',
       id: row.id,
       title: row.title,
       program: row.program,
@@ -360,7 +363,10 @@ export class ConsultationService {
   private async resolveGuidebook(row: ConsultationContextRow): Promise<GuidebookDetail | null> {
     const ref = await this.guidebooks.matchByText(ConsultationService.haystack(row));
     if (!ref) return null;
-    return this.guidebooks.detail(ref.id);
+    // includeCounselling=false: the workspace renders counselling content
+    // interactively through the wizard (findCounsellingSections) — merging it
+    // into the guide panel's sections would show the same content twice.
+    return this.guidebooks.detail(ref.id, false);
   }
 
   /** Clinical-context text for guidebook resolution (reuses the matcher). */

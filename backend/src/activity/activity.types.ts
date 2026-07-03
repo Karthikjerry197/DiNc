@@ -70,6 +70,7 @@ export interface CreateActivityInput {
   programId: string | null;
   diseaseId: string | null;
   assignedTo: string | null;
+  assignedRole: string | null;
   dueDate: string;
   priority: string;
 }

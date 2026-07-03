@@ -1,4 +1,5 @@
 import { Injectable, Logger, NotFoundException } from '@nestjs/common';
+import { hasPermission } from '../auth/permissions';
 import { DatabaseService } from '../database/database.service';
 import { GuidebooksService } from '../guidebooks/guidebooks.service';
 import { GuidebookRef } from '../guidebooks/guidebooks.types';
@@ -65,10 +66,22 @@ export class WorklistService {
     return { guidebook };
   }
 
-  async getAdminOverview(): Promise<WorklistOverview> {
+  /**
+   * The Worklist page payload, scoped by permission (M31): viewers holding
+   * `worklist.view.all` see every item; everyone else sees only the items
+   * assigned to them ("My Worklist" is literal). The scope is permission-keyed,
+   * not role-keyed, so it can later be driven by configurable permissions.
+   */
+  async getAdminOverview(viewer: {
+    username: string;
+    role: string;
+  }): Promise<WorklistOverview> {
+    const scopeTo = hasPermission(viewer.role, 'worklist.view.all')
+      ? null
+      : viewer.username;
     const [stats, items, programs, assignees, monitoring] = await Promise.all([
-      this.stats(),
-      this.items(),
+      this.stats(scopeTo),
+      this.items(scopeTo),
       this.programs(),
       this.assignees(),
       this.monitoring(),
@@ -85,7 +98,8 @@ export class WorklistService {
     return { stats, items: enriched, programs, assignees, monitoring };
   }
 
-  private async stats(): Promise<WorklistStats> {
+  /** Optional viewer scope: when `assignedTo` is set, only that user's items count. */
+  private async stats(assignedTo: string | null): Promise<WorklistStats> {
     const empty: WorklistStats = {
       total: null,
       pending: null,
@@ -110,7 +124,9 @@ export class WorklistService {
                 count(*) FILTER (WHERE status = 'COMPLETED')::int AS completed,
                 count(*) FILTER (WHERE is_escalation = true)::int AS escalations
          FROM public.worklist_items w
-         WHERE ${WorklistService.LINKED_ENROLLMENT}`,
+         WHERE ${WorklistService.LINKED_ENROLLMENT}
+           AND ($1::varchar IS NULL OR w.assigned_to = $1)`,
+        [assignedTo],
       );
       const row = result.rows[0];
       if (!row) return empty;
@@ -128,7 +144,8 @@ export class WorklistService {
     }
   }
 
-  private async items(): Promise<WorklistItem[]> {
+  /** Optional viewer scope: when `assignedTo` is set, only that user's items list. */
+  private async items(assignedTo: string | null): Promise<WorklistItem[]> {
     try {
       const result = await this.db.query<{
         id: string;
@@ -167,8 +184,10 @@ export class WorklistService {
          LEFT JOIN public.diseases d ON d.id = w.disease_id
          LEFT JOIN public.sub_programs sp ON sp.id = d.sub_program_id
          LEFT JOIN public.events ev ON ev.id = w.event_id
+         WHERE ($1::varchar IS NULL OR w.assigned_to = $1)
          ORDER BY w.due_date ASC NULLS LAST, w.created_at DESC
          LIMIT ${WorklistService.ITEM_LIMIT}`,
+        [assignedTo],
       );
       return result.rows.map((row) => ({
         id: row.id,

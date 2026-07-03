@@ -1,10 +1,20 @@
-import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
-import { DatabaseService } from '../database/database.service';
 import {
+  BadRequestException,
+  ConflictException,
+  Injectable,
+  Logger,
+  OnModuleInit,
+} from '@nestjs/common';
+import { DatabaseService } from '../database/database.service';
+import { ImportGuidebookDto } from './dto/import-guidebook.dto';
+import {
+  BulkGuidebookRowResult,
+  BulkImportResult,
   GuidebookDetail,
   GuidebookListItem,
   GuidebookRef,
   GuidebookSections,
+  GuidebookVersion,
 } from './guidebooks.types';
 
 /**
@@ -23,6 +33,56 @@ export class GuidebooksService implements OnModuleInit {
 
   async onModuleInit(): Promise<void> {
     await this.migrateGuidebookSections();
+    await this.migrateGuidebookVersions();
+  }
+
+  /**
+   * Creates the guidebook_versions table (idempotent) and backfills version 1
+   * (action BASELINE, no author) for any guidebook that has no history yet, so
+   * every guidebook always has at least one version. New imports write version 1
+   * themselves (action IMPORTED); future edit paths call recordVersion() and
+   * automatically produce version 2, 3, … — no further schema work needed.
+   */
+  private async migrateGuidebookVersions(): Promise<void> {
+    try {
+      await this.db.query(`
+        CREATE TABLE IF NOT EXISTS public.guidebook_versions (
+          id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+          guidebook_id UUID NOT NULL
+            REFERENCES public.guidebooks(id) ON DELETE CASCADE,
+          version_number INTEGER NOT NULL,
+          action VARCHAR(20) NOT NULL,
+          changed_by VARCHAR(100),
+          change_summary TEXT,
+          snapshot JSONB,
+          created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+          UNIQUE (guidebook_id, version_number)
+        )
+      `);
+      await this.db.query(`
+        CREATE INDEX IF NOT EXISTS idx_guidebook_versions_guidebook
+          ON public.guidebook_versions(guidebook_id, version_number DESC)
+      `);
+
+      const result = await this.db.query(`
+        INSERT INTO public.guidebook_versions
+          (guidebook_id, version_number, action, change_summary, snapshot, created_at)
+        SELECT g.id, 1, 'BASELINE', 'Initial record', g.guidebook_sections, g.updated_at
+        FROM public.guidebooks g
+        WHERE NOT EXISTS (
+          SELECT 1 FROM public.guidebook_versions v WHERE v.guidebook_id = g.id
+        )
+      `);
+      if (result.rowCount) {
+        this.logger.log(
+          `guidebook_versions baseline written for ${result.rowCount} guidebook(s).`,
+        );
+      }
+    } catch (error) {
+      this.logger.error(
+        `guidebook_versions migration failed: ${(error as Error).message}`,
+      );
+    }
   }
 
   /**
@@ -116,8 +176,23 @@ export class GuidebooksService implements OnModuleInit {
     }
   }
 
-  /** Returns full detail for a guidebook, or null when the id matches no record. */
-  async detail(id: string): Promise<GuidebookDetail | null> {
+  /**
+   * Returns full detail for a guidebook, or null when the id matches no record.
+   *
+   * `sections` is composed at read time from two sources (no data duplication):
+   *   1. guidebook_sections JSONB — narrative/imported sections, in stored order.
+   *   2. The guidebook's counselling protocol (16E normalized tables) — one
+   *      section per counselling section (name → item bodies, in sort_order).
+   * Counselling content stays in its normalized home (Admin CRUD, consultation
+   * wizard, CDSE all keep reading it there); the Guidebook view reflects it live.
+   *
+   * Pass `includeCounselling = false` where the caller already renders the
+   * counselling content itself (e.g. the consultation workspace wizard).
+   */
+  async detail(
+    id: string,
+    includeCounselling = true,
+  ): Promise<GuidebookDetail | null> {
     try {
       const result = await this.db.query<{
         id: string;
@@ -131,17 +206,25 @@ export class GuidebooksService implements OnModuleInit {
         is_active: boolean;
         updated_at: Date;
         guidebook_sections: unknown;
+        version: number | null;
       }>(
-        `SELECT id, code, category, title, summary, key_steps,
-                escalation_criteria, source, is_active, updated_at,
-                guidebook_sections
-         FROM public.guidebooks
-         WHERE id = $1
+        `SELECT g.id, g.code, g.category, g.title, g.summary, g.key_steps,
+                g.escalation_criteria, g.source, g.is_active, g.updated_at,
+                g.guidebook_sections,
+                (SELECT MAX(v.version_number)
+                 FROM public.guidebook_versions v
+                 WHERE v.guidebook_id = g.id) AS version
+         FROM public.guidebooks g
+         WHERE g.id = $1
          LIMIT 1`,
         [id],
       );
       const row = result.rows[0];
       if (!row) return null;
+      const stored = GuidebooksService.parseSections(row.guidebook_sections);
+      const counselling = includeCounselling
+        ? await this.counsellingSections(id)
+        : {};
       return {
         id: row.id,
         code: row.code,
@@ -149,15 +232,262 @@ export class GuidebooksService implements OnModuleInit {
         title: row.title,
         status: row.is_active ? 'Active' : 'Inactive',
         updatedAt: row.updated_at.toISOString(),
+        version: row.version,
         summary: row.summary,
         evidenceSource: row.source,
         keyRecommendations: GuidebooksService.toList(row.key_steps),
         referralCriteria: GuidebooksService.toList(row.escalation_criteria),
-        sections: GuidebooksService.parseSections(row.guidebook_sections),
+        sections: { ...stored, ...counselling },
       };
     } catch (error) {
       this.logger.warn(`Guidebook detail query failed: ${(error as Error).message}`);
       return null;
+    }
+  }
+
+  /**
+   * Imports a new guidebook ("New Protocol") into the existing table. Reuses the
+   * guidebook_sections JSONB column verbatim — no new storage format. Section
+   * names are arbitrary and preserved as given; the row renders through the same
+   * data-driven detail path as every other guidebook.
+   */
+  async create(
+    input: ImportGuidebookDto,
+    changedBy: string | null = null,
+  ): Promise<GuidebookListItem> {
+    const code = input.code.trim();
+    const dup = await this.db.query(
+      `SELECT 1 FROM public.guidebooks WHERE code = $1 LIMIT 1`,
+      [code],
+    );
+    if (dup.rows.length > 0) {
+      throw new ConflictException(`A guidebook with code '${code}' already exists.`);
+    }
+
+    const sections = GuidebooksService.normalizeSections(input.sections);
+    if (Object.keys(sections).length === 0) {
+      throw new BadRequestException(
+        'The guidebook must contain at least one section with text or list content.',
+      );
+    }
+
+    const result = await this.db.query<{
+      id: string;
+      code: string;
+      category: string;
+      title: string;
+      summary: string | null;
+      is_active: boolean;
+    }>(
+      `INSERT INTO public.guidebooks (code, category, title, source, is_active, guidebook_sections)
+       VALUES ($1, $2, $3, $4, $5, $6::jsonb)
+       RETURNING id, code, category, title, summary, is_active`,
+      [
+        code,
+        input.category.trim(),
+        input.title.trim(),
+        input.source?.trim() || null,
+        input.isActive ?? true,
+        JSON.stringify(sections),
+      ],
+    );
+    const row = result.rows[0];
+    await this.recordVersion(row.id, 'IMPORTED', changedBy, 'Imported from JSON', sections);
+    return {
+      id: row.id,
+      code: row.code,
+      category: row.category,
+      title: row.title,
+      summary: row.summary,
+      status: row.is_active ? 'Active' : 'Inactive',
+    };
+  }
+
+  /**
+   * Bulk import: each guidebook goes through the exact single-import pipeline
+   * ({@link create}) independently — same validation, same duplicate-code check,
+   * same version recording. Mirrors the patients bulk-registration semantics:
+   * per-row atomic with a classified per-row result, never all-or-nothing.
+   * Codes repeated within the payload are classified as DUPLICATE without
+   * touching the database.
+   */
+  async bulkImport(
+    inputs: ImportGuidebookDto[],
+    changedBy: string | null,
+  ): Promise<BulkImportResult> {
+    const result: BulkImportResult = {
+      total: inputs.length,
+      created: 0,
+      duplicate: 0,
+      failed: 0,
+      rows: [],
+    };
+    const seenCodes = new Set<string>();
+
+    for (let i = 0; i < inputs.length; i += 1) {
+      const input = inputs[i];
+      const code = input.code.trim();
+      const row: BulkGuidebookRowResult = {
+        row: i + 1,
+        code: code || null,
+        title: input.title?.trim() || null,
+        status: 'CREATED',
+        reason: null,
+      };
+
+      if (seenCodes.has(code.toUpperCase())) {
+        row.status = 'DUPLICATE';
+        row.reason = 'Code repeated within the uploaded file.';
+      } else {
+        seenCodes.add(code.toUpperCase());
+        try {
+          await this.create(input, changedBy);
+        } catch (error) {
+          if (error instanceof ConflictException) {
+            row.status = 'DUPLICATE';
+          } else {
+            row.status = 'FAILED';
+          }
+          row.reason =
+            error instanceof Error ? error.message : 'Import failed.';
+        }
+      }
+
+      if (row.status === 'CREATED') result.created += 1;
+      else if (row.status === 'DUPLICATE') result.duplicate += 1;
+      else result.failed += 1;
+      result.rows.push(row);
+    }
+    return result;
+  }
+
+  /** Version history for a guidebook, newest first. */
+  async versions(guidebookId: string): Promise<GuidebookVersion[]> {
+    try {
+      const result = await this.db.query<{
+        version_number: number;
+        action: string;
+        changed_by: string | null;
+        change_summary: string | null;
+        created_at: Date;
+      }>(
+        `SELECT version_number, action, changed_by, change_summary, created_at
+         FROM public.guidebook_versions
+         WHERE guidebook_id = $1
+         ORDER BY version_number DESC`,
+        [guidebookId],
+      );
+      return result.rows.map((row) => ({
+        versionNumber: row.version_number,
+        action: row.action,
+        changedBy: row.changed_by,
+        changeSummary: row.change_summary,
+        createdAt: row.created_at.toISOString(),
+      }));
+    } catch (error) {
+      this.logger.warn(
+        `Guidebook versions query failed: ${(error as Error).message}`,
+      );
+      return [];
+    }
+  }
+
+  /**
+   * Appends the next version row for a guidebook (MAX + 1, starting at 1).
+   * Every future write path (edit, section update, …) should call this after
+   * persisting its change so history accrues automatically. Failures are logged
+   * but never fail the underlying write.
+   */
+  private async recordVersion(
+    guidebookId: string,
+    action: string,
+    changedBy: string | null,
+    changeSummary: string | null,
+    snapshot: GuidebookSections | null,
+  ): Promise<void> {
+    try {
+      await this.db.query(
+        `INSERT INTO public.guidebook_versions
+           (guidebook_id, version_number, action, changed_by, change_summary, snapshot)
+         VALUES (
+           $1,
+           COALESCE((SELECT MAX(version_number) FROM public.guidebook_versions
+                     WHERE guidebook_id = $1), 0) + 1,
+           $2, $3, $4, $5::jsonb
+         )`,
+        [
+          guidebookId,
+          action,
+          changedBy,
+          changeSummary,
+          snapshot ? JSON.stringify(snapshot) : null,
+        ],
+      );
+    } catch (error) {
+      this.logger.warn(
+        `Version record failed for guidebook ${guidebookId}: ${(error as Error).message}`,
+      );
+    }
+  }
+
+  /**
+   * Live read-time projection of the guidebook's counselling protocol content
+   * (16E: counselling_protocols → counselling_sections → counselling_items)
+   * into the data-driven section map: section name → item bodies in sort_order.
+   * Mirrors the resolution semantics of the consultation repository's
+   * findCounsellingSections: the first active protocol's sections, with a legacy
+   * fallback to sections attached directly to the guidebook. Sections without
+   * active items are omitted (no content to display). Returns {} on any error
+   * or for guidebooks with no counselling content (e.g. JSON-imported ones),
+   * which leaves the JSONB-stored sections untouched.
+   */
+  private async counsellingSections(
+    guidebookId: string,
+  ): Promise<GuidebookSections> {
+    try {
+      const result = await this.db.query<{
+        section_name: string;
+        item_body: string;
+      }>(
+        `SELECT cs.name AS section_name, ci.body AS item_body
+         FROM   public.counselling_sections cs
+         JOIN   public.counselling_items ci
+                  ON ci.section_id = cs.id AND ci.is_active = true
+         WHERE  cs.is_active = true
+           AND  (
+                 cs.protocol_id = (
+                   SELECT id FROM public.counselling_protocols
+                   WHERE  guidebook_id = $1 AND is_active = true
+                   ORDER  BY sort_order ASC LIMIT 1
+                 )
+                 OR
+                 (
+                   cs.protocol_id IS NULL
+                   AND cs.guidebook_id = $1
+                   AND NOT EXISTS (
+                     SELECT 1 FROM public.counselling_protocols
+                     WHERE guidebook_id = $1 AND is_active = true
+                   )
+                 )
+               )
+         ORDER  BY cs.sort_order, ci.sort_order`,
+        [guidebookId],
+      );
+      const sections: GuidebookSections = {};
+      for (const row of result.rows) {
+        const items = sections[row.section_name];
+        if (Array.isArray(items)) {
+          items.push(row.item_body);
+        } else {
+          sections[row.section_name] = [row.item_body];
+        }
+      }
+      return sections;
+    } catch (error) {
+      this.logger.warn(
+        `Counselling sections query failed: ${(error as Error).message}`,
+      );
+      return {};
     }
   }
 
@@ -212,6 +542,33 @@ export class GuidebooksService implements OnModuleInit {
       } else if (Array.isArray(val)) {
         const items = val.filter((s): s is string => typeof s === 'string');
         if (items.length > 0) sections[key] = items;
+      }
+    }
+    return sections;
+  }
+
+  /**
+   * Normalizes an imported section map into the stored shape: trims keys and
+   * values, keeps only non-empty strings and non-empty string arrays, and drops
+   * anything else. Same value rules as {@link parseSections}, applied on write so
+   * the stored JSONB is always clean. Key order is preserved as provided.
+   */
+  private static normalizeSections(
+    raw: Record<string, unknown> | null | undefined,
+  ): GuidebookSections {
+    const sections: GuidebookSections = {};
+    for (const [key, val] of Object.entries(raw ?? {})) {
+      const k = key.trim();
+      if (!k) continue;
+      if (typeof val === 'string') {
+        const text = val.trim();
+        if (text) sections[k] = text;
+      } else if (Array.isArray(val)) {
+        const items = val
+          .filter((s): s is string => typeof s === 'string')
+          .map((s) => s.trim())
+          .filter((s) => s.length > 0);
+        if (items.length > 0) sections[k] = items;
       }
     }
     return sections;

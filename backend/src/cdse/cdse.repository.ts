@@ -602,7 +602,17 @@ ${EXPLICIT_RISK_CATEGORY_MAP}
     return res.rows.map((r) => this.mapAlert(r));
   }
 
-  async getActiveAlertsForBell(limit = 20): Promise<AlertWithCitizen[]> {
+  /**
+   * The Action Centre feed (TopBar bell, Notifications page, Priority Alerts):
+   * SEVERE alerts only (M32 decision — moderate patients stay in the system and
+   * surface through the Dashboard risk analytics, not notifications). `status`
+   * filters the lifecycle: ACTIVE (default, unresolved) or RESOLVED (M33.1
+   * Action Centre history view).
+   */
+  async getActiveAlertsForBell(
+    limit = 20,
+    status: 'ACTIVE' | 'RESOLVED' = 'ACTIVE',
+  ): Promise<AlertWithCitizen[]> {
     const res = await this.db.query<{
       id: string;
       citizen_id: string;
@@ -620,10 +630,10 @@ ${EXPLICIT_RISK_CATEGORY_MAP}
               c.full_name AS citizen_name, c.uhid
        FROM public.clinical_alerts ca
        JOIN public.citizens c ON c.id = ca.citizen_id
-       WHERE ca.status = 'ACTIVE'
+       WHERE ca.status = $2 AND ca.risk_level = 'SEVERE'
        ORDER BY ca.triggered_at DESC
        LIMIT $1`,
-      [limit],
+      [limit, status],
     );
     return res.rows.map((r) => ({
       ...this.mapAlert(r),

@@ -1420,6 +1420,21 @@ export class ConsultationRepository implements OnModuleInit {
            LEFT JOIN public.events ev ON ev.id = w.event_id
            LEFT JOIN public.programs p ON p.id = COALESCE(w.program_id, e.program_id)
            WHERE e.citizen_id = $1
+         UNION ALL
+         -- Care-plan completion marker (M33): one entry when the enrollment
+         -- reached COMPLETED, dated by the status change (updated_at).
+         SELECT 'COMPLETION'::text,
+                e.id::text || ':completed',
+                'Care plan completed',
+                p.name,
+                e.status,
+                e.updated_at,
+                NULL::text,
+                NULL::text,
+                e.updated_at
+           FROM public.enrollments e
+           LEFT JOIN public.programs p ON p.id = e.program_id
+           WHERE e.citizen_id = $1 AND e.status = 'COMPLETED'
        ) feed
        ORDER BY date ASC NULLS LAST, sort_at ASC
        LIMIT 200`,

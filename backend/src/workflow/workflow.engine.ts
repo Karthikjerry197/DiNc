@@ -1,5 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { ActivityService } from '../activity/activity.service';
+import { CdseRepository } from '../cdse/cdse.repository';
 import { EnrollmentService } from '../enrollment/enrollment.service';
 import { WorkflowRepository } from './workflow.repository';
 import {
@@ -37,6 +38,7 @@ export class WorkflowEngine {
     private readonly repo: WorkflowRepository,
     private readonly activities: ActivityService,
     private readonly enrollments: EnrollmentService,
+    private readonly cdseRepo: CdseRepository,
   ) {}
 
   /**
@@ -111,6 +113,29 @@ export class WorkflowEngine {
 
   // ── Action handlers (each reuses existing services) ───────────────────────
 
+  /**
+   * Resolves who a workflow-generated activity belongs to (M31). Continuity of
+   * care, no routing: `assignedTo` is the enrollment's registered care worker;
+   * when the enrollment has none the activity is deliberately left unassigned
+   * (surfaced by the global/admin worklist) — never silently assigned to the
+   * consultation recorder. `assignedRole` prefers the rule's configured
+   * `assignedRole` condition, falling back to the worker's own role.
+   */
+  private async resolveAssignment(
+    ctx: WorkflowContext,
+    rule: RuleRow | null,
+  ): Promise<{ assignedTo: string | null; assignedRole: string | null }> {
+    const target = await this.activities.resolveEnrollmentAssignee(ctx.enrollmentId);
+    const ruleRole =
+      typeof rule?.conditions?.assignedRole === 'string' && rule.conditions.assignedRole.trim()
+        ? rule.conditions.assignedRole.trim()
+        : null;
+    return {
+      assignedTo: target.assignedWorker,
+      assignedRole: ruleRole ?? target.workerRole,
+    };
+  }
+
   /** Completes the activity and creates the rule's generated event as the next one. */
   private async completeAndAdvance(
     ctx: WorkflowContext,
@@ -123,12 +148,15 @@ export class WorkflowEngine {
     let enrollmentStatus: string | null = null;
 
     if (rule?.generated_event_id) {
+      const assignment = await this.resolveAssignment(ctx, rule);
       const created = await this.activities.createInitialActivity({
         enrollmentId: ctx.enrollmentId,
         eventId: rule.generated_event_id,
         programId: ctx.programId,
         diseaseId: ctx.diseaseId,
         dueDate: WorkflowEngine.dueDate(rule.delay_days),
+        assignedTo: assignment.assignedTo,
+        assignedRole: assignment.assignedRole,
       });
       nextActivityId = created?.id ?? null;
       if (advance) {
@@ -173,7 +201,9 @@ export class WorkflowEngine {
     const attempt = await this.activities.recordAttempt(ctx.activityId);
     const role = policy.escalationRole ?? (conditions.escalationRole as string) ?? 'CLINICIAN';
 
-    // Exhausted all attempts → stop retrying and escalate.
+    // Exhausted all attempts → stop retrying and escalate. The journey
+    // continues: a severe alert reaches the Action Centre and an urgent
+    // follow-up activity keeps the enrollment from stranding (M33).
     if (attempt >= policy.maxAttempts) {
       await this.activities.transition(ctx.activityId, 'EMERGENCY', {
         complete: true,
@@ -184,10 +214,13 @@ export class WorkflowEngine {
         role,
         `Activity escalated after ${attempt} unsuccessful contact attempts.`,
       );
+      const nextActivityId = await this.escalationFollowUp(ctx, role);
       return {
         action: WorkflowAction.RETRY_ACTIVITY,
-        message: `Maximum attempts (${policy.maxAttempts}) reached — escalated.`,
-        nextActivityId: null,
+        message: `Maximum attempts (${policy.maxAttempts}) reached — escalated${
+          nextActivityId ? '; urgent follow-up scheduled' : ''
+        }.`,
+        nextActivityId,
         enrollmentStatus: null,
         escalated: true,
         notified,
@@ -230,10 +263,13 @@ export class WorkflowEngine {
 
     let nextActivityId: string | null = null;
     if (ctx.eventId) {
+      const assignment = await this.resolveAssignment(ctx, rule);
       const created = await this.activities.createActivity(ctx.enrollmentId, {
         eventId: ctx.eventId,
         dueDate: WorkflowEngine.dueDate(rule?.delay_days ?? 7),
         priority: rule?.priority,
+        assignedTo: assignment.assignedTo ?? undefined,
+        assignedRole: assignment.assignedRole ?? undefined,
       });
       nextActivityId = created.id;
     }
@@ -258,12 +294,15 @@ export class WorkflowEngine {
 
     let nextActivityId: string | null = null;
     if (rule?.generated_event_id) {
+      const assignment = await this.resolveAssignment(ctx, rule);
       const created = await this.activities.createInitialActivity({
         enrollmentId: ctx.enrollmentId,
         eventId: rule.generated_event_id,
         programId: ctx.programId,
         diseaseId: ctx.diseaseId,
         dueDate: WorkflowEngine.dueDate(rule.delay_days),
+        assignedTo: assignment.assignedTo,
+        assignedRole: assignment.assignedRole,
       });
       nextActivityId = created?.id ?? null;
     }
@@ -302,7 +341,11 @@ export class WorkflowEngine {
     };
   }
 
-  /** Escalates the activity (emergency) and notifies the escalation role. */
+  /**
+   * Escalates the activity (emergency) and notifies the escalation role. The
+   * journey continues: a severe alert reaches the Action Centre and an urgent
+   * follow-up activity keeps the enrollment from stranding (M33).
+   */
   private async escalate(
     ctx: WorkflowContext,
     conditions: RuleConditions,
@@ -313,10 +356,13 @@ export class WorkflowEngine {
     });
     const role = (conditions.escalationRole as string) ?? 'CLINICIAN';
     const notified = await this.notify(ctx, role, 'Activity escalated for urgent clinical attention.');
+    const nextActivityId = await this.escalationFollowUp(ctx, role);
     return {
       action: WorkflowAction.ESCALATE,
-      message: 'Activity escalated.',
-      nextActivityId: null,
+      message: nextActivityId
+        ? 'Activity escalated; urgent follow-up scheduled.'
+        : 'Activity escalated.',
+      nextActivityId,
       enrollmentStatus: null,
       escalated: true,
       notified,
@@ -340,6 +386,55 @@ export class WorkflowEngine {
       notified,
       attempt: null,
     };
+  }
+
+  /**
+   * Escalation continuity (M33): after an activity escalates, the journey must
+   * never strand. Two effects, both reusing existing machinery:
+   *   1. A SEVERE clinical alert (existing clinical_alerts table + CDSE alert
+   *      lifecycle) so the patient appears in the Action Centre / TopBar bell /
+   *      Priority Alerts immediately — resolved automatically when the next
+   *      consultation reclassifies the patient.
+   *   2. An URGENT follow-up activity for the same event, due today, assigned
+   *      via the M31 resolver with the escalation role stamped on it — the
+   *      clear next operational step, so the enrollment always has an open item.
+   * Best-effort: failures are logged and never fail the escalation itself.
+   */
+  private async escalationFollowUp(
+    ctx: WorkflowContext,
+    escalationRole: string,
+  ): Promise<string | null> {
+    // 1) Severe alert into the Action Centre (same lifecycle CDSE uses).
+    try {
+      const info = await this.cdseRepo.getActivityInfo(ctx.activityId);
+      if (info) {
+        await this.cdseRepo.resolveAlerts(info.citizenId, info.disease, 'workflow-escalation');
+        await this.cdseRepo.createAlert(info.citizenId, ctx.activityId, info.disease, 'SEVERE');
+      }
+    } catch (error) {
+      this.logger.warn(
+        `Escalation alert failed for activity ${ctx.activityId}: ${(error as Error).message}`,
+      );
+    }
+
+    // 2) Urgent follow-up of the same event so the journey continues.
+    if (!ctx.eventId) return null;
+    try {
+      const target = await this.activities.resolveEnrollmentAssignee(ctx.enrollmentId);
+      const created = await this.activities.createActivity(ctx.enrollmentId, {
+        eventId: ctx.eventId,
+        dueDate: WorkflowEngine.dueDate(0),
+        priority: 'URGENT',
+        assignedTo: target.assignedWorker ?? undefined,
+        assignedRole: escalationRole,
+      });
+      return created.id;
+    } catch (error) {
+      this.logger.warn(
+        `Escalation follow-up activity failed for activity ${ctx.activityId}: ${(error as Error).message}`,
+      );
+      return null;
+    }
   }
 
   /** Best-effort notification write; never fails the workflow. */

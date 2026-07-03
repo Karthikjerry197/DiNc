@@ -215,8 +215,8 @@ export class EnrollmentRepository {
     const metadata = input.remarks ? JSON.stringify({ remarks: input.remarks }) : null;
     const result = await this.db.query<{ id: string }>(
       `INSERT INTO public.enrollments
-         (citizen_id, program_id, disease_id, current_event_id, start_date, status, enrolled_by, metadata)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8::jsonb)
+         (citizen_id, program_id, disease_id, current_event_id, start_date, status, enrolled_by, assigned_worker, metadata)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9::jsonb)
        RETURNING id`,
       [
         input.citizenId,
@@ -226,6 +226,7 @@ export class EnrollmentRepository {
         input.startDate,
         input.status,
         input.enrolledBy,
+        input.assignedTo,
         metadata,
       ],
     );

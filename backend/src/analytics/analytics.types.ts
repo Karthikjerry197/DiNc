@@ -128,6 +128,41 @@ export interface SeriesPoint {
   value: number;
 }
 
+/** One day of the clinical-risk trend (alerts triggered that day, by level). */
+export interface RiskTrendPoint {
+  date: string; // YYYY-MM-DD
+  moderate: number;
+  severe: number;
+}
+
+/**
+ * Clinical Risk analytics (M34). NO new risk logic: severe/moderate count
+ * citizens with ACTIVE clinical_alerts the CDSE already writes (each citizen
+ * once, at their severest level, exactly like the M32 Dashboard breakdown);
+ * low mirrors CdseService.getLatestRisk's fallback (has a recorded
+ * consultation, no active alert).
+ */
+export interface RiskAnalyticsDto {
+  low: number;
+  moderate: number;
+  severe: number;
+  activeAlerts: number;
+  resolvedAlerts: number;
+  trend: RiskTrendPoint[]; // last 30 days, oldest first
+  distribution: NameCount[]; // Active vs Resolved alert counts
+}
+
+/** Per-disease patient analytics (M34), aggregated over existing enrollments. */
+export interface DiseaseAnalyticsRow {
+  diseaseId: string;
+  disease: string;
+  totalPatients: number;
+  activePatients: number;
+  completedPatients: number;
+  /** Citizens with an ACTIVE SEVERE clinical alert for this disease (M32 semantics). */
+  highRiskPatients: number;
+}
+
 /**
  * Aggregated snapshot for the Operations Dashboard — what supervisors and
  * medical officers need to understand today's care load at a glance.

@@ -3,9 +3,12 @@ import {
   Get,
   NotFoundException,
   Param,
+  Req,
   UseGuards,
 } from '@nestjs/common';
+import { Request } from 'express';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
+import { JwtPayload } from '../auth/types/jwt-payload.type';
 import { GuidebookRef } from '../guidebooks/guidebooks.types';
 import { WorklistService } from './worklist.service';
 import { WorklistOverview } from './worklist.types';
@@ -23,9 +26,14 @@ const UUID_RE =
 export class WorklistController {
   constructor(private readonly worklist: WorklistService) {}
 
+  /** Permission-scoped overview: viewers without `worklist.view.all` see only their own items. */
   @Get('admin/overview')
-  getAdminOverview(): Promise<WorklistOverview> {
-    return this.worklist.getAdminOverview();
+  getAdminOverview(@Req() req: Request): Promise<WorklistOverview> {
+    const user = (req as Request & { user: JwtPayload }).user;
+    return this.worklist.getAdminOverview({
+      username: user.sub,
+      role: user.role,
+    });
   }
 
   @Get('items/:itemId/guidebook')

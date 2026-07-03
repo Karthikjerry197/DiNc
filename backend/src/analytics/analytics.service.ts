@@ -3,11 +3,13 @@ import { JwtPayload } from '../auth/types/jwt-payload.type';
 import { AnalyticsRepository } from './analytics.repository';
 import {
   AnalyticsFilters,
+  DiseaseAnalyticsRow,
   ExecutiveSummaryDto,
   KnowledgeAnalyticsDto,
   OperationsDashboardDto,
   ProgramAnalyticsRow,
   RegistrationAnalyticsDto,
+  RiskAnalyticsDto,
   SchedulerAnalyticsDto,
   WorkerPerformanceRow,
   WorkflowAnalyticsDto,
@@ -102,6 +104,12 @@ export class AnalyticsService {
   }
   knowledge(): Promise<KnowledgeAnalyticsDto> {
     return this.repo.knowledge();
+  }
+  risk(f: AnalyticsFilters): Promise<RiskAnalyticsDto> {
+    return this.repo.risk(f);
+  }
+  diseases(f: AnalyticsFilters): Promise<DiseaseAnalyticsRow[]> {
+    return this.repo.diseases(f);
   }
   filterOptions() {
     return this.repo.filterOptions();

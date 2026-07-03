@@ -4,11 +4,13 @@ import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { JwtPayload } from '../auth/types/jwt-payload.type';
 import { AnalyticsService, AnalyticsQuery } from './analytics.service';
 import {
+  DiseaseAnalyticsRow,
   ExecutiveSummaryDto,
   KnowledgeAnalyticsDto,
   OperationsDashboardDto,
   ProgramAnalyticsRow,
   RegistrationAnalyticsDto,
+  RiskAnalyticsDto,
   SchedulerAnalyticsDto,
   WorkerPerformanceRow,
   WorkflowAnalyticsDto,
@@ -70,6 +72,18 @@ export class AnalyticsController {
   @Get('knowledge')
   knowledge(): Promise<KnowledgeAnalyticsDto> {
     return this.analytics.knowledge();
+  }
+
+  /** Clinical Risk analytics (M34) — reuses CDSE-written clinical_alerts. */
+  @Get('risk')
+  risk(@Query() q: AnalyticsQuery, @Req() req: Request): Promise<RiskAnalyticsDto> {
+    return this.analytics.risk(this.filters(q, req));
+  }
+
+  /** Per-disease patient analytics (M34). */
+  @Get('diseases')
+  diseases(@Query() q: AnalyticsQuery, @Req() req: Request): Promise<DiseaseAnalyticsRow[]> {
+    return this.analytics.diseases(this.filters(q, req));
   }
 
   @Get('filter-options')

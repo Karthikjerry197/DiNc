@@ -35,9 +35,13 @@ export class DashboardController {
     private readonly layouts: DashboardLayoutRepository,
   ) {}
 
+  /** Permission-scoped summary: viewers without `dashboard.view.all` see only their own activities. */
   @Get('admin/summary')
-  getAdminSummary(): Promise<AdminDashboardSummary> {
-    return this.dashboard.getAdminSummary();
+  getAdminSummary(@Req() req: AuthedRequest): Promise<AdminDashboardSummary> {
+    return this.dashboard.getAdminSummary({
+      username: req.user.sub,
+      role: req.user.role,
+    });
   }
 
   /**

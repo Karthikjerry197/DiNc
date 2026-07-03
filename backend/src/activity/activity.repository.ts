@@ -122,6 +122,36 @@ export class ActivityRepository {
     return result.rows.map((row) => ({ username: row.username, fullName: row.full_name }));
   }
 
+  /**
+   * The assignment target for automatically created activities (M31): the
+   * enrollment's care worker (`enrollments.assigned_worker`, set at
+   * registration or manual enrollment) and that worker's role from the Users
+   * module. Both null when the enrollment has no worker or the worker is no
+   * longer an active user — the activity is then left unassigned for the
+   * global/admin worklist.
+   */
+  async findEnrollmentAssignee(
+    enrollmentId: string,
+  ): Promise<{ assignedWorker: string | null; workerRole: string | null }> {
+    const result = await this.db.query<{
+      assigned_worker: string | null;
+      worker_role: string | null;
+    }>(
+      `SELECT u.username AS assigned_worker, u.role AS worker_role
+       FROM public.enrollments e
+       JOIN public.users u
+         ON u.username = e.assigned_worker AND u.is_active = true
+       WHERE e.id = $1
+       LIMIT 1`,
+      [enrollmentId],
+    );
+    const row = result.rows[0];
+    return {
+      assignedWorker: row?.assigned_worker ?? null,
+      workerRole: row?.worker_role ?? null,
+    };
+  }
+
   // ── Write (the single INSERT for this milestone) ─────────────────────────
 
   /**
@@ -135,8 +165,8 @@ export class ActivityRepository {
   async insertActivity(input: CreateActivityInput): Promise<string | null> {
     const result = await this.db.query<{ id: string }>(
       `INSERT INTO public.worklist_items
-         (enrollment_id, event_id, program_id, disease_id, assigned_to, due_date, priority, status, version)
-       SELECT $1, $2, $3, $4, $5, $6, $7, 'PENDING', 1
+         (enrollment_id, event_id, program_id, disease_id, assigned_to, assigned_role, due_date, priority, status, version)
+       SELECT $1, $2, $3, $4, $5, $6, $7, $8, 'PENDING', 1
        WHERE EXISTS (SELECT 1 FROM public.enrollments e WHERE e.id = $1)
        RETURNING id`,
       [
@@ -145,6 +175,7 @@ export class ActivityRepository {
         input.programId,
         input.diseaseId,
         input.assignedTo,
+        input.assignedRole,
         input.dueDate,
         input.priority,
       ],

@@ -132,18 +132,24 @@ export class EnrollmentService {
       status: dto.status ?? 'ACTIVE',
       remarks: dto.remarks?.trim() ? dto.remarks.trim() : null,
       enrolledBy,
+      assignedTo: dto.assignedTo?.trim() ? dto.assignedTo.trim() : null,
     });
 
     // Automatically create the enrollment's first activity for the selected
-    // event. Skipped when no event was chosen (worklist_items.event_id is NOT
-    // NULL, so an activity requires an event). Idempotent in the activity layer.
+    // event, assigned immediately via the single M31 resolver (the enrollment's
+    // stored worker + their role — same behaviour as registration and the
+    // Workflow Engine). Skipped when no event was chosen (worklist_items.event_id
+    // is NOT NULL, so an activity requires an event). Idempotent in the activity layer.
     let activity = null;
     if (dto.eventId) {
+      const assignee = await this.activities.resolveEnrollmentAssignee(newId);
       activity = await this.activities.createInitialActivity({
         enrollmentId: newId,
         eventId: dto.eventId,
         programId: dto.programId,
         diseaseId: dto.diseaseId,
+        assignedTo: assignee.assignedWorker,
+        assignedRole: assignee.workerRole,
       });
     }
 

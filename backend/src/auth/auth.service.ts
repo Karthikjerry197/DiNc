@@ -36,6 +36,8 @@ export class AuthService {
       role: user.role,
     };
 
+    await this.users.recordLogin(user.username);
+
     return {
       token: await this.jwt.signAsync(payload),
       username: user.username,

@@ -28,13 +28,19 @@ export class UpdateRuleDto {
   @IsUUID('4', { message: 'A valid next activity (event) must be selected.' })
   generatedEventId?: string;
 
+  // Optional: action-specific editors omit Delay for actions that ignore it
+  // (e.g. RETRY_ACTIVITY, ESCALATE). When omitted the stored value is preserved.
+  @IsOptional()
   @IsInt({ message: 'Delay must be a whole number of days.' })
   @Min(0)
   @Max(365)
-  delayDays!: number;
+  delayDays?: number;
 
+  // Optional: only RESCHEDULE_ACTIVITY consumes the rule's priority, so other
+  // action editors omit it and the stored value is preserved.
+  @IsOptional()
   @IsIn(RULE_PRIORITIES, { message: 'Invalid priority.' })
-  priority!: string;
+  priority?: string;
 
   @IsOptional()
   @IsString()
@@ -47,6 +53,11 @@ export class UpdateRuleDto {
   @IsOptional()
   @IsString()
   notificationRole?: string | null;
+
+  /** Role stamped onto activities this rule generates (M31 assignment). */
+  @IsOptional()
+  @IsString()
+  assignedRole?: string | null;
 
   /** Optional extra metadata merged into conditions (future branching, etc.). */
   @IsOptional()

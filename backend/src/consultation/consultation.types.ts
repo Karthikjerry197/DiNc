@@ -163,7 +163,8 @@ export interface StartCallResultDto {
 
 /** One entry in a patient's longitudinal timeline. */
 export interface TimelineEntryDto {
-  kind: 'ENROLLMENT' | 'ACTIVITY';
+  /** COMPLETION marks a finished care plan (enrollment reached COMPLETED). */
+  kind: 'ENROLLMENT' | 'ACTIVITY' | 'COMPLETION';
   id: string;
   title: string;
   program: string | null;

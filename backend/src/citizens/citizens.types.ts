@@ -13,6 +13,12 @@ export interface CitizenListItem {
   age: number | null;
   gender: string | null;
   district: string | null;
+  /** Enrollment aggregates + severest active alert, for list filtering (M33.1). */
+  programs: string[];
+  diseases: string[];
+  statuses: string[];
+  workers: string[];
+  riskLevel: string | null;
 }
 
 export interface ProgramChip {

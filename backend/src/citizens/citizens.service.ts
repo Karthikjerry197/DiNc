@@ -24,6 +24,11 @@ export class CitizensService {
 
   constructor(private readonly db: DatabaseService) {}
 
+  /**
+   * Citizen list, enriched for client-side filtering (M33.1): each row carries
+   * its enrollment programs / diseases / statuses / care workers plus the
+   * severest ACTIVE clinical-alert level (CDSE data — no new risk logic).
+   */
   async list(): Promise<CitizenListItem[]> {
     try {
       const result = await this.db.query<{
@@ -33,10 +38,32 @@ export class CitizensService {
         age: number | null;
         gender: string | null;
         district: string | null;
+        programs: string[] | null;
+        diseases: string[] | null;
+        statuses: string[] | null;
+        workers: string[] | null;
+        risk_level: string | null;
       }>(
-        `SELECT id, uhid, full_name, age, gender, district
-         FROM public.citizens
-         ORDER BY created_at DESC
+        `SELECT c.id, c.uhid, c.full_name, c.age, c.gender, c.district,
+                (SELECT array_agg(DISTINCT p.name)
+                 FROM public.enrollments e JOIN public.programs p ON p.id = e.program_id
+                 WHERE e.citizen_id = c.id) AS programs,
+                (SELECT array_agg(DISTINCT d.name)
+                 FROM public.enrollments e JOIN public.diseases d ON d.id = e.disease_id
+                 WHERE e.citizen_id = c.id) AS diseases,
+                (SELECT array_agg(DISTINCT e.status)
+                 FROM public.enrollments e WHERE e.citizen_id = c.id) AS statuses,
+                (SELECT array_agg(DISTINCT e.assigned_worker)
+                 FROM public.enrollments e
+                 WHERE e.citizen_id = c.id AND e.assigned_worker IS NOT NULL) AS workers,
+                (SELECT CASE
+                          WHEN bool_or(ca.risk_level = 'SEVERE') THEN 'SEVERE'
+                          WHEN bool_or(ca.risk_level = 'MODERATE') THEN 'MODERATE'
+                        END
+                 FROM public.clinical_alerts ca
+                 WHERE ca.citizen_id = c.id AND ca.status = 'ACTIVE') AS risk_level
+         FROM public.citizens c
+         ORDER BY c.created_at DESC
          LIMIT 100`,
       );
       return result.rows.map((row) => ({
@@ -46,6 +73,11 @@ export class CitizensService {
         age: row.age,
         gender: row.gender,
         district: row.district,
+        programs: row.programs ?? [],
+        diseases: row.diseases ?? [],
+        statuses: row.statuses ?? [],
+        workers: row.workers ?? [],
+        riskLevel: row.risk_level,
       }));
     } catch (error) {
       this.logger.warn(`Citizens list query failed: ${(error as Error).message}`);
@@ -70,6 +102,12 @@ export class CitizensService {
       age: input.age,
       gender: input.gender,
       district: input.district,
+      // A just-registered citizen has no enrollments or alerts yet.
+      programs: [],
+      diseases: [],
+      statuses: [],
+      workers: [],
+      riskLevel: null,
     };
   }
 

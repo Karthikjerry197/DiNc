@@ -76,6 +76,7 @@ export class ActivityService {
       programId: enrollment.program_id,
       diseaseId: enrollment.disease_id,
       assignedTo,
+      assignedRole: dto.assignedRole?.trim() ? dto.assignedRole.trim() : null,
       dueDate: dto.dueDate,
       priority: dto.priority ?? 'NORMAL',
     });
@@ -93,10 +94,12 @@ export class ActivityService {
   }
 
   /**
-   * Creates the enrollment's first activity automatically (PENDING / NORMAL /
-   * unassigned, due today). Idempotent: if an activity already exists for this
-   * enrollment + event it is returned instead of creating a duplicate, so a
-   * retried enrollment never yields two initial activities.
+   * Creates an enrollment's activity automatically (PENDING / NORMAL, due today
+   * unless given). `assignedTo`/`assignedRole` are optional: the Workflow Engine
+   * passes the resolved care worker (M31); omitting them leaves the activity
+   * unassigned. Idempotent: if an activity already exists for this enrollment +
+   * event it is returned instead of creating a duplicate, so a retried
+   * enrollment never yields two initial activities.
    */
   async createInitialActivity(params: {
     enrollmentId: string;
@@ -104,6 +107,8 @@ export class ActivityService {
     programId: string | null;
     diseaseId: string | null;
     dueDate?: string;
+    assignedTo?: string | null;
+    assignedRole?: string | null;
   }): Promise<ActivityDto | null> {
     let id = await this.repo.findActivityIdForEnrollmentEvent(
       params.enrollmentId,
@@ -117,7 +122,8 @@ export class ActivityService {
         eventId: params.eventId,
         programId: params.programId,
         diseaseId: params.diseaseId,
-        assignedTo: null,
+        assignedTo: params.assignedTo ?? null,
+        assignedRole: params.assignedRole ?? null,
         dueDate: params.dueDate ?? new Date().toISOString().slice(0, 10),
         priority: 'NORMAL',
       });
@@ -154,6 +160,17 @@ export class ActivityService {
   /** Records a contact attempt; returns the new attempt count. */
   recordAttempt(activityId: string): Promise<number> {
     return this.repo.incrementRetry(activityId);
+  }
+
+  /**
+   * The single assignment resolver for automatically created activities (M31):
+   * the enrollment's registered care worker + their role. Reused by the
+   * Workflow Engine and manual enrollment — assignment logic lives here only.
+   */
+  resolveEnrollmentAssignee(
+    enrollmentId: string,
+  ): Promise<{ assignedWorker: string | null; workerRole: string | null }> {
+    return this.repo.findEnrollmentAssignee(enrollmentId);
   }
 
   private static toDto(row: ActivityRow): ActivityDto {

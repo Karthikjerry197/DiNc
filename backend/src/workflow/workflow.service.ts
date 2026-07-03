@@ -1,4 +1,5 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
+import { ASSIGNABLE_ROLES } from '../users/user.types';
 import { WorkflowRepository } from './workflow.repository';
 import { UpdateRuleDto, RULE_PRIORITIES } from './dto/update-rule.dto';
 import {
@@ -17,8 +18,11 @@ import {
  */
 @Injectable()
 export class WorkflowService {
-  /** Roles available as escalation/notification recipients. */
-  private static readonly ROLES = ['ADMIN', 'CLINICIAN', 'CARE_ASSISTANT'];
+  /**
+   * Roles offered in the rule editor (escalation/notification recipients and
+   * M31 assignment). Reuses the Users & Roles module's single role vocabulary.
+   */
+  private static readonly ROLES: string[] = [...ASSIGNABLE_ROLES];
   private static readonly RETRY_POLICIES = ['STANDARD', 'URGENT', 'NONE'];
 
   constructor(private readonly repo: WorkflowRepository) {}
@@ -50,21 +54,32 @@ export class WorkflowService {
       throw new NotFoundException('Workflow rule not found.');
     }
 
-    // Preserve any unknown/extension keys already stored on the rule, then apply
-    // the editor's structured fields on top — keeping conditions generic.
+    // Preserve-on-omit. The action-aware Rule Editor submits ONLY the fields the
+    // selected action actually uses (e.g. RETRY_ACTIVITY sends no Delay/priority,
+    // ESCALATE sends no Next Activity). We must therefore treat an omitted field
+    // as "leave unchanged", not "clear": any DTO field left undefined keeps its
+    // stored value instead of being reset to null, so editing one action never
+    // wipes configuration another action relies on. Unknown/extension condition
+    // keys are preserved too. (Admin config write-model only — the WorkflowEngine
+    // and execution behaviour are untouched.)
+    const prev: RuleConditions = existing.conditions ?? {};
     const conditions: RuleConditions = {
-      ...(existing.conditions ?? {}),
+      ...prev,
       ...(dto.extraConditions ?? {}),
       action: dto.action,
-      retryPolicy: dto.retryPolicy ?? null,
-      escalationRole: dto.escalationRole ?? null,
-      notificationRole: dto.notificationRole ?? null,
+      retryPolicy: dto.retryPolicy !== undefined ? dto.retryPolicy : (prev.retryPolicy ?? null),
+      escalationRole:
+        dto.escalationRole !== undefined ? dto.escalationRole : (prev.escalationRole ?? null),
+      notificationRole:
+        dto.notificationRole !== undefined ? dto.notificationRole : (prev.notificationRole ?? null),
+      assignedRole:
+        dto.assignedRole !== undefined ? dto.assignedRole : (prev.assignedRole ?? null),
     };
 
     const ok = await this.repo.updateRule(id, {
       generatedEventId: dto.generatedEventId ?? existing.generatedEventId,
-      delayDays: dto.delayDays,
-      priority: dto.priority,
+      delayDays: dto.delayDays !== undefined ? dto.delayDays : existing.delayDays,
+      priority: dto.priority !== undefined ? dto.priority : existing.priority,
       conditions,
       isActive: dto.isActive,
     });

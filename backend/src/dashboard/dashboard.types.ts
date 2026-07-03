@@ -34,6 +34,19 @@ export interface WorklistBreakdown {
   emergencyReferrals: number | null;
 }
 
+/**
+ * Population-level clinical risk counts (M32), derived from the existing CDSE
+ * classification: severe/moderate come from ACTIVE clinical_alerts (severest
+ * level wins per citizen); low is citizens with at least one consultation and
+ * no active alert — the same semantics as CdseService.getLatestRisk, in
+ * aggregate. NONE (never consulted) is not a risk statistic and is not shown.
+ */
+export interface RiskBreakdown {
+  low: number | null;
+  moderate: number | null;
+  severe: number | null;
+}
+
 export interface ServiceItem {
   name: string;
   icon: string | null;
@@ -65,6 +78,7 @@ export interface WorklistRow {
 export interface AdminDashboardSummary {
   stats: DashboardStats;
   worklist: WorklistBreakdown;
+  risk: RiskBreakdown;
   services: ServiceItem[];
   programs: ProgramSummaryItem[];
   recentActivity: ActivityItem[];

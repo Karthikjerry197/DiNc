@@ -19,6 +19,7 @@ import { KnowledgeModule } from './knowledge/knowledge.module';
 import { AnalyticsModule } from './analytics/analytics.module';
 import { CdseModule } from './cdse/cdse.module';
 import { CarePlanModule } from './care-plan/care-plan.module';
+import { SystemModule } from './system/system.module';
 
 @Module({
   imports: [
@@ -42,6 +43,7 @@ import { CarePlanModule } from './care-plan/care-plan.module';
     AnalyticsModule,
     CdseModule,
     CarePlanModule,
+    SystemModule,
   ],
 })
 export class AppModule {}

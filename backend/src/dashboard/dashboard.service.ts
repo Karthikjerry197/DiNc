@@ -285,14 +285,15 @@ export class DashboardService {
         at: Date;
       }>(
         `SELECT kind, title, subtitle, at FROM (
+           -- UHID is the Dashboard's only patient identity (never names).
            SELECT 'CITIZEN'::text AS kind,
-                  COALESCE(full_name, uhid) AS title,
+                  c.uhid AS title,
                   'Citizen registered'::text AS subtitle,
                   created_at AS at
-             FROM public.citizens
+             FROM public.citizens c
            UNION ALL
            SELECT 'ENROLLMENT'::text,
-                  COALESCE(c.full_name, c.uhid),
+                  c.uhid,
                   'Enrolled in ' || p.name,
                   e.created_at
              FROM public.enrollments e

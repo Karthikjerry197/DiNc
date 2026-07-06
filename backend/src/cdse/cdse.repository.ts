@@ -319,6 +319,14 @@ export class CdseRepository implements OnModuleInit {
       ALTER TABLE public.clinical_alerts
         ADD COLUMN IF NOT EXISTS trigger_reasons JSONB NOT NULL DEFAULT '[]'::jsonb
     `);
+
+    // Read tracking for the notification feed: NULL = unread. Set once when a
+    // user opens the alert from the bell or the Notifications page; read
+    // alerts stay visible (muted) but no longer count toward the bell badge.
+    await this.db.query(`
+      ALTER TABLE public.clinical_alerts
+        ADD COLUMN IF NOT EXISTS read_at TIMESTAMPTZ
+    `);
   }
 
   /**
@@ -613,6 +621,12 @@ ${EXPLICIT_RISK_CATEGORY_MAP}
     limit = 20,
     status: 'ACTIVE' | 'RESOLVED' = 'ACTIVE',
   ): Promise<AlertWithCitizen[]> {
+    // ACTIVE view lists unread alerts first; the RESOLVED history keeps its
+    // original pure-chronological order (read state is irrelevant there).
+    const orderBy =
+      status === 'ACTIVE'
+        ? '(ca.read_at IS NULL) DESC, ca.triggered_at DESC'
+        : 'ca.triggered_at DESC';
     const res = await this.db.query<{
       id: string;
       citizen_id: string;
@@ -622,16 +636,17 @@ ${EXPLICIT_RISK_CATEGORY_MAP}
       status: string;
       triggered_at: Date;
       resolved_at: Date | null;
+      read_at: Date | null;
       citizen_name: string | null;
       uhid: string | null;
     }>(
       `SELECT ca.id, ca.citizen_id, ca.activity_id, ca.disease, ca.risk_level,
-              ca.status, ca.triggered_at, ca.resolved_at,
+              ca.status, ca.triggered_at, ca.resolved_at, ca.read_at,
               c.full_name AS citizen_name, c.uhid
        FROM public.clinical_alerts ca
        JOIN public.citizens c ON c.id = ca.citizen_id
        WHERE ca.status = $2 AND ca.risk_level = 'SEVERE'
-       ORDER BY ca.triggered_at DESC
+       ORDER BY ${orderBy}
        LIMIT $1`,
       [limit, status],
     );
@@ -639,7 +654,23 @@ ${EXPLICIT_RISK_CATEGORY_MAP}
       ...this.mapAlert(r),
       citizenName: r.citizen_name,
       uhid: r.uhid,
+      isRead: r.read_at !== null,
     }));
+  }
+
+  /**
+   * Marks one alert as read (idempotent — the first read wins so the
+   * timestamp reflects when the alert was first seen). Returns false for an
+   * unknown id.
+   */
+  async markAlertRead(alertId: string): Promise<boolean> {
+    const res = await this.db.query(
+      `UPDATE public.clinical_alerts
+       SET read_at = COALESCE(read_at, NOW())
+       WHERE id = $1`,
+      [alertId],
+    );
+    return (res.rowCount ?? 0) > 0;
   }
 
   async hasAnyConsultation(citizenId: string): Promise<boolean> {
@@ -669,7 +700,7 @@ ${EXPLICIT_RISK_CATEGORY_MAP}
       `SELECT DISTINCT ON (citizen_id) citizen_id, risk_level, disease
        FROM public.clinical_alerts
        WHERE citizen_id = ANY($1) AND status = 'ACTIVE'
-       ORDER BY citizen_id, triggered_at DESC`,
+       ORDER BY citizen_id, (risk_level = 'SEVERE') DESC, triggered_at DESC`,
       [citizenIds],
     );
     return new Map(res.rows.map((r) => [r.citizen_id, { riskLevel: r.risk_level, disease: r.disease }]));

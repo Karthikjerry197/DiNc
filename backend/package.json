@@ -1,7 +1,7 @@
 {
   "name": "dinc-backend",
   "version": "1.0.0",
-  "description": "DiNC Milestone 1 — Authentication API (NestJS)",
+  "description": "DiNC backend — NestJS REST API for the Digital Integrated Care Network",
   "private": true,
   "scripts": {
     "build": "nest build",

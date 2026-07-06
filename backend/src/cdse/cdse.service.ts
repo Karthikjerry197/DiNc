@@ -154,6 +154,10 @@ export class CdseService {
     return this.repo.getActiveAlertsForBell(limit, status);
   }
 
+  async markAlertRead(alertId: string): Promise<boolean> {
+    return this.repo.markAlertRead(alertId);
+  }
+
   // ── Backward-compat shim for Care Plan module ─────────────────────────────────
 
   /**

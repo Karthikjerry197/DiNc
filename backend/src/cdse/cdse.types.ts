@@ -32,6 +32,8 @@ export interface ClinicalAlert {
 export interface AlertWithCitizen extends ClinicalAlert {
   citizenName: string | null;
   uhid: string | null;
+  /** True once any user has opened the alert (read_at set). */
+  isRead: boolean;
 }
 
 // ── Post-consultation classification result ───────────────────────────────────

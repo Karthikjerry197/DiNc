@@ -1,4 +1,4 @@
-import { Injectable, OnModuleDestroy } from '@nestjs/common';
+import { Injectable, Logger, OnModuleDestroy } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { Pool, PoolClient, QueryResult, QueryResultRow } from 'pg';
 
@@ -9,6 +9,7 @@ export interface TxClient {
 
 @Injectable()
 export class DatabaseService implements OnModuleDestroy {
+  private readonly logger = new Logger(DatabaseService.name);
   private readonly pool: Pool;
 
   constructor(private readonly config: ConfigService) {
@@ -18,6 +19,11 @@ export class DatabaseService implements OnModuleDestroy {
       database: this.config.get<string>('PGDATABASE'),
       user: this.config.get<string>('PGUSER'),
       password: this.config.get<string>('PGPASSWORD'),
+    });
+    // Without a listener, an error on an idle client (e.g. DB restart, dropped
+    // connection) is an unhandled 'error' event and crashes the process.
+    this.pool.on('error', (error) => {
+      this.logger.error(`Idle database client error: ${error.message}`);
     });
   }
 

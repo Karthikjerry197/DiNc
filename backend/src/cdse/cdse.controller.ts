@@ -1,4 +1,4 @@
-import { Controller, Get, NotFoundException, Param, Query, UseGuards } from '@nestjs/common';
+import { Controller, Get, NotFoundException, Param, Post, Query, UseGuards } from '@nestjs/common';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { CdseService } from './cdse.service';
 
@@ -39,6 +39,15 @@ export class CdseController {
       20,
       status?.toUpperCase() === 'RESOLVED' ? 'RESOLVED' : 'ACTIVE',
     );
+  }
+
+  /** Marks one alert as read (bell / Notifications click). Idempotent. */
+  @Post('alerts/:id/read')
+  async markAlertRead(@Param('id') id: string) {
+    if (!UUID_RE.test(id)) throw new NotFoundException('Alert not found');
+    const found = await this.cdse.markAlertRead(id);
+    if (!found) throw new NotFoundException('Alert not found');
+    return { ok: true };
   }
 
   @Get('citizens/:citizenId/cdse-recommendations')

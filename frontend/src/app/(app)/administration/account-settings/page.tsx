@@ -77,6 +77,7 @@ export default function AccountSettingsPage() {
 
   async function handleChangePassword(e: React.FormEvent) {
     e.preventDefault();
+    if (savingPwd) return;
     setPwdError('');
     if (pwd.next !== pwd.confirm) {
       setPwdError('New passwords do not match.');
@@ -103,6 +104,7 @@ export default function AccountSettingsPage() {
   const [resetting, setResetting] = useState(false);
 
   async function handleResetDashboard() {
+    if (resetting) return;
     if (!window.confirm('Reset your dashboard layout to the built-in defaults for your role?')) return;
     setResetting(true);
     try {

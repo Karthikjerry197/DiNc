@@ -10,12 +10,15 @@ import {
   type DuplicateRequest,
 } from '@/lib/api';
 import { getToken } from '@/lib/session';
+import { formatDate } from '@/lib/format';
 import { useUser } from '@/lib/UserContext';
 import ComingSoon from '@/components/shell/ComingSoon';
 import CompareRecordsDialog from '@/components/dataquality/CompareRecordsDialog';
 import ReviewDecisionDialog, {
   type ReviewDecisionConfig,
 } from '@/components/dataquality/ReviewDecisionDialog';
+import { Inbox, RefreshCw } from 'lucide-react';
+import { SkeletonTable } from '@/components/shell/Skeleton';
 
 type DecisionKind = 'approve' | 'reject' | 'merge' | 'delete';
 
@@ -24,14 +27,6 @@ interface PendingDecision {
   kind: DecisionKind;
 }
 
-function formatDate(iso: string | null): string {
-  if (!iso) return '—';
-  return new Date(iso).toLocaleDateString(undefined, {
-    year: 'numeric',
-    month: 'short',
-    day: 'numeric',
-  });
-}
 
 function patientLabel(p: DuplicateRequest['currentPatient']): string {
   const name = p.fullName ?? 'Unnamed';
@@ -136,7 +131,7 @@ export default function DataQualityPage() {
 
   const handleConfirm = useCallback(
     async (remarks: string) => {
-      if (!decision) return;
+      if (!decision || saving) return;
       const token = getToken();
       if (!token) {
         setDecisionError('Your session has expired. Please sign in again.');
@@ -165,7 +160,7 @@ export default function DataQualityPage() {
         setSaving(false);
       }
     },
-    [decision, flash, load],
+    [decision, saving, flash, load],
   );
 
   if (!isAdmin) {
@@ -194,7 +189,7 @@ export default function DataQualityPage() {
           </p>
         </div>
         <button type="button" className="btn btn-ghost dq-refresh" onClick={load}>
-          ↻ Refresh
+          <RefreshCw size={13} aria-hidden="true" /> Refresh
         </button>
       </div>
 
@@ -202,10 +197,10 @@ export default function DataQualityPage() {
 
       <div className="panel">
         {loading ? (
-          <div className="dash-loading">Loading duplicate requests&hellip;</div>
+          <SkeletonTable rows={6} />
         ) : requests.length === 0 ? (
           <div className="empty-state">
-            <div className="empty-state-icon" aria-hidden="true">∅</div>
+            <div className="empty-state-icon" aria-hidden="true"><Inbox size={22} /></div>
             <div className="empty-state-text">No duplicate requests submitted yet.</div>
           </div>
         ) : (
@@ -313,7 +308,7 @@ export default function DataQualityPage() {
         }}
       />
 
-      {toast && <div className="cz-toast">{toast}</div>}
+      {toast && <div className="cz-toast" role="status">{toast}</div>}
     </div>
   );
 }

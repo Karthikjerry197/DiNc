@@ -17,16 +17,17 @@ function chipValue(value: number | null): string {
 }
 
 /**
- * Worklist header: page title, live summary chips, and quick action buttons.
- * The action buttons are UI-only for this milestone (no behaviour wired up).
+ * Worklist header: page title and live summary chips. Bulk/reminder/export
+ * actions were removed in M35A (Wave 1) — they were placeholders with no
+ * behaviour; they return here only when their functionality ships.
  */
 export default function WorklistToolbar({ stats }: WorklistToolbarProps) {
   const chips: ChipDef[] = [
-    { label: 'Total', value: stats?.total ?? null, accent: '#1f2937' },
-    { label: 'Pending', value: stats?.pending ?? null, accent: '#d97706' },
-    { label: 'Overdue', value: stats?.overdue ?? null, accent: '#dc2626' },
-    { label: 'Due Today', value: stats?.dueToday ?? null, accent: '#0284c7' },
-    { label: 'Completed', value: stats?.completed ?? null, accent: '#24a148' },
+    { label: 'Total', value: stats?.total ?? null, accent: 'var(--tp)' },
+    { label: 'Pending', value: stats?.pending ?? null, accent: 'var(--warn)' },
+    { label: 'Overdue', value: stats?.overdue ?? null, accent: 'var(--er)' },
+    { label: 'Due Today', value: stats?.dueToday ?? null, accent: 'var(--info)' },
+    { label: 'Completed', value: stats?.completed ?? null, accent: 'var(--p)' },
     { label: 'Escalations', value: stats?.escalations ?? null, accent: '#7c3aed' },
   ];
 
@@ -36,20 +37,6 @@ export default function WorklistToolbar({ stats }: WorklistToolbarProps) {
         <div>
           <h1 className="page-title">Worklist</h1>
           <p className="page-subtitle">Operational task queue · live records</p>
-        </div>
-        <div className="wl-actions">
-          <button type="button" className="wl-btn" title="Bulk actions (coming soon)" disabled>
-            ☰ Bulk
-          </button>
-          <button type="button" className="wl-btn" title="Send reminders (coming soon)" disabled>
-            🔔 Reminders
-          </button>
-          <button type="button" className="wl-btn" title="Export (coming soon)" disabled>
-            ⭳ Export
-          </button>
-          <button type="button" className="wl-btn wl-btn-primary" title="Quick worklist (coming soon)">
-            ＋ Quick Worklist
-          </button>
         </div>
       </div>
 

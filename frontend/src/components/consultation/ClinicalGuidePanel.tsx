@@ -3,6 +3,8 @@
 import { useState } from 'react';
 import Link from 'next/link';
 import type { GuidebookDetail, GuidebookSections } from '@/lib/api';
+import type { ReactNode } from 'react';
+import { BookOpen, ClipboardList, FileText, Lightbulb, ListChecks, MessageCircle, TriangleAlert, Workflow } from 'lucide-react';
 
 // ── Section metadata ──────────────────────────────────────────────────────────
 // Known sections get curated icons and accent colours.
@@ -10,17 +12,17 @@ import type { GuidebookDetail, GuidebookSections } from '@/lib/api';
 
 interface SectionMeta {
   title: string;
-  icon: string;
+  icon: ReactNode;
   accentClass: string;
 }
 
 const KNOWN_SECTIONS: Record<string, SectionMeta> = {
-  summary:           { title: 'Summary',              icon: '📋', accentClass: '' },
-  checklist:         { title: 'Clinical Checklist',   icon: '✅', accentClass: '' },
-  counsellingPoints: { title: 'Counselling',           icon: '💬', accentClass: 'cw-guide-badge-counselling' },
-  referralGuidance:  { title: 'Referral Guidance',    icon: '🔀', accentClass: 'cw-guide-badge-referral' },
-  clinicalPearls:    { title: 'Clinical Pearls',      icon: '💡', accentClass: 'cw-guide-badge-pearls' },
-  contraindications: { title: 'Contraindications',    icon: '⚠',  accentClass: 'cw-guide-badge-contraindications' },
+  summary:           { title: 'Summary',              icon: <ClipboardList size={13} />, accentClass: '' },
+  checklist:         { title: 'Clinical Checklist',   icon: <ListChecks size={13} />, accentClass: '' },
+  counsellingPoints: { title: 'Counselling',           icon: <MessageCircle size={13} />, accentClass: 'cw-guide-badge-counselling' },
+  referralGuidance:  { title: 'Referral Guidance',    icon: <Workflow size={13} />, accentClass: 'cw-guide-badge-referral' },
+  clinicalPearls:    { title: 'Clinical Pearls',      icon: <Lightbulb size={13} />, accentClass: 'cw-guide-badge-pearls' },
+  contraindications: { title: 'Contraindications',    icon: <TriangleAlert size={13} />,  accentClass: 'cw-guide-badge-contraindications' },
 };
 
 // Preferred rendering order for known sections.
@@ -29,7 +31,7 @@ const PREFERRED_ORDER = [
   'referralGuidance', 'clinicalPearls', 'contraindications',
 ];
 
-const DEFAULT_META: SectionMeta = { title: '', icon: '📄', accentClass: '' };
+const DEFAULT_META: SectionMeta = { title: '', icon: <FileText size={13} />, accentClass: '' };
 
 /** Converts camelCase / snake_case key to a readable title. */
 function keyToTitle(key: string): string {
@@ -103,7 +105,7 @@ function CollapsibleSection({ sectionKey, value }: CollapsibleSectionProps) {
 
 function LegacySection({
   title, icon, items, text,
-}: { title: string; icon: string; items?: string[]; text?: string | null }) {
+}: { title: string; icon: ReactNode; items?: string[]; text?: string | null }) {
   const [open, setOpen] = useState(true);
   const hasContent = (items && items.length > 0) || text;
   if (!hasContent) return null;
@@ -154,7 +156,7 @@ export default function ClinicalGuidePanel({ guidebook }: ClinicalGuidePanelProp
   if (!guidebook) {
     return (
       <div className="cw-guide-empty">
-        <div style={{ fontSize: 28, marginBottom: 8 }}>📘</div>
+        <div style={{ marginBottom: 8 }} aria-hidden="true"><BookOpen size={26} /></div>
         No guidebook is mapped to this activity.
         <br />
         <Link
@@ -189,16 +191,16 @@ export default function ClinicalGuidePanel({ guidebook }: ClinicalGuidePanelProp
           <>
             {/* Legacy fallback: render named columns as collapsible sections */}
             {guidebook.summary && (
-              <LegacySection title="Summary" icon="📋" text={guidebook.summary} />
+              <LegacySection title="Summary" icon={<ClipboardList size={13} />} text={guidebook.summary} />
             )}
             <LegacySection
               title="Key Steps"
-              icon="✅"
+              icon={<ListChecks size={13} />}
               items={guidebook.keyRecommendations}
             />
             <LegacySection
               title="Referral Criteria"
-              icon="🔀"
+              icon={<Workflow size={13} />}
               items={guidebook.referralCriteria}
             />
           </>

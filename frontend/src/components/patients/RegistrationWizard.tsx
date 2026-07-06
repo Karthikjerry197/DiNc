@@ -10,6 +10,8 @@ import {
   type RegistrationResult,
 } from '@/lib/api';
 import { getToken } from '@/lib/session';
+import { Check, TriangleAlert } from 'lucide-react';
+import { useDialogA11y } from '@/lib/useDialogA11y';
 
 interface RegistrationWizardProps {
   open: boolean;
@@ -82,6 +84,9 @@ export default function RegistrationWizard({ open, onClose, onRegistered }: Regi
     [options],
   );
 
+  // Shared dialog behaviour: Escape close, focus trap, focus restore (M35C).
+  const dialogRef = useDialogA11y(open, () => !saving && onClose());
+
   if (!open) return null;
 
   function set<K extends keyof FormState>(key: K, value: string) {
@@ -137,6 +142,7 @@ export default function RegistrationWizard({ open, onClose, onRegistered }: Regi
   }
 
   async function handleRegister() {
+    if (saving) return;
     setError('');
     const token = getToken();
     if (!token) return setError('Your session has expired. Please sign in again.');
@@ -171,7 +177,7 @@ export default function RegistrationWizard({ open, onClose, onRegistered }: Regi
     <div className="modal-overlay" role="presentation" onClick={() => !saving && onClose()}>
       <div
         className="modal modal-wide"
-        role="dialog"
+        ref={dialogRef} role="dialog"
         aria-modal="true"
         aria-labelledby="reg-wizard-title"
         onClick={(e) => e.stopPropagation()}
@@ -188,7 +194,7 @@ export default function RegistrationWizard({ open, onClose, onRegistered }: Regi
             const state = n === step ? 'current' : n < step ? 'done' : 'todo';
             return (
               <li key={label} className={`rw-step rw-${state}`}>
-                <span className="rw-step-no">{n < step ? '✓' : n}</span>
+                <span className="rw-step-no">{n < step ? <Check size={12} /> : n}</span>
                 <span className="rw-step-label">{label}</span>
               </li>
             );
@@ -311,7 +317,7 @@ export default function RegistrationWizard({ open, onClose, onRegistered }: Regi
                 <>
                   {duplicates.length > 0 && (
                     <div className="rw-dup-warning">
-                      <div className="rw-dup-head">⚠ Possible duplicate patient found</div>
+                      <div className="rw-dup-head"><TriangleAlert size={14} aria-hidden="true" /> Possible duplicate patient found</div>
                       {duplicates.slice(0, 5).map((d) => (
                         <div key={d.id} className="rw-dup-row">
                           <span className="mono">{d.uhid}</span>

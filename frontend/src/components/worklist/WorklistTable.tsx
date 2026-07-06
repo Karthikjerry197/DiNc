@@ -1,7 +1,10 @@
 'use client';
 
+import { memo } from 'react';
 import Link from 'next/link';
+import { Bell, BookOpen, Eye, Flag, Inbox, Phone } from 'lucide-react';
 import type { WorklistItem } from '@/lib/api';
+import { displayValue as value, formatDate } from '@/lib/format';
 
 interface WorklistTableProps {
   items: WorklistItem[];
@@ -13,30 +16,15 @@ interface WorklistTableProps {
   onStartCall?: (item: WorklistItem) => void;
 }
 
-/** Row action icons. Each key maps to a distinct clinical action. */
-const ROW_ACTIONS: { key: string; icon: string; label: string }[] = [
-  { key: 'open',       icon: '↗',  label: 'Open Citizen Record' },
-  { key: 'call',       icon: '📞', label: 'Start Consultation' },
-  { key: 'guidebook',  icon: '📘', label: 'Guidebook' },
-  { key: 'history',    icon: '🕘', label: 'Patient History' },
-  { key: 'duplicate',  icon: '⚠',  label: 'Report Duplicate' },
-  { key: 'more',       icon: '⋯',  label: 'More' },
-];
-
-function formatDate(iso: string | null): string {
-  if (!iso) return '—';
-  return new Date(iso).toLocaleDateString(undefined, {
-    year: 'numeric',
-    month: 'short',
-    day: 'numeric',
-  });
-}
-
-function value(text: string | null): string {
-  return text && text.trim() ? text : '—';
-}
-
-export default function WorklistTable({
+/**
+ * Worklist table. Every row action is live (M35A Wave 1 removed the selection
+ * checkboxes, the duplicate History shortcut and the placeholder More menu —
+ * they return only when bulk actions / a row menu actually exist).
+ *
+ * Memoized: rows re-render only when the (already memoized) items array or a
+ * row callback actually changes — not on unrelated page state such as toasts.
+ */
+function WorklistTable({
   items,
   onOpenGuidebook,
   onReportDuplicate,
@@ -46,7 +34,7 @@ export default function WorklistTable({
     return (
       <div className="panel">
         <div className="empty-state">
-          <div className="empty-state-icon" aria-hidden="true">∅</div>
+          <div className="empty-state-icon" aria-hidden="true"><Inbox size={22} /></div>
           <div className="empty-state-text">No worklist items to display.</div>
         </div>
       </div>
@@ -58,9 +46,6 @@ export default function WorklistTable({
       <table className="data-table wl-table">
         <thead>
           <tr>
-            <th className="wl-col-check">
-              <input type="checkbox" aria-label="Select all" />
-            </th>
             <th>UHID</th>
             <th>Program</th>
             <th>Sub Program</th>
@@ -77,9 +62,6 @@ export default function WorklistTable({
         <tbody>
           {items.map((item) => (
             <tr key={item.id}>
-              <td className="wl-col-check">
-                <input type="checkbox" aria-label={`Select ${item.uhid ?? item.id}`} />
-              </td>
               <td className="mono">{value(item.uhid)}</td>
               <td>{value(item.program)}</td>
               <td>{value(item.subProgram)}</td>
@@ -87,7 +69,9 @@ export default function WorklistTable({
               <td>{value(item.type)}</td>
               <td>{formatDate(item.dueDate)}</td>
               <td className="wl-reminder">
-                <span title={`${item.reminders} reminder(s) sent`}>🔔 {item.reminders}</span>
+                <span title={`${item.reminders} reminder(s) sent`}>
+                  <Bell size={12} aria-hidden="true" /> {item.reminders}
+                </span>
               </td>
               <td>
                 <span className={`pill pill-${item.priority.toLowerCase()}`}>{item.priority}</span>
@@ -104,92 +88,43 @@ export default function WorklistTable({
               </td>
               <td className="wl-col-actions">
                 <div className="wl-row-actions">
-                  {ROW_ACTIONS.map((action) => {
-                    if (action.key === 'open') {
-                      return (
-                        <Link
-                          key={action.key}
-                          href={item.citizenId ? `/citizens?c=${item.citizenId}` : '/citizens'}
-                          className="wl-icon-btn"
-                          title={action.label}
-                          aria-label={action.label}
-                        >
-                          {action.icon}
-                        </Link>
-                      );
-                    }
-                    if (action.key === 'history') {
-                      // Opens the patient record / history view.
-                      return (
-                        <Link
-                          key={action.key}
-                          href={item.citizenId ? `/citizens?c=${item.citizenId}` : '/citizens'}
-                          className="wl-icon-btn"
-                          title="Patient History"
-                          aria-label="Patient History"
-                        >
-                          {action.icon}
-                        </Link>
-                      );
-                    }
-                    if (action.key === 'call') {
-                      return (
-                        <button
-                          key={action.key}
-                          type="button"
-                          className="wl-icon-btn"
-                          title="Start Consultation"
-                          aria-label="Start Consultation"
-                          disabled={!onStartCall}
-                          onClick={() => onStartCall?.(item)}
-                        >
-                          {action.icon}
-                        </button>
-                      );
-                    }
-                    if (action.key === 'duplicate') {
-                      // Report Duplicate opens the auditable duplicate request flow.
-                      return (
-                        <button
-                          key={action.key}
-                          type="button"
-                          className="wl-icon-btn"
-                          title={action.label}
-                          aria-label={action.label}
-                          disabled={!item.citizenId || !onReportDuplicate}
-                          onClick={() => item.citizenId && onReportDuplicate?.(item)}
-                        >
-                          {action.icon}
-                        </button>
-                      );
-                    }
-                    if (action.key === 'guidebook') {
-                      // Guidebook opens the guidebook for this item's enrollment.
-                      return (
-                        <button
-                          key={action.key}
-                          type="button"
-                          className="wl-icon-btn"
-                          title="Open the guidebook for this item"
-                          aria-label={action.label}
-                          onClick={() => onOpenGuidebook(item.id)}
-                        >
-                          {action.icon}
-                        </button>
-                      );
-                    }
-                    return (
-                      <button
-                        key={action.key}
-                        type="button"
-                        className="wl-icon-btn"
-                        title={action.label}
-                        aria-label={action.label}
-                      >
-                        {action.icon}
-                      </button>
-                    );
-                  })}
+                  <Link
+                    href={item.citizenId ? `/citizens?c=${item.citizenId}` : '/citizens'}
+                    className="wl-icon-btn"
+                    title="Open Citizen Record"
+                    aria-label="Open Citizen Record"
+                  >
+                    <Eye size={16} aria-hidden="true" />
+                  </Link>
+                  <button
+                    type="button"
+                    className="wl-icon-btn"
+                    title="Start Consultation"
+                    aria-label="Start Consultation"
+                    disabled={!onStartCall}
+                    onClick={() => onStartCall?.(item)}
+                  >
+                    <Phone size={16} aria-hidden="true" />
+                  </button>
+                  <button
+                    type="button"
+                    className="wl-icon-btn"
+                    title="Open the guidebook for this item"
+                    aria-label="Guidebook"
+                    onClick={() => onOpenGuidebook(item.id)}
+                  >
+                    <BookOpen size={16} aria-hidden="true" />
+                  </button>
+                  <button
+                    type="button"
+                    className="wl-icon-btn"
+                    title="Report Duplicate"
+                    aria-label="Report Duplicate"
+                    disabled={!item.citizenId || !onReportDuplicate}
+                    onClick={() => item.citizenId && onReportDuplicate?.(item)}
+                  >
+                    <Flag size={16} aria-hidden="true" />
+                  </button>
                 </div>
               </td>
             </tr>
@@ -199,3 +134,5 @@ export default function WorklistTable({
     </div>
   );
 }
+
+export default memo(WorklistTable);

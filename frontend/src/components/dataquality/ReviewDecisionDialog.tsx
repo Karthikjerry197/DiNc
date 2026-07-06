@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
+import { useDialogA11y } from '@/lib/useDialogA11y';
 
 export interface ReviewDecisionConfig {
   title: string;
@@ -41,6 +42,11 @@ export default function ReviewDecisionDialog({
     if (open) setRemarks('');
   }, [open]);
 
+  // Shared dialog behaviour: Escape close, focus trap, focus restore (M35C).
+  const dialogRef = useDialogA11y(open, () => {
+        if (!saving) onClose();
+      });
+
   if (!open) return null;
 
   const canConfirm = !saving && (!config.remarksRequired || remarks.trim().length > 0);
@@ -55,7 +61,7 @@ export default function ReviewDecisionDialog({
     >
       <div
         className="modal"
-        role="dialog"
+        ref={dialogRef} role="dialog"
         aria-modal="true"
         aria-labelledby="review-decision-title"
         onClick={(e) => e.stopPropagation()}

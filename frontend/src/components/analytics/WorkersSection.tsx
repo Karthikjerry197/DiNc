@@ -7,6 +7,8 @@ import {
   type WorkerPerformanceRow,
 } from '@/lib/api';
 import { ProgressBar } from './Charts';
+import { Lock, UsersRound } from 'lucide-react';
+import { SkeletonLines } from '@/components/shell/Skeleton';
 
 interface Props {
   token: string;
@@ -42,14 +44,14 @@ export default function WorkersSection({ token, params, isAdmin }: Props) {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [token, JSON.stringify(params)]);
 
-  if (loading) return <div className="rp-loading">Loading worker performance&hellip;</div>;
+  if (loading) return <SkeletonLines lines={6} />;
   if (error) return <div className="rp-error">{error}</div>;
 
   if (!isAdmin) {
     return (
       <div className="panel">
         <div className="empty-state">
-          <div className="empty-state-icon" aria-hidden="true">🔒</div>
+          <div className="empty-state-icon" aria-hidden="true"><Lock size={22} /></div>
           <div className="empty-state-text">Worker performance data is available to administrators only.</div>
         </div>
       </div>
@@ -60,7 +62,7 @@ export default function WorkersSection({ token, params, isAdmin }: Props) {
     return (
       <div className="panel">
         <div className="empty-state">
-          <div className="empty-state-icon" aria-hidden="true">👥</div>
+          <div className="empty-state-icon" aria-hidden="true"><UsersRound size={22} /></div>
           <div className="empty-state-text">No worker data for the selected filters.</div>
         </div>
       </div>

@@ -59,6 +59,13 @@ export interface WorklistBreakdown {
   emergencyReferrals: number | null;
 }
 
+/** Population-level clinical risk counts (M32), derived from CDSE clinical_alerts. */
+export interface RiskBreakdown {
+  low: number | null;
+  moderate: number | null;
+  severe: number | null;
+}
+
 export interface ServiceItem {
   name: string;
   icon: string | null;
@@ -89,6 +96,7 @@ export interface WorklistRow {
 export interface AdminDashboardSummary {
   stats: DashboardStats;
   worklist: WorklistBreakdown;
+  risk: RiskBreakdown;
   services: ServiceItem[];
   programs: ProgramSummaryItem[];
   recentActivity: ActivityItem[];
@@ -294,6 +302,12 @@ export interface CitizenListItem {
   age: number | null;
   gender: string | null;
   district: string | null;
+  /** Enrollment aggregates + severest active alert, for list filtering (M33.1). */
+  programs: string[];
+  diseases: string[];
+  statuses: string[];
+  workers: string[];
+  riskLevel: string | null;
 }
 
 export interface ProgramChip {
@@ -383,20 +397,6 @@ export interface BulkUploadResult {
   errors: { uhid: string | null; reason: string }[];
 }
 
-/** Surfaces a backend validation message (string | string[]) as one Error. */
-async function citizenError(res: Response, fallback: string): Promise<Error> {
-  let message = fallback;
-  try {
-    const body = (await res.json()) as { message?: string | string[] };
-    if (body?.message) {
-      message = Array.isArray(body.message) ? body.message.join(' ') : body.message;
-    }
-  } catch {
-    /* keep fallback */
-  }
-  return new Error(message);
-}
-
 export async function createCitizen(
   token: string,
   payload: CreateCitizenPayload,
@@ -406,7 +406,7 @@ export async function createCitizen(
     headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
     body: JSON.stringify(payload),
   });
-  if (!res.ok) throw await citizenError(res, 'Unable to register patient.');
+  if (!res.ok) throw await readError(res, 'Unable to register patient.');
   return res.json() as Promise<CitizenListItem>;
 }
 
@@ -419,7 +419,7 @@ export async function bulkUploadCitizens(
     headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
     body: JSON.stringify({ patients }),
   });
-  if (!res.ok) throw await citizenError(res, 'Unable to upload patients.');
+  if (!res.ok) throw await readError(res, 'Unable to upload patients.');
   return res.json() as Promise<BulkUploadResult>;
 }
 
@@ -507,7 +507,7 @@ export async function fetchRegistrationOptions(token: string): Promise<Registrat
   const res = await fetch(`${API_BASE}/api/registration/options`, {
     headers: { Authorization: `Bearer ${token}` },
   });
-  if (!res.ok) throw await citizenError(res, 'Unable to load registration options.');
+  if (!res.ok) throw await readError(res, 'Unable to load registration options.');
   return res.json() as Promise<RegistrationOptions>;
 }
 
@@ -520,7 +520,7 @@ export async function checkDuplicates(
     headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
     body: JSON.stringify(payload),
   });
-  if (!res.ok) throw await citizenError(res, 'Unable to check for duplicates.');
+  if (!res.ok) throw await readError(res, 'Unable to check for duplicates.');
   return res.json() as Promise<{ duplicates: DuplicateMatch[] }>;
 }
 
@@ -533,7 +533,7 @@ export async function registerPatient(
     headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
     body: JSON.stringify(payload),
   });
-  if (!res.ok) throw await citizenError(res, 'Unable to register patient.');
+  if (!res.ok) throw await readError(res, 'Unable to register patient.');
   return res.json() as Promise<RegistrationResult>;
 }
 
@@ -546,7 +546,7 @@ export async function bulkRegisterPatients(
     headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
     body: JSON.stringify(payload),
   });
-  if (!res.ok) throw await citizenError(res, 'Unable to bulk register patients.');
+  if (!res.ok) throw await readError(res, 'Unable to bulk register patients.');
   return res.json() as Promise<BulkRegistrationResult>;
 }
 
@@ -585,7 +585,7 @@ export async function fetchSchedulerStatus(token: string): Promise<SchedulerStat
   const res = await fetch(`${API_BASE}/api/scheduler/status`, {
     headers: { Authorization: `Bearer ${token}` },
   });
-  if (!res.ok) throw await citizenError(res, 'Unable to load scheduler status.');
+  if (!res.ok) throw await readError(res, 'Unable to load scheduler status.');
   return res.json() as Promise<SchedulerStatus>;
 }
 
@@ -595,8 +595,36 @@ export async function runSchedulerNow(token: string): Promise<SchedulerRun> {
     headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
     body: '{}',
   });
-  if (!res.ok) throw await citizenError(res, 'Unable to run the scheduler.');
+  if (!res.ok) throw await readError(res, 'Unable to run the scheduler.');
   return res.json() as Promise<SchedulerRun>;
+}
+
+// ── System Settings (read-only admin view over existing configuration) ───────
+
+export interface SystemSettings {
+  organization: {
+    name: string;
+    facility: string | null;
+    district: string | null;
+    contactEmail: string | null;
+  };
+  application: {
+    name: string;
+    version: string;
+    environment: string;
+  };
+  security: {
+    sessionLifetime: string;
+    passwordMinLength: number;
+  };
+}
+
+export async function fetchSystemSettings(token: string): Promise<SystemSettings> {
+  const res = await fetch(`${API_BASE}/api/system-settings`, {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  if (!res.ok) throw await readError(res, 'Unable to load system settings.');
+  return res.json() as Promise<SystemSettings>;
 }
 
 // ── Knowledge Hub (FAQ, Training, Emergency, Search) ─────────────────────────
@@ -656,7 +684,7 @@ export async function fetchFaqs(token: string): Promise<FaqList> {
   const res = await fetch(`${API_BASE}/api/knowledge/faqs`, {
     headers: { Authorization: `Bearer ${token}` },
   });
-  if (!res.ok) throw await citizenError(res, 'Unable to load FAQs.');
+  if (!res.ok) throw await readError(res, 'Unable to load FAQs.');
   return res.json() as Promise<FaqList>;
 }
 
@@ -666,7 +694,7 @@ export async function createFaq(token: string, payload: FaqPayload): Promise<Kno
     headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
     body: JSON.stringify(payload),
   });
-  if (!res.ok) throw await citizenError(res, 'Unable to create FAQ.');
+  if (!res.ok) throw await readError(res, 'Unable to create FAQ.');
   return res.json() as Promise<KnowledgeFaq>;
 }
 
@@ -676,7 +704,7 @@ export async function updateFaq(token: string, id: string, payload: FaqPayload):
     headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
     body: JSON.stringify(payload),
   });
-  if (!res.ok) throw await citizenError(res, 'Unable to update FAQ.');
+  if (!res.ok) throw await readError(res, 'Unable to update FAQ.');
   return res.json() as Promise<KnowledgeFaq>;
 }
 
@@ -686,7 +714,7 @@ export async function deleteFaq(token: string, id: string): Promise<{ id: string
     headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
     body: '{}',
   });
-  if (!res.ok) throw await citizenError(res, 'Unable to delete FAQ.');
+  if (!res.ok) throw await readError(res, 'Unable to delete FAQ.');
   return res.json() as Promise<{ id: string; deleted: boolean }>;
 }
 
@@ -694,7 +722,7 @@ export async function fetchTrainingModules(token: string): Promise<TrainingModul
   const res = await fetch(`${API_BASE}/api/knowledge/training`, {
     headers: { Authorization: `Bearer ${token}` },
   });
-  if (!res.ok) throw await citizenError(res, 'Unable to load training modules.');
+  if (!res.ok) throw await readError(res, 'Unable to load training modules.');
   return res.json() as Promise<TrainingModule[]>;
 }
 
@@ -702,7 +730,7 @@ export async function fetchEmergencyProtocols(token: string): Promise<EmergencyP
   const res = await fetch(`${API_BASE}/api/knowledge/emergency`, {
     headers: { Authorization: `Bearer ${token}` },
   });
-  if (!res.ok) throw await citizenError(res, 'Unable to load emergency protocols.');
+  if (!res.ok) throw await readError(res, 'Unable to load emergency protocols.');
   return res.json() as Promise<EmergencyProtocol[]>;
 }
 
@@ -710,7 +738,7 @@ export async function searchKnowledge(token: string, q: string): Promise<Knowled
   const res = await fetch(`${API_BASE}/api/knowledge/search?q=${encodeURIComponent(q)}`, {
     headers: { Authorization: `Bearer ${token}` },
   });
-  if (!res.ok) throw await citizenError(res, 'Unable to search knowledge.');
+  if (!res.ok) throw await readError(res, 'Unable to search knowledge.');
   return res.json() as Promise<KnowledgeSearchResult>;
 }
 
@@ -740,6 +768,8 @@ export interface GuidebookDetail {
   title: string;
   status: 'Active' | 'Inactive';
   updatedAt: string;
+  /** Current version number, or null when unversioned. */
+  version: number | null;
   summary: string | null;
   evidenceSource: string | null;
   keyRecommendations: string[];
@@ -757,6 +787,80 @@ export async function fetchGuidebooksList(token: string): Promise<GuidebookListI
     throw new Error('Unable to load guidebooks');
   }
   return res.json() as Promise<GuidebookListItem[]>;
+}
+
+export interface ImportGuidebookPayload {
+  code: string;
+  category: string;
+  title: string;
+  source?: string;
+  isActive?: boolean;
+  sections: Record<string, string | string[]>;
+}
+
+/** Import a new guidebook from a validated JSON payload. Administrators only. */
+export async function createGuidebook(
+  token: string,
+  payload: ImportGuidebookPayload,
+): Promise<GuidebookListItem> {
+  const res = await fetch(`${API_BASE}/api/guidebooks`, {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+  });
+  if (!res.ok) throw await readError(res, 'Unable to import the guidebook.');
+  return res.json() as Promise<GuidebookListItem>;
+}
+
+/** Per-guidebook outcome for bulk import. */
+export interface BulkGuidebookRowResult {
+  row: number;
+  code: string | null;
+  title: string | null;
+  status: 'CREATED' | 'DUPLICATE' | 'FAILED';
+  reason: string | null;
+}
+
+export interface BulkGuidebookImportResult {
+  total: number;
+  created: number;
+  duplicate: number;
+  failed: number;
+  rows: BulkGuidebookRowResult[];
+}
+
+/** Import many guidebooks in one request (per-row atomic). Administrators only. */
+export async function bulkImportGuidebooks(
+  token: string,
+  guidebooks: ImportGuidebookPayload[],
+): Promise<BulkGuidebookImportResult> {
+  const res = await fetch(`${API_BASE}/api/guidebooks/bulk`, {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ guidebooks }),
+  });
+  if (!res.ok) throw await readError(res, 'Unable to import the guidebooks.');
+  return res.json() as Promise<BulkGuidebookImportResult>;
+}
+
+/** One entry in a guidebook's version history. */
+export interface GuidebookVersion {
+  versionNumber: number;
+  action: string;
+  changedBy: string | null;
+  changeSummary: string | null;
+  createdAt: string;
+}
+
+export async function fetchGuidebookVersions(
+  token: string,
+  id: string,
+): Promise<GuidebookVersion[]> {
+  const res = await fetch(`${API_BASE}/api/guidebooks/${id}/versions`, {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  if (!res.ok) throw new Error('Unable to load version history');
+  return res.json() as Promise<GuidebookVersion[]>;
 }
 
 export async function fetchGuidebookDetail(token: string, id: string): Promise<GuidebookDetail> {
@@ -912,6 +1016,8 @@ export interface CreateEnrollmentPayload {
   startDate: string;
   status?: string;
   remarks?: string;
+  /** Care worker (username) responsible for this enrollment and its activities. */
+  assignedTo?: string;
 }
 
 export interface CreateEnrollmentResult {
@@ -1374,7 +1480,8 @@ export interface SaveConsultationResult {
 }
 
 export interface TimelineEntry {
-  kind: 'ENROLLMENT' | 'ACTIVITY';
+  /** COMPLETION marks a finished care plan (enrollment reached COMPLETED). */
+  kind: 'ENROLLMENT' | 'ACTIVITY' | 'COMPLETION';
   id: string;
   title: string;
   program: string | null;
@@ -1544,6 +1651,22 @@ export async function fetchActiveActivity(
 
 // ── Workflow Rules Engine (Administration) ───────────────────────────────────
 
+/**
+ * Read-only view of the retry_config the engine applies for a rule's
+ * program + disease. RETRY_ACTIVITY timing comes from here, not delayDays.
+ * Null when no retry policy is configured for that program/disease.
+ */
+export interface ResolvedRetryConfig {
+  // Core: the effective retry policy the engine applies.
+  retryIntervalHours: number;
+  maxAttempts: number;
+  escalationAfterAttempts: number;
+  escalationRole: string | null;
+  // Optional presentation context only.
+  program?: string | null;
+  disease?: string | null;
+}
+
 export interface WorkflowRule {
   id: string;
   outcome: string;
@@ -1558,8 +1681,12 @@ export interface WorkflowRule {
   retryPolicy: string | null;
   escalationRole: string | null;
   notificationRole: string | null;
+  /** Role stamped onto activities this rule generates (M31 assignment). */
+  assignedRole: string | null;
   conditions: Record<string, unknown> | null;
   isActive: boolean;
+  /** Effective retry_config for this rule (read-only; admin display). */
+  retryConfig: ResolvedRetryConfig | null;
 }
 
 export interface WorkflowEventOption {
@@ -1593,13 +1720,16 @@ export interface WorkflowRulesOverview {
 
 export interface UpdateRulePayload {
   action: string;
+  isActive: boolean;
+  // Action-specific: sent only when the action actually uses the field.
+  // Omitted fields are preserved server-side (never reset).
   generatedEventId?: string;
-  delayDays: number;
-  priority: string;
+  delayDays?: number;
+  priority?: string;
   retryPolicy?: string | null;
   escalationRole?: string | null;
   notificationRole?: string | null;
-  isActive: boolean;
+  assignedRole?: string | null;
 }
 
 export async function fetchWorkflowRules(token: string): Promise<WorkflowRulesOverview> {
@@ -1737,6 +1867,34 @@ export interface WorkflowAnalytics {
   rulesExecutedToday: number;
 }
 
+/** One day of the 30-day clinical-risk trend (alerts triggered, by level). */
+export interface RiskTrendPoint {
+  date: string;
+  moderate: number;
+  severe: number;
+}
+
+/** Clinical Risk analytics (M34) — mirrors backend RiskAnalyticsDto. */
+export interface RiskAnalytics {
+  low: number;
+  moderate: number;
+  severe: number;
+  activeAlerts: number;
+  resolvedAlerts: number;
+  trend: RiskTrendPoint[];
+  distribution: NameCount[];
+}
+
+/** Per-disease patient analytics (M34) — mirrors backend DiseaseAnalyticsRow. */
+export interface DiseaseAnalyticsRow {
+  diseaseId: string;
+  disease: string;
+  totalPatients: number;
+  activePatients: number;
+  completedPatients: number;
+  highRiskPatients: number;
+}
+
 export interface AnalyticsFilterOptions {
   programs: { id: string; name: string }[];
   workers: { username: string; fullName: string; role: string }[];
@@ -1777,6 +1935,10 @@ export const fetchWorkflowAnalytics = (t: string, p?: AnalyticsQueryParams) =>
   getAnalytics<WorkflowAnalytics>(t, 'workflow', p);
 export const fetchKnowledgeAnalytics = (t: string) =>
   getAnalytics<KnowledgeAnalytics>(t, 'knowledge');
+export const fetchRiskAnalytics = (t: string, p?: AnalyticsQueryParams) =>
+  getAnalytics<RiskAnalytics>(t, 'risk', p);
+export const fetchDiseaseAnalytics = (t: string, p?: AnalyticsQueryParams) =>
+  getAnalytics<DiseaseAnalyticsRow[]>(t, 'diseases', p);
 export const fetchAnalyticsFilterOptions = (t: string) =>
   getAnalytics<AnalyticsFilterOptions>(t, 'filter-options');
 
@@ -1823,6 +1985,8 @@ export interface ClinicalAlert {
 export interface AlertWithCitizen extends ClinicalAlert {
   citizenName: string | null;
   uhid: string | null;
+  /** True once any user has opened the alert; read alerts stay visible but muted. */
+  isRead: boolean;
 }
 
 export interface CitizenRiskSummary {
@@ -1857,12 +2021,24 @@ export async function fetchCitizenAlerts(
   return res.json() as Promise<ClinicalAlert[]>;
 }
 
-export async function fetchActiveAlerts(token: string): Promise<AlertWithCitizen[]> {
-  const res = await fetch(`${API_BASE}/api/alerts/active`, {
+export async function fetchActiveAlerts(
+  token: string,
+  status: 'ACTIVE' | 'RESOLVED' = 'ACTIVE',
+): Promise<AlertWithCitizen[]> {
+  const res = await fetch(`${API_BASE}/api/alerts/active?status=${status}`, {
     headers: { Authorization: `Bearer ${token}` },
   });
   if (!res.ok) throw new Error('Failed to load active alerts');
   return res.json() as Promise<AlertWithCitizen[]>;
+}
+
+/** Marks one alert as read (idempotent). Fired when a notification is opened. */
+export async function markAlertRead(token: string, alertId: string): Promise<void> {
+  const res = await fetch(`${API_BASE}/api/alerts/${encodeURIComponent(alertId)}/read`, {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  if (!res.ok) throw new Error('Failed to mark the alert as read');
 }
 
 // ── Backward-compat types — used by Care Plan panel ───────────────────────────
@@ -2116,3 +2292,87 @@ export const recordCdseDecisions = (token: string, carePlanId: string, decisions
   cpReq<CdseDecisionResult>(token, `care-plans/${carePlanId}/cdse-decisions`, {
     method: 'POST', body: JSON.stringify({ decisions }),
   });
+
+// ── Users & Roles administration ─────────────────────────────────────────────
+
+export interface AdminUser {
+  id: string;
+  username: string;
+  fullName: string;
+  email: string | null;
+  role: string;
+  isActive: boolean;
+  lastLogin: string | null;
+  createdAt: string;
+}
+
+export async function fetchUsers(token: string): Promise<AdminUser[]> {
+  const res = await fetch(`${API_BASE}/api/users`, {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  if (!res.ok) throw await readError(res, 'Unable to load users.');
+  return res.json() as Promise<AdminUser[]>;
+}
+
+export async function fetchAssignableRoles(token: string): Promise<string[]> {
+  const res = await fetch(`${API_BASE}/api/users/roles`, {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  if (!res.ok) throw await readError(res, 'Unable to load roles.');
+  const body = (await res.json()) as { roles: string[] };
+  return body.roles;
+}
+
+export interface CreateUserPayload {
+  username: string;
+  fullName: string;
+  email?: string;
+  role: string;
+  password: string;
+}
+
+/** Partial update — mirrors the backend UpdateUserDto exactly. */
+export interface UpdateUserPayload {
+  fullName?: string;
+  email?: string | null;
+  role?: string;
+  isActive?: boolean;
+}
+
+export async function createUser(token: string, payload: CreateUserPayload): Promise<AdminUser> {
+  const res = await fetch(`${API_BASE}/api/users`, {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+  });
+  if (!res.ok) throw await readError(res, 'Unable to create the user.');
+  return res.json() as Promise<AdminUser>;
+}
+
+export async function updateUser(
+  token: string,
+  id: string,
+  payload: UpdateUserPayload,
+): Promise<AdminUser> {
+  const res = await fetch(`${API_BASE}/api/users/${id}`, {
+    method: 'PATCH',
+    headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+  });
+  if (!res.ok) throw await readError(res, 'Unable to update the user.');
+  return res.json() as Promise<AdminUser>;
+}
+
+/** Administrative password reset — mirrors the backend ResetPasswordDto. 204 on success. */
+export async function resetUserPassword(
+  token: string,
+  id: string,
+  newPassword: string,
+): Promise<void> {
+  const res = await fetch(`${API_BASE}/api/users/${id}/reset-password`, {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ newPassword }),
+  });
+  if (!res.ok) throw await readError(res, 'Unable to reset the password.');
+}

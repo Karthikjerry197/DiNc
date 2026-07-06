@@ -1,5 +1,6 @@
 'use client';
 
+import { Inbox } from 'lucide-react';
 import type { AdminDashboardSummary } from '@/lib/api';
 
 interface Props {
@@ -11,7 +12,7 @@ export default function ProgramsWidget({ programs }: Props) {
   if (!programs || programs.length === 0) {
     return (
       <div className="empty-state">
-        <div className="empty-state-icon" aria-hidden="true">∅</div>
+        <div className="empty-state-icon" aria-hidden="true"><Inbox size={22} /></div>
         <div className="empty-state-text">No active programs.</div>
       </div>
     );

@@ -6,14 +6,17 @@ import {
   fetchDiseases,
   fetchEvents,
   fetchPrograms,
+  fetchRegistrationOptions,
   fetchSubPrograms,
   type CreateEnrollmentResult,
   type DiseaseOption,
   type EventOption,
   type ProgramDto,
+  type RegistrationOptions,
   type SubProgramOption,
 } from '@/lib/api';
 import { getToken } from '@/lib/session';
+import { useDialogA11y } from '@/lib/useDialogA11y';
 
 interface AddProgramDialogProps {
   citizenId: string;
@@ -52,6 +55,8 @@ export default function AddProgramDialog({
   const [startDate, setStartDate] = useState(today());
   const [status, setStatus] = useState('ACTIVE');
   const [remarks, setRemarks] = useState('');
+  const [workers, setWorkers] = useState<RegistrationOptions['workers']>([]);
+  const [assignedTo, setAssignedTo] = useState('');
 
   const [programsLoading, setProgramsLoading] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -71,6 +76,7 @@ export default function AddProgramDialog({
     setStartDate(today());
     setStatus('ACTIVE');
     setRemarks('');
+    setAssignedTo('');
     setError('');
     if (!token) return;
 
@@ -88,6 +94,14 @@ export default function AddProgramDialog({
           setError('Unable to load programs.');
           setProgramsLoading(false);
         }
+      });
+    // Assignable workers — same source as the registration wizard.
+    fetchRegistrationOptions(token)
+      .then((options) => {
+        if (active) setWorkers(options.workers);
+      })
+      .catch(() => {
+        if (active) setWorkers([]);
       });
     return () => {
       active = false;
@@ -161,12 +175,18 @@ export default function AddProgramDialog({
     };
   }, [diseaseId]);
 
+  // Shared dialog behaviour: Escape close, focus trap, focus restore (M35C).
+  const dialogRef = useDialogA11y(open, () => {
+        if (!saving) onClose();
+      });
+
   if (!open) return null;
 
   const canSave =
     !!programId && !!subProgramId && !!diseaseId && !!startDate && !saving;
 
   async function handleSave() {
+    if (saving) return;
     setError('');
     if (!programId || !subProgramId || !diseaseId || !startDate) {
       setError('Please complete all required fields.');
@@ -187,6 +207,7 @@ export default function AddProgramDialog({
         startDate,
         status,
         remarks: remarks.trim() ? remarks.trim() : undefined,
+        assignedTo: assignedTo || undefined,
       });
       onCreated(result);
     } catch (err) {
@@ -206,7 +227,7 @@ export default function AddProgramDialog({
     >
       <div
         className="modal"
-        role="dialog"
+        ref={dialogRef} role="dialog"
         aria-modal="true"
         aria-labelledby="add-program-title"
         onClick={(e) => e.stopPropagation()}
@@ -305,6 +326,24 @@ export default function AddProgramDialog({
               </option>
               {events.map((ev) => (
                 <option key={ev.id} value={ev.id}>{ev.name}</option>
+              ))}
+            </select>
+          </div>
+
+          <div className="fg">
+            <label className="fl" htmlFor="ap-worker">Assign Worker</label>
+            <select
+              id="ap-worker"
+              className="fc"
+              value={assignedTo}
+              disabled={saving}
+              onChange={(e) => setAssignedTo(e.target.value)}
+            >
+              <option value="">— Unassigned —</option>
+              {workers.map((w) => (
+                <option key={w.username} value={w.username}>
+                  {w.fullName} · {w.role}
+                </option>
               ))}
             </select>
           </div>

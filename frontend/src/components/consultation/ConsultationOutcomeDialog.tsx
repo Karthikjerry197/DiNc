@@ -8,6 +8,7 @@ import {
 } from '@/lib/api';
 import { getToken } from '@/lib/session';
 import DynamicClinicalForm from './DynamicClinicalForm';
+import { useDialogA11y } from '@/lib/useDialogA11y';
 
 interface ConsultationOutcomeDialogProps {
   activityId: string;
@@ -68,6 +69,9 @@ export default function ConsultationOutcomeDialog({
     [selected],
   );
 
+  // Shared dialog behaviour: Escape close, focus trap, focus restore (M35C).
+  const dialogRef = useDialogA11y(open, () => !saving && onClose());
+
   if (!open) return null;
 
   function setField(label: string, value: unknown) {
@@ -90,6 +94,7 @@ export default function ConsultationOutcomeDialog({
   }
 
   async function handleSave() {
+    if (saving) return;
     setError('');
     const problem = validate();
     if (problem) {
@@ -125,7 +130,7 @@ export default function ConsultationOutcomeDialog({
     <div className="modal-overlay" role="presentation" onClick={() => !saving && onClose()}>
       <div
         className="modal modal-wide"
-        role="dialog"
+        ref={dialogRef} role="dialog"
         aria-modal="true"
         aria-labelledby="consult-outcome-title"
         onClick={(e) => e.stopPropagation()}

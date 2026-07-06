@@ -1,7 +1,10 @@
 'use client';
 
 import { useEffect, useState } from 'react';
+import { Inbox, Phone, Plus } from 'lucide-react';
 import type { Activity } from '@/lib/api';
+import { displayValue as value, formatDate } from '@/lib/format';
+import { SkeletonLines } from '@/components/shell/Skeleton';
 
 interface ActivityWorkspaceProps {
   activities: Activity[];
@@ -12,19 +15,6 @@ interface ActivityWorkspaceProps {
   onNewActivity: () => void;
   /** Opens the Teleconsultation window for an activity. */
   onStartCall?: (activityId: string) => void;
-}
-
-function formatDate(iso: string | null): string {
-  if (!iso) return '—';
-  return new Date(iso).toLocaleDateString(undefined, {
-    year: 'numeric',
-    month: 'short',
-    day: 'numeric',
-  });
-}
-
-function value(text: string | null): string {
-  return text && text.trim() ? text : '—';
 }
 
 /**
@@ -64,13 +54,13 @@ export default function ActivityWorkspace({
           onClick={onNewActivity}
           disabled={!hasEnrollment}
         >
-          ＋ New Activity
+          <Plus size={14} aria-hidden="true" /> New Activity
         </button>
       </div>
 
       <div className="cz-timeline-list">
         {loading ? (
-          <div className="dash-loading">Loading activities&hellip;</div>
+          <SkeletonLines lines={4} />
         ) : error ? (
           <div className="dash-error">{error}</div>
         ) : !hasEnrollment ? (
@@ -118,7 +108,7 @@ export default function ActivityWorkspace({
                           className="btn btn-primary btn-sm"
                           onClick={() => onStartCall(activity.id)}
                         >
-                          📞 Start Consultation
+                          <Phone size={14} aria-hidden="true" /> Start Consultation
                         </button>
                       </div>
                     )}
@@ -145,7 +135,7 @@ function DetailRow({ label, value }: { label: string; value: string }) {
 function EmptyState({ text }: { text: string }) {
   return (
     <div className="empty-state">
-      <div className="empty-state-icon" aria-hidden="true">∅</div>
+      <div className="empty-state-icon" aria-hidden="true"><Inbox size={22} /></div>
       <div className="empty-state-text">{text}</div>
     </div>
   );

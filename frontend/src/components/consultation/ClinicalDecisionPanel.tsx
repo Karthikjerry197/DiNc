@@ -3,14 +3,16 @@
 import { useEffect, useRef, useState } from 'react';
 import { fetchCitizenRisk, type CitizenRiskSummary, type CdseRiskLevel } from '@/lib/api';
 import { getToken } from '@/lib/session';
+import type { ReactNode } from 'react';
+import { Circle, CircleAlert, CircleCheck, TriangleAlert } from 'lucide-react';
 
 // ── Risk display helpers ──────────────────────────────────────────────────────
 
-const RISK_CONFIG: Record<CdseRiskLevel, { label: string; icon: string; cls: string }> = {
-  NONE:     { label: 'No Consultation',  icon: '○', cls: 'none'     },
-  LOW:      { label: 'Low Risk',         icon: '✓', cls: 'low'      },
-  MODERATE: { label: 'Moderate Risk',    icon: '◈', cls: 'moderate' },
-  SEVERE:   { label: 'Severe Risk',      icon: '⚠', cls: 'severe'   },
+const RISK_CONFIG: Record<CdseRiskLevel, { label: string; icon: ReactNode; cls: string }> = {
+  NONE:     { label: 'No Consultation',  icon: <Circle size={12} />, cls: 'none'     },
+  LOW:      { label: 'Low Risk',         icon: <CircleCheck size={12} />, cls: 'low'      },
+  MODERATE: { label: 'Moderate Risk',    icon: <CircleAlert size={12} />, cls: 'moderate' },
+  SEVERE:   { label: 'Severe Risk',      icon: <TriangleAlert size={12} />, cls: 'severe'   },
 };
 
 function RiskBadge({ level }: { level: CdseRiskLevel }) {
@@ -100,7 +102,7 @@ export default function ClinicalDecisionPanel({ citizenId, refreshKey }: Props) 
 
           {error && !loading && (
             <div className="cdse-error">
-              <span aria-hidden="true">⚠</span> {error}
+              <span aria-hidden="true"><TriangleAlert size={12} /></span> {error}
             </div>
           )}
 
@@ -108,7 +110,7 @@ export default function ClinicalDecisionPanel({ citizenId, refreshKey }: Props) 
             <>
               {riskLevel === 'NONE' && (
                 <div className="cdse-empty">
-                  <span className="cdse-empty-icon" aria-hidden="true">○</span>
+                  <span className="cdse-empty-icon" aria-hidden="true"><Circle size={13} /></span>
                   <span className="cdse-empty-text">
                     No consultation recorded yet. Risk will be classified after the first consultation.
                   </span>
@@ -117,7 +119,7 @@ export default function ClinicalDecisionPanel({ citizenId, refreshKey }: Props) 
 
               {riskLevel === 'LOW' && (
                 <div className="cdse-risk-detail cdse-risk-detail--low">
-                  <span className="cdse-risk-detail-icon" aria-hidden="true">✓</span>
+                  <span className="cdse-risk-detail-icon" aria-hidden="true"><CircleCheck size={14} /></span>
                   <div>
                     <div className="cdse-risk-detail-title">Low Risk</div>
                     <div className="cdse-risk-detail-sub">
@@ -131,7 +133,7 @@ export default function ClinicalDecisionPanel({ citizenId, refreshKey }: Props) 
                 <div className={`cdse-alert-card cdse-alert-card--${riskLevel.toLowerCase()}`}>
                   <div className="cdse-alert-header">
                     <span className="cdse-alert-icon" aria-hidden="true">
-                      {riskLevel === 'SEVERE' ? '⚠' : '◈'}
+                      {riskLevel === 'SEVERE' ? <TriangleAlert size={15} /> : <CircleAlert size={15} />}
                     </span>
                     <span className="cdse-alert-title">
                       Active Clinical Alert — {riskLevel === 'SEVERE' ? 'Severe Risk' : 'Moderate Risk'}

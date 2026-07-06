@@ -2,6 +2,8 @@
 
 import { useEffect, useState } from 'react';
 import { fetchKnowledgeAnalytics, type KnowledgeAnalytics, type KnowledgeItemStat } from '@/lib/api';
+import { BookOpen, GraduationCap, HelpCircle, Siren } from 'lucide-react';
+import { SkeletonLines } from '@/components/shell/Skeleton';
 
 interface Props {
   token: string;
@@ -37,15 +39,15 @@ export default function KnowledgeSection({ token }: Props) {
     return () => { alive = false; };
   }, [token]);
 
-  if (loading) return <div className="rp-loading">Loading knowledge analytics&hellip;</div>;
+  if (loading) return <SkeletonLines lines={6} />;
   if (error) return <div className="rp-error">{error}</div>;
   if (!data) return null;
 
   const totals = [
-    { label: 'Guidebooks', value: data.totals.guidebooks, icon: '📘' },
-    { label: 'FAQs', value: data.totals.faqs, icon: '❓' },
-    { label: 'Training', value: data.totals.training, icon: '🎓' },
-    { label: 'Emergency', value: data.totals.emergency, icon: '🚨' },
+    { label: 'Guidebooks', value: data.totals.guidebooks, icon: <BookOpen size={16} /> },
+    { label: 'FAQs', value: data.totals.faqs, icon: <HelpCircle size={16} /> },
+    { label: 'Training', value: data.totals.training, icon: <GraduationCap size={16} /> },
+    { label: 'Emergency', value: data.totals.emergency, icon: <Siren size={16} /> },
   ];
 
   return (

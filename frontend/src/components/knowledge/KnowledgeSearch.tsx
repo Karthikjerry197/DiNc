@@ -1,6 +1,7 @@
 'use client';
 
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState, type ReactNode } from 'react';
+import { BookOpen, GraduationCap, HelpCircle, Search } from 'lucide-react';
 import {
   searchKnowledge,
   type KnowledgeSearchHit,
@@ -41,11 +42,11 @@ export default function KnowledgeSearch() {
     };
   }, [query]);
 
-  const groups: { label: string; icon: string; hits: KnowledgeSearchHit[] }[] = result
+  const groups: { label: string; icon: ReactNode; hits: KnowledgeSearchHit[] }[] = result
     ? [
-        { label: 'FAQs', icon: '❓', hits: result.faqs },
-        { label: 'Training', icon: '🎓', hits: result.training },
-        { label: 'Guidebooks & Emergency', icon: '📘', hits: result.guidebooks },
+        { label: 'FAQs', icon: <HelpCircle size={14} />, hits: result.faqs },
+        { label: 'Training', icon: <GraduationCap size={14} />, hits: result.training },
+        { label: 'Guidebooks & Emergency', icon: <BookOpen size={14} />, hits: result.guidebooks },
       ]
     : [];
 
@@ -54,7 +55,7 @@ export default function KnowledgeSearch() {
   return (
     <div className="kh-globalsearch">
       <div className="wl-filter-search kh-globalsearch-input">
-        <span className="wl-filter-search-icon" aria-hidden="true">🔍</span>
+        <span className="wl-filter-search-icon" aria-hidden="true"><Search size={14} /></span>
         <input
           className="wl-filter-search-input"
           placeholder="Search all knowledge — FAQs, training, guidebooks, emergency…"

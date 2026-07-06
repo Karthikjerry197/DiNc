@@ -1,6 +1,7 @@
 'use client';
 
 import { useMemo, useState } from 'react';
+import { Inbox, Search } from 'lucide-react';
 import type { GuidebookListItem } from '@/lib/api';
 import { categoryIcon, categoryLabel } from './category';
 
@@ -8,7 +9,6 @@ interface GuidebookListProps {
   guidebooks: GuidebookListItem[];
   selectedId: string | null;
   onSelect: (id: string) => void;
-  onComingSoon: (label: string) => void;
 }
 
 /** Left panel: searchable, scrollable list of guidebook/protocol cards. */
@@ -16,7 +16,6 @@ export default function GuidebookList({
   guidebooks,
   selectedId,
   onSelect,
-  onComingSoon,
 }: GuidebookListProps) {
   const [query, setQuery] = useState('');
 
@@ -35,12 +34,12 @@ export default function GuidebookList({
     <aside className="gb-list">
       <div className="gb-list-head">
         <h2 className="cz-panel-title">Clinical Guidebook</h2>
-        <span className="cz-count">{guidebooks.length}</span>
+        <span className="cz-count">{filtered.length}</span>
       </div>
 
       <div className="gb-list-controls">
         <div className="cz-search gb-list-search">
-          <span className="cz-search-icon" aria-hidden="true">🔍</span>
+          <span className="cz-search-icon" aria-hidden="true"><Search size={14} /></span>
           <input
             type="text"
             className="cz-search-input"
@@ -50,20 +49,12 @@ export default function GuidebookList({
             onChange={(e) => setQuery(e.target.value)}
           />
         </div>
-        <button
-          type="button"
-          className="gb-new-btn"
-          title="New protocol"
-          onClick={() => onComingSoon('New Protocol')}
-        >
-          ＋ New
-        </button>
       </div>
 
       <div className="gb-cards">
         {filtered.length === 0 ? (
           <div className="empty-state">
-            <div className="empty-state-icon" aria-hidden="true">∅</div>
+            <div className="empty-state-icon" aria-hidden="true"><Inbox size={22} /></div>
             <div className="empty-state-text">
               {guidebooks.length === 0 ? 'No guidebooks on record.' : 'No matches.'}
             </div>

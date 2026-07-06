@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import Link from 'next/link';
 import {
   fetchWorkflowRules,
@@ -8,12 +8,45 @@ import {
   type WorkflowRulesOverview,
 } from '@/lib/api';
 import { getToken } from '@/lib/session';
+import { displayValue as value } from '@/lib/format';
 import { useUser } from '@/lib/UserContext';
 import ComingSoon from '@/components/shell/ComingSoon';
 import RuleEditorDialog from '@/components/workflow/RuleEditorDialog';
+import { Inbox, RefreshCw } from 'lucide-react';
+import { SkeletonTable } from '@/components/shell/Skeleton';
 
-function value(text: string | null): string {
-  return text && text.trim() ? text : '—';
+// Which actions actually consume Delay / Next Activity at execution time
+// (mirrors WorkflowEngine). Cells for actions that ignore a field show '—'.
+const DELAY_ACTIONS = new Set([
+  'COMPLETE_AND_ADVANCE', 'CREATE_ACTIVITY', 'RESCHEDULE_ACTIVITY', 'CREATE_REFERRAL',
+]);
+const NEXT_ACTIVITY_ACTIONS = new Set([
+  'COMPLETE_AND_ADVANCE', 'CREATE_ACTIVITY', 'CREATE_REFERRAL',
+]);
+// Only RESCHEDULE_ACTIVITY applies the rule's priority to the created activity;
+// every other action creates its activity at the default priority.
+const PRIORITY_ACTIONS = new Set(['RESCHEDULE_ACTIVITY']);
+
+/**
+ * Action-specific "Retry / Escalation" summary for the list. RETRY_ACTIVITY
+ * shows the effective retry_config (its real timing), ESCALATE / SEND_NOTIFICATION
+ * show the target role; other actions have nothing retry-related to show.
+ */
+function actionDetail(r: WorkflowRule): string {
+  switch (r.action) {
+    case 'RETRY_ACTIVITY': {
+      const rc = r.retryConfig;
+      return rc
+        ? `Retry every ${rc.retryIntervalHours}h · Max ${rc.maxAttempts} · Escalates after ${rc.escalationAfterAttempts}`
+        : 'Default retry policy';
+    }
+    case 'ESCALATE':
+      return r.escalationRole ? `Escalates to ${r.escalationRole}` : 'Escalates (no role set)';
+    case 'SEND_NOTIFICATION':
+      return r.notificationRole ? `Notifies ${r.notificationRole}` : '—';
+    default:
+      return '—';
+  }
 }
 
 /**
@@ -32,6 +65,11 @@ export default function WorkflowRulesPage() {
   const [search, setSearch] = useState('');
   const [editing, setEditing] = useState<WorkflowRule | null>(null);
   const [toast, setToast] = useState('');
+  const toastTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(() => {
+    return () => { if (toastTimer.current) clearTimeout(toastTimer.current); };
+  }, []);
 
   const load = useCallback(() => {
     const token = getToken();
@@ -92,7 +130,7 @@ export default function WorkflowRulesPage() {
             {data ? `${data.rules.length} rules · ${data.retryConfigs.length} retry policies` : 'Loading…'}
           </p>
         </div>
-        <button type="button" className="btn btn-ghost dq-refresh" onClick={load}>↻ Refresh</button>
+        <button type="button" className="btn btn-ghost dq-refresh" onClick={load}><RefreshCw size={13} aria-hidden="true" /> Refresh</button>
       </div>
 
       {error && <div className="dash-error">{error}</div>}
@@ -109,10 +147,10 @@ export default function WorkflowRulesPage() {
         </div>
 
         {loading ? (
-          <div className="dash-loading">Loading workflow rules&hellip;</div>
+          <SkeletonTable rows={8} />
         ) : filtered.length === 0 ? (
           <div className="empty-state">
-            <div className="empty-state-icon" aria-hidden="true">∅</div>
+            <div className="empty-state-icon" aria-hidden="true"><Inbox size={22} /></div>
             <div className="empty-state-text">No workflow rules match your search.</div>
           </div>
         ) : (
@@ -126,7 +164,7 @@ export default function WorkflowRulesPage() {
                   <th>Next Activity</th>
                   <th>Delay</th>
                   <th>Priority</th>
-                  <th>Retry Policy</th>
+                  <th>Retry / Escalation</th>
                   <th>Active</th>
                   <th className="wf-col-actions">Actions</th>
                 </tr>
@@ -140,10 +178,18 @@ export default function WorkflowRulesPage() {
                     </td>
                     <td>{value(r.forEvent)}</td>
                     <td><span className="wf-action">{value(r.action).replace(/_/g, ' ')}</span></td>
-                    <td>{value(r.nextActivity)}</td>
-                    <td>{r.delayDays === 0 ? 'Same day' : `${r.delayDays}d`}</td>
-                    <td><span className={`pill pill-${r.priority.toLowerCase()}`}>{r.priority}</span></td>
-                    <td>{value(r.retryPolicy)}</td>
+                    <td>{NEXT_ACTIVITY_ACTIONS.has(r.action) ? value(r.nextActivity) : '—'}</td>
+                    <td>
+                      {DELAY_ACTIONS.has(r.action)
+                        ? (r.delayDays === 0 ? 'Same day' : `${r.delayDays}d`)
+                        : '—'}
+                    </td>
+                    <td>
+                      {PRIORITY_ACTIONS.has(r.action)
+                        ? <span className={`pill pill-${r.priority.toLowerCase()}`}>{r.priority}</span>
+                        : '—'}
+                    </td>
+                    <td>{actionDetail(r)}</td>
                     <td>
                       <span className={`pill ${r.isActive ? 'pill-active' : 'pill-inactive'}`}>
                         {r.isActive ? 'Active' : 'Inactive'}
@@ -211,13 +257,14 @@ export default function WorkflowRulesPage() {
           onSaved={() => {
             setEditing(null);
             setToast('Workflow rule updated.');
-            setTimeout(() => setToast(''), 2600);
+            if (toastTimer.current) clearTimeout(toastTimer.current);
+            toastTimer.current = setTimeout(() => setToast(''), 2600);
             load();
           }}
         />
       )}
 
-      {toast && <div className="cz-toast">{toast}</div>}
+      {toast && <div className="cz-toast" role="status">{toast}</div>}
     </div>
   );
 }

@@ -1,3 +1,5 @@
+import { Construction } from 'lucide-react';
+
 interface ComingSoonProps {
   title: string;
   description?: string;
@@ -14,7 +16,7 @@ export default function ComingSoon({ title, description }: ComingSoonProps) {
         <h1 className="page-title">{title}</h1>
       </div>
       <div className="coming-soon">
-        <div className="coming-soon-icon" aria-hidden="true">🚧</div>
+        <div className="coming-soon-icon" aria-hidden="true"><Construction size={26} /></div>
         <div className="coming-soon-title">Coming in a future milestone.</div>
         <div className="coming-soon-text">
           {description ?? `The ${title} module is not part of this milestone.`}

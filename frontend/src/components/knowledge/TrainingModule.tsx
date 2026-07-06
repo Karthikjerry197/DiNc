@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { fetchTrainingModules, type TrainingModule } from '@/lib/api';
 import { getToken } from '@/lib/session';
+import { Inbox, Search } from 'lucide-react';
 
 function duration(min: number | null): string {
   if (!min) return '—';
@@ -51,7 +52,7 @@ export default function TrainingCatalogue() {
     <div>
       <div className="kh-toolbar">
         <div className="wl-filter-search kh-search">
-          <span className="wl-filter-search-icon" aria-hidden="true">🔍</span>
+          <span className="wl-filter-search-icon" aria-hidden="true"><Search size={14} /></span>
           <input className="wl-filter-search-input" placeholder="Search training modules…" value={search}
             onChange={(e) => setSearch(e.target.value)} />
         </div>
@@ -74,7 +75,7 @@ export default function TrainingCatalogue() {
         <div className="dash-loading">Loading training&hellip;</div>
       ) : filtered.length === 0 ? (
         <div className="empty-state">
-          <div className="empty-state-icon" aria-hidden="true">∅</div>
+          <div className="empty-state-icon" aria-hidden="true"><Inbox size={22} /></div>
           <div className="empty-state-text">No training modules match your search.</div>
         </div>
       ) : (

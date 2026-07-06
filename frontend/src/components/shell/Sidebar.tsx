@@ -24,8 +24,6 @@ export interface NavItem {
   label: string;
   href: string;
   icon: ReactNode;
-  /** Functional pages render real content; false = "coming soon" placeholder. */
-  enabled: boolean;
   /**
    * Permission required to see this item.
    * Omit to show the item to every authenticated user (including guests).
@@ -37,18 +35,17 @@ export interface NavItem {
  * Primary navigation items.
  * Items without a permission are visible to all authenticated users.
  * Items with a permission are shown only to roles that hold it.
- * The enabled flag controls whether the destination page is functional (not sidebar visibility).
  */
 const NAV_ICON = 18;
 export const NAV_ITEMS: NavItem[] = [
-  { label: 'Dashboard',      href: '/dashboard',      icon: <LayoutDashboard size={NAV_ICON} />, enabled: true },
-  { label: 'My Worklist',    href: '/worklist',       icon: <ClipboardList size={NAV_ICON} />,   enabled: true,  permission: 'worklist.view' },
-  { label: 'Citizens',       href: '/citizens',       icon: <UsersRound size={NAV_ICON} />,      enabled: true,  permission: 'citizens.view' },
-  { label: 'Guidebooks',     href: '/guidebooks',     icon: <BookOpen size={NAV_ICON} />,        enabled: false },
-  { label: 'Knowledge Base', href: '/knowledge-base', icon: <Library size={NAV_ICON} />,         enabled: true },
-  { label: 'Notifications',  href: '/notifications',  icon: <Bell size={NAV_ICON} />,            enabled: true },
-  { label: 'Reports',        href: '/reports',        icon: <BarChart3 size={NAV_ICON} />,       enabled: true,  permission: 'reports.view' },
-  { label: 'Administration', href: '/administration', icon: <Settings size={NAV_ICON} />,        enabled: true,  permission: 'admin.pages' },
+  { label: 'Dashboard',      href: '/dashboard',      icon: <LayoutDashboard size={NAV_ICON} /> },
+  { label: 'My Worklist',    href: '/worklist',       icon: <ClipboardList size={NAV_ICON} />,   permission: 'worklist.view' },
+  { label: 'Citizens',       href: '/citizens',       icon: <UsersRound size={NAV_ICON} />,      permission: 'citizens.view' },
+  { label: 'Guidebooks',     href: '/guidebooks',     icon: <BookOpen size={NAV_ICON} /> },
+  { label: 'Knowledge Base', href: '/knowledge-base', icon: <Library size={NAV_ICON} /> },
+  { label: 'Notifications',  href: '/notifications',  icon: <Bell size={NAV_ICON} /> },
+  { label: 'Reports',        href: '/reports',        icon: <BarChart3 size={NAV_ICON} />,       permission: 'reports.view' },
+  { label: 'Administration', href: '/administration', icon: <Settings size={NAV_ICON} />,        permission: 'admin.pages' },
 ];
 
 interface SidebarProps {

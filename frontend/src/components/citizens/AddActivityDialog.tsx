@@ -8,6 +8,7 @@ import {
   type ActivityAssignee,
 } from '@/lib/api';
 import { getToken } from '@/lib/session';
+import { useDialogA11y } from '@/lib/useDialogA11y';
 
 interface AddActivityDialogProps {
   enrollmentId: string;
@@ -81,11 +82,17 @@ export default function AddActivityDialog({
     };
   }, [open, enrollmentId]);
 
+  // Shared dialog behaviour: Escape close, focus trap, focus restore (M35C).
+  const dialogRef = useDialogA11y(open, () => {
+        if (!saving) onClose();
+      });
+
   if (!open) return null;
 
   const canSave = !!eventId && !!dueDate && !saving;
 
   async function handleSave() {
+    if (saving) return;
     setError('');
     if (!eventId || !dueDate) {
       setError('Please select an event and a due date.');
@@ -123,7 +130,7 @@ export default function AddActivityDialog({
     >
       <div
         className="modal"
-        role="dialog"
+        ref={dialogRef} role="dialog"
         aria-modal="true"
         aria-labelledby="add-activity-title"
         onClick={(e) => e.stopPropagation()}

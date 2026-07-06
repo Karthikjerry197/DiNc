@@ -10,6 +10,9 @@ import {
   type RegistrationOptions,
 } from '@/lib/api';
 import { getToken } from '@/lib/session';
+import { csvTextToGrid } from '@/lib/csv';
+import { FileText, TriangleAlert } from 'lucide-react';
+import { useDialogA11y } from '@/lib/useDialogA11y';
 
 interface BulkUploadDialogProps {
   open: boolean;
@@ -35,21 +38,6 @@ const HEADER_ALIASES: Record<string, keyof BulkPatientRow> = {
   program: 'programs',
 };
 
-/** Splits one CSV line, honouring simple double-quoted fields. */
-function splitCsvLine(line: string): string[] {
-  const out: string[] = [];
-  let cur = '';
-  let inQuotes = false;
-  for (let i = 0; i < line.length; i += 1) {
-    const ch = line[i];
-    if (ch === '"') {
-      if (inQuotes && line[i + 1] === '"') { cur += '"'; i += 1; } else { inQuotes = !inQuotes; }
-    } else if (ch === ',' && !inQuotes) { out.push(cur); cur = ''; } else { cur += ch; }
-  }
-  out.push(cur);
-  return out.map((s) => s.trim());
-}
-
 /** Maps a 2-D cell grid (header row + data rows) to validated patient rows. */
 function gridToRows(grid: string[][]): { rows: BulkPatientRow[]; warnings: string[] } {
   const warnings: string[] = [];
@@ -65,10 +53,6 @@ function gridToRows(grid: string[][]): { rows: BulkPatientRow[]; warnings: strin
       const raw = String(cells[idx] ?? '').trim();
       if (field && raw) rec[field] = raw;
     });
-    if (!rec.uhid && !rec.fullName) {
-      warnings.push(`Row ${i + 1} skipped: name is required.`);
-      continue;
-    }
     if (!rec.fullName) {
       warnings.push(`Row ${i + 1} skipped: name is required.`);
       continue;
@@ -79,8 +63,7 @@ function gridToRows(grid: string[][]): { rows: BulkPatientRow[]; warnings: strin
 }
 
 function parseCsvText(text: string): { rows: BulkPatientRow[]; warnings: string[] } {
-  const lines = text.split(/\r?\n/).filter((l) => l.trim().length > 0);
-  return gridToRows(lines.map(splitCsvLine));
+  return gridToRows(csvTextToGrid(text));
 }
 
 /**
@@ -115,6 +98,9 @@ export default function BulkUploadDialog({ open, onClose, onUploaded }: BulkUplo
   // Effective rows: a parsed file takes precedence, else live-parsed paste.
   const effective = fileName ? { rows, warnings } : parsedFromText ?? { rows: [], warnings: [] };
 
+  // Shared dialog behaviour: Escape close, focus trap, focus restore (M35C).
+  const dialogRef = useDialogA11y(open, () => !saving && onClose());
+
   if (!open) return null;
 
   function handleFile(file: File) {
@@ -147,6 +133,7 @@ export default function BulkUploadDialog({ open, onClose, onUploaded }: BulkUplo
   }
 
   async function handleUpload() {
+    if (saving) return;
     setError(''); setResult(null);
     const token = getToken();
     if (!token) return setError('Your session has expired. Please sign in again.');
@@ -169,7 +156,7 @@ export default function BulkUploadDialog({ open, onClose, onUploaded }: BulkUplo
 
   return (
     <div className="modal-overlay" role="presentation" onClick={() => !saving && onClose()}>
-      <div className="modal modal-wide" role="dialog" aria-modal="true" aria-labelledby="bulk-title" onClick={(e) => e.stopPropagation()}>
+      <div className="modal modal-wide" ref={dialogRef} role="dialog" aria-modal="true" aria-labelledby="bulk-title" onClick={(e) => e.stopPropagation()}>
         <div className="modal-head">
           <h2 id="bulk-title" className="modal-title">Bulk Upload Patients</h2>
           <button type="button" className="modal-close" aria-label="Close" onClick={onClose} disabled={saving}>×</button>
@@ -182,7 +169,7 @@ export default function BulkUploadDialog({ open, onClose, onUploaded }: BulkUplo
             Upload <strong>CSV</strong> or <strong>Excel (.xlsx)</strong> with a header row. Columns:{' '}
             <code>uhid, full_name, age, gender, phone, address, village, district, aadhaar, programs</code>.
             Only <code>full_name</code> is required; UHID auto-generates; duplicates are skipped. The{' '}
-            <code>programs</code> column (program codes, comma-separated) overrides the defaults below.
+            <code>programs</code> column (program codes, separated by <code>;</code>) overrides the defaults below.
           </p>
 
           <div className="modal-row">
@@ -207,7 +194,7 @@ export default function BulkUploadDialog({ open, onClose, onUploaded }: BulkUplo
             <div className="fg">
               <label className="fl" htmlFor="bu-text">Or paste CSV</label>
               <textarea id="bu-text" className="fc modal-textarea bu-textarea" value={text} disabled={saving}
-                placeholder={'full_name,age,gender,phone,programs\nAsha Devi,34,Female,9876543210,HYPERTENSION,DIABETES'}
+                placeholder={'full_name,age,gender,phone,programs\nAsha Devi,34,Female,9876543210,HYPERTENSION;DIABETES'}
                 onChange={(e) => setText(e.target.value)} />
             </div>
           )}
@@ -232,13 +219,13 @@ export default function BulkUploadDialog({ open, onClose, onUploaded }: BulkUplo
           </div>
 
           <div className="bu-parsed">
-            {fileName && <span className="bu-file-name">📄 {fileName}</span>}
+            {fileName && <span className="bu-file-name"><FileText size={13} aria-hidden="true" /> {fileName}</span>}
             <span>{effective.rows.length} valid row(s) ready</span>
           </div>
 
           {effective.warnings.length > 0 && (
             <div className="bu-warnings">
-              {effective.warnings.slice(0, 6).map((w, i) => <div key={i}>⚠ {w}</div>)}
+              {effective.warnings.slice(0, 6).map((w, i) => <div key={i}><TriangleAlert size={12} aria-hidden="true" /> {w}</div>)}
               {effective.warnings.length > 6 && <div>…and {effective.warnings.length - 6} more.</div>}
             </div>
           )}

@@ -8,6 +8,12 @@
   --tp: #1f2937;
   --ts: #6b7280;
   --er: #dc2626;
+  /* Semantic status/risk colors (M35B): single source for risk & status hues. */
+  --warn: #d97706;
+  --info: #0284c7;
+  --risk-low: #15803d;
+  --risk-moderate: #d97706;
+  --risk-severe: #b91c1c;
   --font: "Inter", "SF Pro Display", system-ui, -apple-system, "Segoe UI", sans-serif;
 
   /* ──────────────────────────────────────────────────────────────────────────
@@ -50,6 +56,14 @@
   --list-col-w: 280px;                /* master list column */
   --inspector-w: 340px;               /* InspectorPanel default */
   --kpi-h: 64px;                      /* KPI ribbon height */
+
+  /* Dashboard worklist column grid (M27) — fixed-layout table columns.
+   * Program has no token: it is the unsized column absorbing the remainder. */
+  --wl-col-uhid: 128px;
+  --wl-col-activity: 240px;
+  --wl-col-due: 74px;
+  --wl-col-priority: 84px;
+  --wl-col-actions: 142px;
   --row-h-comfortable: 40px;
   --row-h-compact: 32px;              /* DEFAULT density */
   --row-h-dense: 28px;
@@ -65,10 +79,32 @@
   font-family: var(--font);
 }
 
+/* The document itself never scrolls — the shell owns the viewport (100dvh) and
+ * all scrolling lives inside descendant regions (.shell-content for legacy pages,
+ * PanelContent for migrated workspaces). This guarantees the browser viewport
+ * stays fixed regardless of page content (M27 infrastructure). */
+html,
+body {
+  height: 100%;
+  overflow: hidden;
+}
+
 body {
   color: var(--tp);
   -webkit-font-smoothing: antialiased;
   letter-spacing: -0.01em;
+}
+
+/* ── Icon system (Lucide) ──────────────────────────────────────────────────
+ * One optical weight and consistent alignment for every icon across the app so
+ * they read as an intentionally designed set, not dropped-in glyphs. A slightly
+ * lighter-than-default stroke (1.75) gives the restrained, premium feel of
+ * Linear / Stripe / Fluent. `display:block` removes inline-SVG baseline drift so
+ * icons sit optically centred inside their flex containers. */
+.lucide {
+  stroke-width: 1.75;
+  display: block;
+  flex-shrink: 0;
 }
 
 .screen {
@@ -314,14 +350,23 @@ body {
 }
 
 .btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
   width: 100%;
   padding: 10px;
-  border-radius: 9px;
+  border-radius: 8px;
   cursor: pointer;
   font-size: 12px;
   font-weight: 600;
   border: none;
   transition: all 0.18s;
+}
+
+.btn:focus-visible {
+  outline: 2px solid var(--p);
+  outline-offset: 2px;
 }
 
 .btn:disabled {
@@ -332,7 +377,19 @@ body {
 .btn-primary {
   background: var(--p);
   color: #fff;
+  border: none;
+  border-radius: 8px;
+  padding: 8px 16px;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.15s;
   box-shadow: 0 1px 4px rgba(36, 161, 72, 0.25);
+}
+
+.btn-primary:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
 }
 
 .btn-primary:hover:not(:disabled) {
@@ -538,10 +595,10 @@ body {
   flex-shrink: 0;
   border-radius: var(--radius-md);
   background: linear-gradient(135deg, #24a148, #43b96b);
+  color: #fff;
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: var(--fs-lg);
   box-shadow: 0 4px 12px rgba(36, 161, 72, 0.25);
 }
 
@@ -584,7 +641,9 @@ body {
   white-space: nowrap;
   transition: background 0.15s, color 0.15s;
 }
-.shell-nav-item:hover { background: var(--bg); color: var(--ps); }
+/* Hover: a calm neutral wash + gentle darken — brand green is reserved for the
+ * active item so the states read as a clear hierarchy, not a colour flash. */
+.shell-nav-item:hover { background: #f3f4f6; color: var(--tp); }
 .shell-nav-item.active { background: var(--pl); color: var(--ps); }
 /* Active accent bar for clearer visual hierarchy. */
 .shell-nav-item.active::before {
@@ -598,7 +657,7 @@ body {
   background: var(--ps);
 }
 
-.shell-nav-icon { width: 18px; text-align: center; font-size: var(--fs-md); flex-shrink: 0; }
+.shell-nav-icon { width: 18px; display: inline-flex; align-items: center; justify-content: center; flex-shrink: 0; }
 .shell-nav-label { min-width: 0; overflow: hidden; transition: opacity 0.14s ease; }
 
 /* Collapsed visuals: fade labels/brand text and center the icons. */
@@ -871,7 +930,7 @@ body {
   transition: background 0.12s;
   font-family: var(--font);
 }
-.acm-item:hover:not(:disabled):not(.acm-item--disabled) {
+.acm-item:hover:not(:disabled) {
   background: #f4f8f5;
 }
 .acm-item:focus-visible {
@@ -879,10 +938,6 @@ body {
   outline-offset: -2px;
 }
 
-.acm-item--disabled {
-  opacity: 0.5;
-  cursor: default;
-}
 
 .acm-item--danger { color: #dc2626; }
 .acm-item--danger:hover:not(:disabled) { background: #fef2f2; }
@@ -890,10 +945,12 @@ body {
 .acm-item--expand { justify-content: flex-start; }
 
 .acm-item-icon {
-  font-size: 14px;
   flex-shrink: 0;
   width: 20px;
-  text-align: center;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--ts);
 }
 
 .acm-item-label {
@@ -918,15 +975,6 @@ body {
   flex-shrink: 0;
 }
 
-.acm-coming {
-  font-size: 10px;
-  font-weight: 600;
-  padding: 1px 6px;
-  background: #f3f4f6;
-  color: #6b7280;
-  border-radius: 4px;
-  margin-left: auto;
-}
 
 /* Switch User submenu */
 .acm-sub {
@@ -972,7 +1020,9 @@ body {
 
 .acm-sub-check {
   width: 14px;
-  font-size: 11px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
   color: var(--p);
   flex-shrink: 0;
 }
@@ -1026,11 +1076,11 @@ body {
 }
 
 .stat-card {
-  background: #fff;
+  background: var(--card);
   border: 1px solid var(--bd);
-  border-radius: 14px;
+  border-radius: var(--radius-md);
   padding: 15px 16px;
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.03);
+  box-shadow: var(--shadow-sm);
 }
 
 .stat-card-top {
@@ -1087,11 +1137,11 @@ body {
 }
 
 .panel {
-  background: #fff;
+  background: var(--card);
   border: 1px solid var(--bd);
-  border-radius: 14px;
+  border-radius: var(--radius-md);
   padding: 16px 18px;
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.03);
+  box-shadow: var(--shadow-sm);
 }
 
 .panel-head {
@@ -1135,6 +1185,46 @@ body {
   margin-top: 5px;
 }
 
+/* ── Skeleton placeholders (M35C) — static, animation-free loading blocks ── */
+.skel {
+  background: #e8eeea;
+  border-radius: var(--radius-sm);
+}
+
+.skel-group {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 14px 16px;
+}
+
+.skel-line { height: 12px; }
+.skel-th   { height: 14px; width: 100%; opacity: 0.7; }
+.skel-row  { height: 30px; width: 100%; }
+
+.skel-stats {
+  display: flex;
+  gap: 12px;
+  padding: 12px 0;
+}
+
+.skel-stat {
+  flex: 1;
+  height: 56px;
+}
+
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
 /* ── Data table ── */
 .data-table {
   width: 100%;
@@ -1163,6 +1253,10 @@ body {
   border-bottom: none;
 }
 
+.data-table tbody tr:hover td {
+  background: #f8faf9;
+}
+
 .mono {
   font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
   font-size: 11px;
@@ -1171,9 +1265,10 @@ body {
 .pill {
   display: inline-block;
   font-size: 10px;
-  font-weight: 700;
+  font-weight: 600;
+  letter-spacing: 0.01em;
   padding: 2px 9px;
-  border-radius: 99px;
+  border-radius: var(--radius-pill);
   background: #f3f4f6;
   color: #4b5563;
   text-transform: capitalize;
@@ -1190,14 +1285,14 @@ body {
 .service-grid {
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: 6px;
 }
 
 .service-chip {
   display: flex;
   align-items: center;
   gap: 10px;
-  padding: 9px 11px;
+  padding: 6px 10px;
   border: 1px solid var(--bd);
   border-radius: 9px;
   background: #fafdfb;
@@ -1226,8 +1321,8 @@ body {
 .activity-item {
   display: flex;
   align-items: center;
-  gap: 11px;
-  padding: 10px 0;
+  gap: 9px;
+  padding: 6px 0;
   border-bottom: 1px solid #f1f5f1;
 }
 
@@ -1236,14 +1331,14 @@ body {
 }
 
 .activity-icon {
-  width: 30px;
-  height: 30px;
-  border-radius: 8px;
+  width: 26px;
+  height: 26px;
+  border-radius: 7px;
   background: #edf8f0;
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: 13px;
+  font-size: 12px;
   flex-shrink: 0;
 }
 
@@ -1281,8 +1376,10 @@ body {
 }
 
 .empty-state-icon {
-  font-size: 22px;
-  opacity: 0.5;
+  display: flex;
+  justify-content: center;
+  color: var(--ts);
+  opacity: 0.6;
   margin-bottom: 6px;
 }
 
@@ -1371,12 +1468,6 @@ body {
   gap: 16px;
 }
 
-.wl-actions {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  flex-wrap: wrap;
-}
 
 .wl-btn {
   display: inline-flex;
@@ -1384,7 +1475,7 @@ body {
   gap: 6px;
   background: #fff;
   border: 1px solid var(--bd);
-  border-radius: 9px;
+  border-radius: 8px;
   padding: 8px 13px;
   font-size: 12px;
   font-weight: 600;
@@ -1400,8 +1491,13 @@ body {
 }
 
 .wl-btn:disabled {
-  opacity: 0.6;
-  cursor: default;
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.wl-btn:focus-visible {
+  outline: 2px solid var(--p);
+  outline-offset: 2px;
 }
 
 .wl-btn-primary {
@@ -1613,10 +1709,6 @@ body {
   background: #fafdfb;
 }
 
-.wl-col-check {
-  width: 36px;
-  text-align: center;
-}
 
 .wl-col-actions {
   text-align: right;
@@ -1650,9 +1742,23 @@ body {
 }
 
 .wl-icon-btn:hover {
-  background: #edf8f0;
-  border-color: #b6e6c2;
-  color: var(--ps);
+  background: #f3f4f6;
+  color: var(--tp);
+}
+/* Subtle semantic hover — a calm background wash + colour shift, no border flash. */
+.wl-icon-btn--guide:hover:not(:disabled)  { background: var(--pl); color: var(--p); }
+.wl-icon-btn--call:hover:not(:disabled)   { background: #ecfdf3; color: #15803d; }
+.wl-icon-btn--open:hover:not(:disabled)   { background: #eff4ff; color: #1d4ed8; }
+.wl-icon-btn--report:hover:not(:disabled) { background: #fef6e7; color: #b45309; }
+
+/* Affordance: unavailable actions recede; keyboard focus is always visible. */
+.wl-icon-btn:disabled {
+  opacity: 0.35;
+  cursor: default;
+}
+.wl-icon-btn:focus-visible {
+  outline: 2px solid var(--p);
+  outline-offset: 1px;
 }
 
 /* ── Footer / pagination ── */
@@ -1665,50 +1771,25 @@ body {
   padding: 4px 2px;
 }
 
-.wl-pagination {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-}
 
-.wl-page-btn {
-  width: 30px;
-  height: 30px;
-  border-radius: 8px;
-  border: 1px solid var(--bd);
-  background: #fff;
-  cursor: pointer;
-  font-size: 14px;
-  color: #374151;
-}
 
-.wl-page-btn:disabled {
-  opacity: 0.5;
-  cursor: default;
-}
 
-.wl-page-current {
-  font-size: 12px;
-  font-weight: 700;
-  color: var(--tp);
-  min-width: 22px;
-  text-align: center;
-}
 
 /* ════════════════════════════════════════════════════════════════════════
    Milestone 4 — Citizen Workspace (Visual Framework)
    ════════════════════════════════════════════════════════════════════════ */
 
-.cz-page {
-  height: 100%;
-}
-
-.cz-workspace {
-  display: grid;
-  grid-template-columns: 272px minmax(0, 1fr) 360px;
-  gap: 14px;
-  height: calc(100vh - 102px);
-  min-height: 520px;
+/* Timeline dock: a bounded bottom strip on the profile tab so the entire Citizens
+ * workspace fits one viewport with no page scroll. The PatientTimeline is a
+ * primitive Panel; its PanelContent scrolls internally. (The bespoke `.cz-page`
+ * / `.cz-workspace` grid + calc(100vh - 102px) shell was replaced by the
+ * Workspace / WorkspaceGrid primitives — M27.8.) */
+.cz-timeline-dock {
+  flex: 0 0 240px;
+  min-height: 180px;
+  max-height: 300px;
+  display: flex;
+  flex-direction: column;
 }
 
 .wl-icon-btn,
@@ -2324,16 +2405,6 @@ a.wl-icon-btn {
   z-index: 50;
 }
 
-@media (max-width: 1100px) {
-  .cz-workspace {
-    grid-template-columns: 1fr;
-    height: auto;
-  }
-  .cz-list,
-  .cz-timeline {
-    max-height: 420px;
-  }
-}
 
 /* ════════════════════════════════════════════════════════════════════════
    Milestone 6 — Guidebooks & Clinical Decision Support (Visual Framework)
@@ -2366,21 +2437,7 @@ a.wl-icon-btn {
   flex-wrap: wrap;
 }
 
-.gb-toolbar-filters {
-  display: flex;
-  gap: 9px;
-  align-items: center;
-  flex-wrap: wrap;
-  background: #fff;
-  border: 1px solid var(--bd);
-  border-radius: 12px;
-  padding: 11px 14px;
-}
 
-.gb-toolbar-search {
-  flex: 1;
-  min-width: 200px;
-}
 
 /* ── Workspace grid ── */
 .gb-workspace {
@@ -2422,25 +2479,7 @@ a.wl-icon-btn {
   flex: 1;
 }
 
-.gb-new-btn {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  background: var(--p);
-  border: 1px solid var(--p);
-  color: #fff;
-  border-radius: 9px;
-  padding: 7px 12px;
-  font-size: 11.5px;
-  font-weight: 700;
-  cursor: pointer;
-  white-space: nowrap;
-  transition: background 0.15s;
-}
 
-.gb-new-btn:hover {
-  background: var(--ps);
-}
 
 .gb-cards {
   flex: 1;
@@ -2753,6 +2792,61 @@ a.wl-icon-btn {
   max-width: 360px;
 }
 
+/* ── Import Protocol dialog: validated-payload preview ── */
+.ip-preview {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.ip-preview-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  font-size: 13.5px;
+  font-weight: 700;
+  color: var(--tp);
+  background: var(--pl);
+  border-radius: 9px;
+  padding: 10px 12px;
+}
+
+.ip-preview-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  border: 1px solid var(--bd);
+  border-radius: 9px;
+  overflow: hidden;
+}
+
+.ip-preview-list li {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 8px 12px;
+  font-size: 12.5px;
+}
+
+.ip-preview-list li + li {
+  border-top: 1px solid var(--bd);
+}
+
+.ip-preview-kind {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--ts);
+  white-space: nowrap;
+}
+
+.bp-entry-error {
+  color: var(--er);
+  white-space: normal;
+  text-align: right;
+}
+
 @media (max-width: 1100px) {
   .gb-workspace {
     grid-template-columns: 1fr;
@@ -3027,6 +3121,37 @@ a.wl-icon-btn {
   display: flex;
   gap: 4px;
 }
+/* Single-line worklist rows, UHID-anchored. UHID is the system's primary
+ * identifier (patient names are intentionally not rendered on the Dashboard),
+ * so it carries the row's one weight accent; Activity is the task, Programme
+ * its quieter context lane the eye can skip. */
+.dash-worklist-table .dash-td-uhid {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  font-weight: var(--fw-medium);
+  color: var(--tp);
+}
+.dash-worklist-table .dash-td-activity {
+  color: var(--tp);
+  font-weight: var(--fw-medium); /* second anchor: the task, matching UHID */
+  max-width: 260px; /* legacy auto-layout guard; the Dashboard grid overrides */
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.dash-worklist-table .dash-td-program {
+  color: var(--ts);
+  max-width: 220px; /* a long programme name may truncate, never wrap the row */
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.dash-worklist-table .dash-td-due { white-space: nowrap; width: 1%; }
+.dash-worklist-table .dash-td-due--overdue {
+  color: var(--er);
+  font-weight: var(--fw-medium);
+}
 
 /* ── Dashboard: Programs Summary ── */
 .program-summary-list {
@@ -3041,7 +3166,7 @@ a.wl-icon-btn {
   align-items: center;
   justify-content: space-between;
   gap: 10px;
-  padding: 9px 2px;
+  padding: 6px 2px;
   border-bottom: 1px solid var(--bd);
   font-size: 12.5px;
 }
@@ -3053,9 +3178,9 @@ a.wl-icon-btn {
   font-weight: 500;
 }
 .program-summary-count {
-  font-weight: 800;
-  color: var(--p);
-  background: var(--pl);
+  font-weight: 700;
+  color: #374151;
+  background: #f3f4f6;
   border-radius: 999px;
   padding: 2px 10px;
   font-size: 11.5px;
@@ -3071,9 +3196,9 @@ a.wl-icon-btn {
   display: flex;
   align-items: center;
   gap: 14px;
-  background: #fff;
+  background: var(--card);
   border: 1px solid var(--bd);
-  border-radius: 14px;
+  border-radius: var(--radius-md);
   padding: 16px 18px;
   text-decoration: none;
   color: inherit;
@@ -3083,14 +3208,6 @@ a.wl-icon-btn {
 .admin-tile:hover {
   border-color: #c0d4c2;
   box-shadow: 0 4px 14px rgba(0, 0, 0, 0.06);
-}
-.admin-tile-disabled {
-  opacity: 0.6;
-  cursor: default;
-}
-.admin-tile-disabled:hover {
-  border-color: var(--bd);
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.03);
 }
 .admin-tile-icon {
   font-size: 24px;
@@ -3121,16 +3238,6 @@ a.wl-icon-btn {
   color: var(--p);
   font-size: 18px;
   font-weight: 700;
-}
-.admin-tile-soon {
-  font-size: 10px;
-  font-weight: 700;
-  text-transform: uppercase;
-  color: var(--ts);
-  background: #f3f4f6;
-  border-radius: 6px;
-  padding: 1px 6px;
-  margin-left: 6px;
 }
 
 /* ── Data Quality: Duplicate Requests list ── */
@@ -3309,8 +3416,8 @@ a.wl-icon-btn {
 .consult-stat-row {
   display: grid;
   grid-template-columns: repeat(6, 1fr);
-  gap: 10px;
-  margin-bottom: 14px;
+  gap: 8px;
+  margin-bottom: 10px;
 }
 .consult-stat {
   display: flex;
@@ -3319,7 +3426,7 @@ a.wl-icon-btn {
   background: #fafdfb;
   border: 1px solid var(--bd);
   border-radius: 10px;
-  padding: 10px 12px;
+  padding: 7px 10px;
 }
 .consult-stat-value {
   font-size: 20px;
@@ -3461,10 +3568,7 @@ a.wl-icon-btn {
   padding: 12px;
 }
 
-/* ── Patient timeline ── */
-.cz-timeline-panel {
-  margin-top: 16px;
-}
+/* ── Patient timeline ── (renders inside a primitive Panel/PanelContent) */
 .pt-timeline {
   list-style: none;
   margin: 0;
@@ -3675,14 +3779,28 @@ a.wl-icon-btn {
 .op-toolbar .btn {
   display: inline-flex;
   align-items: center;
-  gap: 6px;
+  gap: 7px;
+  padding: 7px 13px;
 }
-.cz-page-head {
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: 16px;
-  flex-wrap: wrap;
+/* Ghost secondary action: calm neutral hover — green is reserved for the CTA. */
+.op-toolbar .btn-ghost:hover {
+  background: #f3f4f6;
+  border-color: #d1d5db;
+}
+/* Header/toolbar CTA: the icon sits inline (no filled container) so the solid
+ * primary button reads as a single, clean call-to-action rather than a chip in
+ * a button. Restrained brand-tinted shadow gives it quiet prominence. */
+.op-toolbar .qa-icon {
+  width: auto;
+  height: auto;
+  background: transparent;
+  border-radius: 0;
+}
+.op-toolbar .btn-primary {
+  box-shadow: 0 1px 2px rgba(36, 161, 72, 0.25);
+}
+.op-toolbar .btn-primary:hover:not(:disabled) {
+  box-shadow: 0 2px 6px rgba(36, 161, 72, 0.28);
 }
 
 /* Bulk upload dialog */
@@ -4046,6 +4164,11 @@ a.wl-icon-btn {
 .an-legend-dot { width: 10px; height: 10px; border-radius: 50%; flex-shrink: 0; }
 .an-legend-label { flex: 1; }
 .an-legend-value { font-weight: 600; font-size: 12px; color: var(--ts); }
+
+/* Line chart (M34) */
+.an-line-wrap { display: flex; flex-direction: column; gap: 10px; }
+.an-line { width: 100%; height: auto; }
+.an-legend-inline { flex-direction: row; flex-wrap: wrap; gap: 16px; }
 
 /* Inline progress bar */
 .an-progress {
@@ -5133,8 +5256,6 @@ a.wl-icon-btn {
 .cz-tab-btn:hover  { background: #edf8f0; color: var(--tp); }
 .cz-tab-btn.active { background: var(--pl); border-color: var(--p); color: var(--ps); }
 
-/* Journey layout: 2-column (list + journey panel) instead of 3 */
-.cz-workspace--journey { grid-template-columns: 272px minmax(0, 1fr); }
 
 /* ── Clinical Journey panel ──────────────────────────────────────────── */
 .cz-journey {
@@ -5355,7 +5476,7 @@ a.wl-icon-btn {
   align-items: center;
   gap: 7px;
   padding: 7px 16px;
-  border-radius: 9px;
+  border-radius: 8px;
   border: 1.5px solid var(--bd);
   background: #fff;
   color: var(--tp);
@@ -5387,7 +5508,9 @@ a.wl-icon-btn {
 }
 
 .qa-compact-icon {
-  font-size: 14px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
   line-height: 1;
 }
 
@@ -5599,7 +5722,15 @@ a.wl-icon-btn {
   display: flex;
   flex-direction: column;
   min-width: 0;
+  min-height: 0;
   gap: 0;
+}
+/* Let the journey panel fill the remaining column height and scroll internally
+ * (via its own .cj-event-list) now that the page no longer scrolls. */
+.cz-journey-main > .cz-journey {
+  flex: 1 1 0;
+  min-height: 0;
+  height: auto;
 }
 
 /* Panel shell */
@@ -5656,23 +5787,7 @@ a.wl-icon-btn {
   padding: 12px 14px;
 }
 
-/* ── Risk badge ── */
-.cdse-risk-badge {
-  display: inline-flex;
-  align-items: center;
-  gap: 5px;
-  padding: 3px 9px;
-  border-radius: 20px;
-  font-size: 11px;
-  font-weight: 800;
-  text-transform: uppercase;
-  letter-spacing: 0.04em;
-  white-space: nowrap;
-  flex-shrink: 0;
-}
-.cdse-risk-badge--low      { background: #dcfce7; color: #166534; }
-.cdse-risk-badge--moderate { background: #fef3c7; color: #92400e; }
-.cdse-risk-badge--high     { background: #fee2e2; color: #991b1b; }
+/* ── Risk badge ── canonical .cdse-risk-badge lives in the M25 CDSE section. */
 
 /* ── Recommendation cards ── */
 .cdse-recs-list {
@@ -5883,21 +5998,7 @@ a.wl-icon-btn {
 
 /* ── Longitudinal Care Plan Engine ─────────────────────────────────────────── */
 
-/* Shared buttons */
-.btn-primary {
-  background: var(--p);
-  color: #fff;
-  border: none;
-  border-radius: 8px;
-  padding: 8px 16px;
-  font-size: 12px;
-  font-weight: 600;
-  cursor: pointer;
-  transition: background 0.15s;
-}
-.btn-primary:hover:not(:disabled) { background: var(--ps); }
-.btn-primary:disabled { opacity: 0.55; cursor: not-allowed; }
-
+/* Shared buttons — .btn-primary is defined once in the global button section. */
 .btn-outline {
   background: #fff;
   color: var(--tp);
@@ -6764,8 +6865,232 @@ a.wl-icon-btn {
 .studio {
   display: flex;
   flex-direction: column;
-  gap: 12px;
+  gap: 10px;
 }
+
+/* ── M27 Dashboard regions ── */
+/* Primary ~66% / inspector ~34% on desktop; below 1024 the primitive collapses. */
+@media (min-width: 1024px) {
+  .dash-regions.wsg--primary-inspector {
+    grid-template-columns: minmax(0, 2fr) minmax(0, 1fr);
+  }
+}
+
+/* Worklist panel-header outcome chips (Completed · Pending · Overdue · Referred ·
+ * No Answer · Emergency) — kept with the Worklist, never in the KPI ribbon. */
+.dash-wl-chips {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-4);
+  flex-wrap: wrap;
+}
+.dash-wl-chip {
+  display: flex;
+  flex-direction: column;
+  line-height: 1.1;
+}
+.dash-wl-chip-value {
+  font-size: var(--fs-md);
+  font-weight: var(--fw-bold);
+  letter-spacing: -0.01em;
+}
+.dash-wl-chip-label {
+  font-size: var(--fs-2xs);
+  color: var(--ts);
+  font-weight: var(--fw-medium);
+  white-space: nowrap;
+}
+
+/* ── Worklist follow-up table refinement (M27, dashboard scope only) ──────
+ * `.dash-wl-body` is TodaysWorklistPanel's PanelContent; the legacy Studio
+ * widget (.sf-body) keeps the shared styles. Cells edge-align with the panel
+ * header (--panel-pad), the column header stays sticky inside the scrolling
+ * PanelContent, and row chrome is calmed: quiet hover wash, rest-muted
+ * actions right-aligned to the edge, colour reserved for urgency. */
+.dash-wl-body .dash-worklist-wrap {
+  overflow-x: visible; /* PanelContent owns scrolling, so sticky works there */
+}
+.dash-wl-body .dash-worklist-table {
+  border-collapse: separate; /* `collapse` detaches borders from sticky cells */
+  border-spacing: 0;
+  font-variant-numeric: tabular-nums;
+  /* Fixed column grid: the table always fits the panel (auto layout let nowrap
+   * cells push past it), ellipsis becomes reliable, and column positions stay
+   * identical across rows/visits — a stable scanning rhythm. Program (col 3)
+   * has no width and absorbs the remainder. Order is owned by WorklistWidget:
+   * UHID · Activity · Program · Due · Priority · Actions. */
+  table-layout: fixed;
+  width: 100%;
+}
+/* Column sizing (tokens in :root): every sized column is deterministic;
+ * Program (unsized) absorbs whatever remains, so it truncates first. Activity
+ * is sized rather than left auto because a fixed grid splits leftover space
+ * equally between unsized columns — an auto split gives the secondary Program
+ * as much room as the Activity anchor and truncates the anchor first. */
+.dash-wl-body .dash-worklist-table th:nth-child(1) { width: var(--wl-col-uhid); }
+.dash-wl-body .dash-worklist-table th:nth-child(2) { width: var(--wl-col-activity); }
+.dash-wl-body .dash-worklist-table th:nth-child(4) { width: var(--wl-col-due); }
+.dash-wl-body .dash-worklist-table th:nth-child(5) { width: var(--wl-col-priority); }
+.dash-wl-body .dash-worklist-table th:nth-child(6) { width: var(--wl-col-actions); }
+/* Column widths (not px caps) govern truncation under the fixed grid. */
+.dash-wl-body .dash-td-activity,
+.dash-wl-body .dash-td-program { max-width: none; }
+.dash-wl-body .dash-worklist-table thead th {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  background: var(--card);
+  padding: 7px 10px;
+  /* Quieter than the shared table header (600): labels support the data,
+   * they don't compete with it. Wider tracking keeps the caps legible. */
+  font-weight: var(--fw-medium);
+  letter-spacing: 0.06em;
+}
+.dash-wl-body .dash-worklist-table tbody td {
+  padding: 8px 10px;
+}
+.dash-wl-body .dash-worklist-table th:first-child,
+.dash-wl-body .dash-worklist-table td:first-child {
+  padding-left: var(--panel-pad);
+}
+.dash-wl-body .dash-worklist-table th:last-child,
+.dash-wl-body .dash-worklist-table td:last-child {
+  padding-right: var(--panel-pad);
+}
+.dash-wl-body .dash-worklist-table tbody tr:hover td {
+  background: #f8faf9;
+}
+/* Trailing actions: edge-aligned, muted until the row is engaged. The
+ * :not(:hover) guard lets the semantic per-button hover colours win. */
+.dash-wl-body .dash-col-actions { text-align: right; }
+.dash-wl-body .dash-row-actions { justify-content: flex-end; }
+.dash-wl-body .wl-icon-btn {
+  width: 26px;
+  height: 26px;
+  color: #9ca3af;
+}
+.dash-wl-body tbody tr:hover .wl-icon-btn:not(:disabled):not(:hover) {
+  color: #4b5563;
+}
+/* Pills: colour communicates urgency only. Every row in this list is PENDING,
+ * so status stays neutral (matching the neutral header chips); red is reserved
+ * for High/Urgent/Overdue/Emergency, on softer 50-level tints. */
+.dash-wl-body .pill {
+  display: inline-flex;
+  align-items: center;
+  height: 18px;
+  padding: 0 8px;
+  font-size: 10px;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+}
+.dash-wl-body .pill-pending,
+.dash-wl-body .pill-normal,
+.dash-wl-body .pill-low { background: #f3f4f6; color: #4b5563; }
+.dash-wl-body .pill-high,
+.dash-wl-body .pill-urgent,
+.dash-wl-body .pill-overdue,
+.dash-wl-body .pill-emergency { background: #fef2f2; color: #b91c1c; }
+.dash-wl-body .pill-completed { background: #f0fdf4; color: #15803d; }
+/* Inspector stacked sections (Priority Alerts · Recent Activity · Programme
+ * Summary · CPHC Services) — light headers hugging their content. */
+.dash-insp-section {
+  padding: var(--sp-3) 0;
+  border-bottom: 1px solid var(--bd);
+}
+.dash-insp-section:first-child { padding-top: 0; }
+.dash-insp-section:last-child { border-bottom: none; padding-bottom: 0; }
+.dash-insp-title {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  margin: 0 0 var(--sp-2);
+  font-size: var(--fs-sm);
+  font-weight: var(--fw-semibold);
+  color: var(--tp);
+}
+.dash-insp-title > svg { color: var(--ts); flex-shrink: 0; }
+/* Panel/title inline icon + label alignment (Lucide) */
+.dash-inline-icon-title {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--sp-2);
+}
+.dash-inline-icon-title > svg { color: var(--p); flex-shrink: 0; }
+
+/* ── Priority Alerts (inspector) ── */
+.dash-alert-list {
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-1);
+}
+.dash-alert-row {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  padding: 5px var(--sp-1);
+  border: none;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  cursor: pointer;
+  text-align: left;
+  font: inherit;
+  color: inherit;
+  transition: background 0.14s;
+}
+.dash-alert-row:hover { background: rgba(16, 24, 40, 0.04); }
+.dash-alert-sev {
+  flex-shrink: 0;
+  font-size: var(--fs-2xs);
+  font-weight: var(--fw-bold);
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  padding: 2px 8px;
+  border-radius: var(--radius-pill);
+}
+.dash-alert-sev--severe { background: #fee2e2; color: #991b1b; }
+.dash-alert-sev--moderate { background: #fef3c7; color: #92400e; }
+.dash-alert-body { display: flex; flex-direction: column; min-width: 0; }
+.dash-alert-title {
+  font-size: var(--fs-xs);
+  font-weight: var(--fw-semibold);
+  color: var(--tp);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.dash-alert-meta {
+  font-size: var(--fs-2xs);
+  color: var(--ts);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* ── Inspector unification ──────────────────────────────────────────────────
+ * Inside the single inspector surface, section bodies must read as parts of one
+ * panel — not as bordered/filled cards. Flatten the reused widgets' chrome while
+ * keeping their content readable. Scoped to the inspector so the same widgets
+ * used elsewhere are unaffected. */
+.dash-insp-body .service-grid { gap: 0; }
+.dash-insp-body .service-chip {
+  border: none;
+  background: transparent;
+  border-radius: 0;
+  padding: 4px 0;
+}
+.dash-insp-body .program-summary-item {
+  border-bottom: none;
+  padding: 4px 0;
+}
+.dash-insp-body .activity-item {
+  border-bottom: none;
+  padding: 5px 0;
+}
+/* Empty states inside the inspector shouldn't reserve a tall block. */
+.dash-insp-body .empty-state { padding: var(--sp-2) 0; }
 
 /* Toolbar — edit mode */
 .studio-toolbar {
@@ -6847,7 +7172,7 @@ a.wl-icon-btn {
 .studio-grid {
   display: grid;
   grid-template-columns: repeat(3, 1fr);
-  gap: 16px;
+  gap: 12px;
   align-items: start;
 }
 @media (max-width: 1100px) {
@@ -6862,7 +7187,7 @@ a.wl-icon-btn {
 .sf {
   background: #fff;
   border: 1px solid var(--bd);
-  border-radius: 12px;
+  border-radius: 10px;
   overflow: hidden;
   transition: box-shadow 0.15s, border-color 0.15s;
 }
@@ -6871,10 +7196,10 @@ a.wl-icon-btn {
   display: flex;
   align-items: center;
   gap: 6px;
-  padding: 10px 14px;
+  padding: 5px 12px;
   border-bottom: 1px solid var(--bd);
   background: #f9fafb;
-  min-height: 42px;
+  min-height: 32px;
 }
 
 .sf-drag-handle {
@@ -6956,7 +7281,7 @@ a.wl-icon-btn {
 .sf-ctrl-btn--danger:hover { background: #fee2e2; color: #dc2626; }
 
 .sf-body {
-  padding: 14px;
+  padding: 10px 12px;
 }
 
 /* "Widget hidden" ghost message */
@@ -7137,21 +7462,21 @@ a.wl-icon-btn {
   display: flex;
   flex-direction: column;
   align-items: flex-start;
-  gap: 4px;
-  padding: 16px;
+  gap: 2px;
+  padding: 11px 12px;
   border: 1px solid;
   border-radius: 10px;
-  min-height: 90px;
+  min-height: 64px;
 }
 
 .studio-stat-icon {
-  font-size: 22px;
+  font-size: 18px;
   line-height: 1;
-  margin-bottom: 4px;
+  margin-bottom: 2px;
 }
 
 .studio-stat-value {
-  font-size: 28px;
+  font-size: 24px;
   font-weight: 800;
   letter-spacing: -0.02em;
   line-height: 1;
@@ -7169,6 +7494,43 @@ a.wl-icon-btn {
   color: inherit;
   opacity: 0.75;
   margin-top: 2px;
+}
+
+/* ── M27 Dashboard density pass ───────────────────────────────────────────
+ * Tightens widgets that reuse SHARED classes (.stat-*, .data-table, .wl-icon-btn)
+ * ONLY inside a Studio widget frame (.sf-body), so analytics / admin / worklist
+ * pages that use the same classes are unaffected. Reference-density spacing. */
+.sf-body .stat-grid {
+  gap: 10px;
+  margin-bottom: 0;
+}
+.sf-body .stat-card {
+  padding: 10px 12px;
+}
+.sf-body .stat-card-top {
+  margin-bottom: 6px;
+}
+.sf-body .stat-card-icon {
+  width: 28px;
+  height: 28px;
+  font-size: 14px;
+}
+.sf-body .stat-card-value {
+  font-size: 22px;
+}
+.sf-body .stat-card-label {
+  margin-top: 3px;
+}
+/* Follow-up table rows — the largest vertical consumer in the Worklist widget. */
+.sf-body .data-table thead th {
+  padding: 5px 10px;
+}
+.sf-body .data-table tbody td {
+  padding: 6px 10px;
+}
+.sf-body .wl-icon-btn {
+  width: 24px;
+  height: 24px;
 }
 
 /* ── Account Settings (.as-) ─────────────────────────────────────────────── */
@@ -7284,9 +7646,9 @@ a.wl-icon-btn {
 }
 
 .as-btn {
-  padding: 8px 18px;
-  border-radius: 9px;
-  font-size: 13px;
+  padding: 8px 16px;
+  border-radius: 8px;
+  font-size: 12px;
   font-weight: 600;
   cursor: pointer;
   border: 1px solid #d1d5db;
@@ -7299,7 +7661,7 @@ a.wl-icon-btn {
   border-color: var(--p);
   color: var(--p);
 }
-.as-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+.as-btn:disabled { opacity: 0.55; cursor: not-allowed; }
 .as-btn:focus-visible {
   outline: 2px solid var(--p);
   outline-offset: 2px;
@@ -7338,12 +7700,13 @@ a.wl-icon-btn {
   display: inline-flex;
   align-items: center;
   gap: 4px;
-  font-size: 0.7rem;
-  font-weight: 700;
+  font-size: var(--fs-2xs);
+  font-weight: var(--fw-bold);
   padding: 3px 8px;
-  border-radius: 999px;
+  border-radius: var(--radius-pill);
   letter-spacing: 0.03em;
   text-transform: uppercase;
+  white-space: nowrap;
 }
 .cdse-risk-badge--none {
   background: #f3f4f6; color: #6b7280;
@@ -7468,10 +7831,21 @@ a.wl-icon-btn {
   gap: 10px;
   padding: 10px 14px;
   border-bottom: 1px solid var(--bd);
+  /* Rendered as a link (direct patient shortcut) — keep the card look. */
+  text-decoration: none;
+  color: inherit;
 }
 .bell-alert:last-child { border-bottom: none; }
+.bell-alert:hover { filter: brightness(0.97); }
 .bell-alert--severe   { background: #fff1f2; }
 .bell-alert--moderate { background: #fffbeb; }
+/* Read alerts stay listed but muted (M35 read/unread tracking). */
+.bell-alert--read { background: var(--bg, #fff); opacity: 0.62; }
+.bell-alert--read .bell-alert-icon { color: var(--ts); }
+.bell-alert--read .bell-alert-name { font-weight: 500; }
+.bell-alert-icon { display: inline-flex; align-items: center; flex-shrink: 0; }
+.bell-alert--severe .bell-alert-icon { color: #dc2626; }
+.bell-alert--moderate .bell-alert-icon { color: #b45309; }
 .bell-alert-icon  { font-size: 1rem; flex-shrink: 0; }
 .bell-alert-name  { font-size: 0.78rem; font-weight: 600; color: var(--tp); }
 .bell-alert-meta  { font-size: 0.7rem; color: var(--ts); }
@@ -7514,6 +7888,80 @@ a.wl-icon-btn {
 }
 .notif-alert-card--severe   { background: #fff1f2; border-color: #fca5a5; }
 .notif-alert-card--moderate { background: #fffbeb; border-color: #fcd34d; }
+/* Read alerts stay listed but muted (M35 read/unread tracking). */
+.notif-alert-card--read,
+.notif-alert-card--read.notif-alert-card--severe {
+  background: var(--bg, #fff);
+  border-color: var(--bd);
+  opacity: 0.68;
+}
+
+/* Guidebook → Consultation banner (M33.1). */
+.gb-consult-banner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+  background: var(--pl);
+  border: 1px solid var(--bd);
+  border-radius: 9px;
+  padding: 8px 14px;
+  margin: 0 0 10px;
+  font-size: 13px;
+  color: var(--tp);
+}
+.gb-consult-banner-btn {
+  font-size: 12.5px;
+  padding: 6px 14px;
+}
+
+/* Timeline → Consultation link (M33.1). */
+.pt-consult-link {
+  align-self: center;
+  flex-shrink: 0;
+  font-size: 11.5px;
+  padding: 3px 10px;
+  white-space: nowrap;
+}
+
+/* Citizen list filters (M33.1) — compact two-column grid under the search box. */
+.cz-list-filters {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 6px;
+  padding: 0 12px 8px;
+  flex-shrink: 0;
+}
+.cz-list-filters .wl-select {
+  width: 100%;
+  min-width: 0;
+  font-size: 11.5px;
+}
+
+/* Dashboard worklist filter bar (M33.1) — compact row above the table. */
+.dash-wl-filterbar {
+  display: flex;
+  gap: 8px;
+  padding: 8px 12px 4px;
+  flex-shrink: 0;
+}
+.dash-wl-filterbar .wl-select {
+  font-size: 12px;
+}
+
+/* Actionable card (M33.1): rendered as a button navigating to the citizen. */
+.notif-alert-card--link {
+  width: 100%;
+  text-align: left;
+  font: inherit;
+  cursor: pointer;
+  transition: box-shadow 0.15s ease, transform 0.15s ease;
+}
+.notif-alert-card--link:hover {
+  box-shadow: 0 2px 8px rgba(17, 24, 39, 0.1);
+  transform: translateY(-1px);
+}
 
 .notif-alert-icon { font-size: 1.4rem; flex-shrink: 0; }
 .notif-alert-body { flex: 1; min-width: 0; }
@@ -7670,7 +8118,12 @@ a.wl-icon-btn {
   min-height: 0;
   min-width: 0;
   display: grid;
+  /* Cap the row at the frame height (minmax(0,1fr), NOT the implicit `auto`
+   * track which grows to content) so a panel taller than the viewport stays
+   * bounded and its PanelContent scrolls instead of pushing the page taller. */
+  grid-template-rows: minmax(0, 1fr);
   gap: var(--ws-gap);
+  overflow: hidden; /* fixed frame — never scrolls */
 }
 /* 1fr cells must be allowed to shrink so their PanelContent can scroll. */
 .wsg > * {
@@ -7692,7 +8145,7 @@ a.wl-icon-btn {
 }
 .wsg--ribbon-primary-inspector {
   grid-template-columns: 1fr var(--inspector-w);
-  grid-template-rows: var(--kpi-h) 1fr;
+  grid-template-rows: var(--kpi-h) minmax(0, 1fr);
 }
 /* The KpiRibbon (first child) spans the full width above the primary/inspector row. */
 .wsg--ribbon-primary-inspector > :first-child {
@@ -7909,4 +8362,345 @@ a.wl-icon-btn {
   .insp-drawer-frame {
     width: 100vw; /* full-width drawer on the smallest screens */
   }
+}
+
+/* ══════════════════════════════════════════════════════════════════════════
+ * KpiRibbon (M27 Dashboard) — fixed system-health band; NEVER scrolls.
+ * Cards flex to divide the width (flex:1 min-width:0) so they always fit; when
+ * space is tight the value/label truncate rather than the ribbon overflowing.
+ * ════════════════════════════════════════════════════════════════════════ */
+.kpi-ribbon {
+  flex-shrink: 0;
+  display: flex;
+  gap: var(--sp-3);
+  height: var(--kpi-h);
+  overflow: hidden; /* fixed band — never scrolls */
+}
+.kpi-card {
+  flex: 1 1 0;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: var(--sp-3);
+  padding: 0 var(--sp-3);
+  background: var(--card);
+  border: 1px solid var(--bd);
+  border-radius: var(--radius-md);
+}
+.kpi-card--btn {
+  cursor: pointer;
+  text-align: left;
+  font: inherit;
+  color: inherit;
+  transition: border-color 0.14s, box-shadow 0.14s;
+}
+.kpi-card--btn:hover {
+  border-color: var(--p);
+  box-shadow: var(--shadow-sm);
+}
+.kpi-icon {
+  width: 32px;
+  height: 32px;
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: var(--radius-sm); /* crisp chip nested inside the card radius */
+  background: #f3f4f6;
+  color: #4b5563;
+  line-height: 1;
+}
+.kpi-text {
+  display: flex;
+  flex-direction: column;
+  gap: 2px; /* intentional micro-rhythm between the figure and its caption */
+  min-width: 0;
+}
+.kpi-value {
+  font-size: var(--fs-xl);
+  font-weight: var(--fw-bold);
+  line-height: 1.1;
+  letter-spacing: -0.02em;
+  color: var(--tp);
+}
+.kpi-label {
+  font-size: var(--fs-2xs);
+  font-weight: var(--fw-medium);
+  line-height: 1.2;
+  color: var(--ts);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.kpi-hint {
+  font-size: var(--fs-2xs);
+  line-height: 1.2;
+  color: #9ca3af; /* clean tertiary — crisper than an opacity wash */
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+/* Tabular figures — metrics align on a consistent numeric grid (precise, premium). */
+.kpi-value,
+.kpi-hint,
+.dash-wl-chip-value,
+.program-summary-count {
+  font-variant-numeric: tabular-nums;
+}
+/* Tones — subtle accents on the value; DiNC palette (green stays default). */
+.kpi-card--danger .kpi-value { color: var(--er); }
+.kpi-card--danger .kpi-icon { background: #fef2f2; color: var(--er); }
+.kpi-card--warn .kpi-value { color: #b45309; }
+.kpi-card--warn .kpi-icon { background: #fffbeb; color: #b45309; }
+.kpi-card--success .kpi-value { color: var(--ps); }
+.kpi-card--success .kpi-icon { background: var(--pl); color: var(--ps); }
+
+/* ── Users & Roles (Administration → /administration/users) ──────────────────
+   Scoped refinements over the shared .data-table inside a flush PanelContent,
+   following the dash-worklist-table precedent (sticky thead in a scroll region). */
+
+.usr-table thead th {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  background: var(--card);
+}
+
+/* .dash-error assumes a padded page; give it breathing room in flush content. */
+.usr-error {
+  margin: var(--panel-pad);
+}
+
+/* Column hierarchy: Name is primary; Last Login / Created are reference data
+   and recede. */
+.usr-name {
+  font-weight: var(--fw-medium);
+}
+
+.usr-dim {
+  color: var(--ts);
+}
+
+/* Actions column: keep the three per-row buttons on one line, right-aligned
+   (same treatment as .dq-col-actions / .dq-row-actions). */
+.usr-col-actions {
+  white-space: nowrap;
+  width: 1%;
+}
+
+.usr-row-actions {
+  display: flex;
+  gap: 6px;
+  justify-content: flex-end;
+}
+
+/* ── System Settings (Milestone 30) — reuses .panel / tokens ─────────────── */
+.ss-two-col {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px;
+  margin-bottom: 16px;
+}
+@media (max-width: 720px) {
+  .ss-two-col { grid-template-columns: 1fr; }
+}
+.ss-kv {
+  margin: 0;
+  padding: 4px 16px 12px;
+}
+.ss-kv > div {
+  display: flex;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 9px 0;
+  border-bottom: 1px solid var(--bd);
+}
+.ss-kv > div:last-child {
+  border-bottom: none;
+}
+.ss-kv dt {
+  color: var(--ts);
+  font-size: 12.5px;
+}
+.ss-kv dd {
+  margin: 0;
+  font-weight: var(--fw-medium);
+  font-size: 13px;
+  text-align: right;
+}
+.ss-links {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+  gap: 10px;
+  padding: 14px 16px;
+}
+.ss-link {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 11px 13px;
+  border: 1px solid var(--bd);
+  border-radius: 9px;
+  text-decoration: none;
+  color: var(--tp);
+  font-weight: var(--fw-medium);
+  font-size: 13px;
+  transition: border-color 0.14s, background 0.14s;
+}
+.ss-link:hover {
+  border-color: var(--p);
+  background: var(--bg);
+}
+.ss-link-icon {
+  font-size: 16px;
+}
+.ss-link-go {
+  margin-left: auto;
+  color: var(--ts);
+}
+
+/* ── Care Dashboard (Milestone 36) — additive, reuses workspace/dash tokens ──
+   The frontline workspace shares the Admin Dashboard's frame (Workspace, KPI
+   ribbon, dash-insp sections, dash-worklist-table); only the task-group
+   headings, priority rows and stacked quick actions are new. */
+
+/* Task groups inside the "My Tasks" panel */
+.care-group {
+  padding: var(--sp-3) 0;
+  border-bottom: 1px solid var(--bd);
+}
+.care-group:first-child { padding-top: 0; }
+.care-group:last-child { border-bottom: none; padding-bottom: 0; }
+.care-group-title {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  margin: 0 0 var(--sp-2);
+  font-size: var(--fs-sm);
+  font-weight: var(--fw-semibold);
+  color: var(--tp);
+}
+.care-group-title--danger > svg { color: var(--risk-severe); flex-shrink: 0; }
+.care-group-title--warn > svg { color: var(--warn); flex-shrink: 0; }
+.care-group-title--ok > svg { color: var(--risk-low); flex-shrink: 0; }
+.care-group-count {
+  font-weight: var(--fw-regular);
+  color: var(--ts);
+}
+.care-group-empty {
+  font-size: var(--fs-sm);
+  color: var(--ts);
+  padding: 2px 0 4px;
+}
+
+/* Today's Priorities rows (inspector) */
+.care-pri-list {
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-1);
+}
+.care-pri-row {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--sp-2);
+  padding: 6px 8px;
+  border: none;
+  background: transparent;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  font: inherit;
+  font-size: var(--fs-sm);
+  color: var(--tp);
+  text-align: left;
+  transition: background 0.14s;
+}
+.care-pri-row:hover { background: var(--bg); }
+.care-pri-count {
+  min-width: 24px;
+  text-align: center;
+  font-weight: var(--fw-semibold);
+  font-size: var(--fs-xs);
+  padding: 2px 8px;
+  border-radius: var(--radius-pill);
+  background: #f3f4f6;
+  color: #4b5563;
+}
+.care-pri-count--danger { background: #fee2e2; color: #b91c1c; }
+.care-pri-count--warn { background: #fef3c7; color: #b45309; }
+
+/* Quick Actions: the existing compact pills, stacked for the inspector */
+.care-qa-list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+}
+.care-qa-list .qa-compact-btn { justify-content: flex-start; }
+
+/* ── Care Journey Progress (Milestone 37A) — additive, cz-section resident ──
+   Progress through the programme workflow, derived from enrollment activities.
+   Deliberately blue (--info): journey progression is not a risk signal, so it
+   must not read as one. */
+.cjp {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-1);
+}
+.cjp-bar-row {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+}
+.cjp-track {
+  flex: 1;
+  height: 8px;
+  border-radius: var(--radius-pill);
+  background: #e0f2fe; /* light band of --info, matches pill tint pattern */
+  overflow: hidden;
+}
+.cjp-fill {
+  height: 100%;
+  border-radius: var(--radius-pill);
+  background: var(--info);
+  transition: width 0.3s ease;
+}
+.cjp-percent {
+  min-width: 36px;
+  text-align: right;
+  font-size: var(--fs-sm);
+  font-weight: var(--fw-semibold);
+  color: var(--info);
+  font-variant-numeric: tabular-nums;
+}
+.cjp-meta {
+  font-size: var(--fs-xs);
+  color: var(--ts);
+}
+.cjp-stages {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: var(--sp-2);
+  margin-top: 2px;
+}
+.cjp-stage {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  min-width: 0;
+}
+.cjp-stage-label {
+  font-size: var(--fs-2xs);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--ts);
+}
+.cjp-stage-value {
+  font-size: var(--fs-sm);
+  font-weight: var(--fw-medium);
+  color: var(--tp);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }

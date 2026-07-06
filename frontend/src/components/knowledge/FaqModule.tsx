@@ -9,10 +9,11 @@ import {
 } from '@/lib/api';
 import { getToken } from '@/lib/session';
 import FaqEditorDialog from './FaqEditorDialog';
+import { Inbox, Plus, Search } from 'lucide-react';
 
 interface FaqModuleProps {
   isAdmin: boolean;
-  onToast: (message: string) => void;
+  onToast: (message: string, kind?: 'ok' | 'err') => void;
 }
 
 /**
@@ -59,7 +60,7 @@ export default function FaqModule({ isAdmin, onToast }: FaqModuleProps) {
       onToast('FAQ deleted.');
       load();
     } catch (err) {
-      onToast(err instanceof Error ? err.message : 'Unable to delete FAQ.');
+      onToast(err instanceof Error ? err.message : 'Unable to delete FAQ.', 'err');
     }
   }
 
@@ -67,13 +68,13 @@ export default function FaqModule({ isAdmin, onToast }: FaqModuleProps) {
     <div>
       <div className="kh-toolbar">
         <div className="wl-filter-search kh-search">
-          <span className="wl-filter-search-icon" aria-hidden="true">🔍</span>
+          <span className="wl-filter-search-icon" aria-hidden="true"><Search size={14} /></span>
           <input className="wl-filter-search-input" placeholder="Search FAQs…" value={search}
             onChange={(e) => setSearch(e.target.value)} />
         </div>
         {isAdmin && (
           <button type="button" className="btn btn-primary btn-sm" onClick={() => { setEditing(null); setEditorOpen(true); }}>
-            ＋ Add FAQ
+            <Plus size={14} aria-hidden="true" /> Add FAQ
           </button>
         )}
       </div>
@@ -96,7 +97,7 @@ export default function FaqModule({ isAdmin, onToast }: FaqModuleProps) {
         <div className="dash-loading">Loading FAQs&hellip;</div>
       ) : filtered.length === 0 ? (
         <div className="empty-state">
-          <div className="empty-state-icon" aria-hidden="true">∅</div>
+          <div className="empty-state-icon" aria-hidden="true"><Inbox size={22} /></div>
           <div className="empty-state-text">No FAQs match your search.</div>
         </div>
       ) : (

@@ -1,6 +1,7 @@
 'use client';
 
 import { useRef, useState } from 'react';
+import { Check, Copy } from 'lucide-react';
 
 interface DocumentationPreviewProps {
   note: string;
@@ -93,7 +94,7 @@ export default function DocumentationPreview({
             onClick={handleCopy}
             disabled={disabled || !note.trim()}
           >
-            {copied ? '✓ Copied' : '📋 Copy Note'}
+            {copied ? <><Check size={12} aria-hidden="true" /> Copied</> : <><Copy size={12} aria-hidden="true" /> Copy Note</>}
           </button>
         </div>
       </div>

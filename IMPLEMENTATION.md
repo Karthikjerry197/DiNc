@@ -1,5 +1,11 @@
 # Implementation Notes
 
+> **Historical document (Milestone 1, authentication only).** Statements
+> below describe the original login-only codebase and no longer reflect the
+> full platform — the backend now has 19 modules and writes to many tables.
+> For current architecture see [ARCHITECTURE.md](ARCHITECTURE.md); kept for
+> the auth-flow rationale, which is unchanged.
+
 ## Backend (NestJS)
 
 - **DatabaseModule / DatabaseService** — a single `pg` `Pool` built from `backend/.env`.

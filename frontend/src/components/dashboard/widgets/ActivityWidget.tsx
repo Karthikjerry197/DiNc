@@ -1,16 +1,17 @@
 'use client';
 
+import { UserRound, ClipboardCheck, ListChecks, Bell, Activity as ActivityIcon, Inbox, type LucideIcon } from 'lucide-react';
 import type { AdminDashboardSummary } from '@/lib/api';
 
 interface Props {
   activity: AdminDashboardSummary['recentActivity'];
 }
 
-const ACTIVITY_ICON: Record<string, string> = {
-  CITIZEN:      '👤',
-  ENROLLMENT:   '📝',
-  WORKLIST:     '☑',
-  NOTIFICATION: '🔔',
+const ACTIVITY_ICON: Record<string, LucideIcon> = {
+  CITIZEN:      UserRound,
+  ENROLLMENT:   ClipboardCheck,
+  WORKLIST:     ListChecks,
+  NOTIFICATION: Bell,
 };
 
 function relativeTime(iso: string): string {
@@ -27,7 +28,7 @@ export default function ActivityWidget({ activity }: Props) {
   if (!activity || activity.length === 0) {
     return (
       <div className="empty-state">
-        <div className="empty-state-icon" aria-hidden="true">∅</div>
+        <div className="empty-state-icon" aria-hidden="true"><Inbox size={22} /></div>
         <div className="empty-state-text">No recent activity.</div>
       </div>
     );
@@ -35,10 +36,12 @@ export default function ActivityWidget({ activity }: Props) {
 
   return (
     <ul className="activity-list">
-      {activity.map((item, i) => (
+      {activity.map((item, i) => {
+        const Ico = ACTIVITY_ICON[item.kind] ?? ActivityIcon;
+        return (
         <li key={i} className="activity-item">
           <span className="activity-icon" aria-hidden="true">
-            {ACTIVITY_ICON[item.kind] ?? '•'}
+            <Ico size={15} />
           </span>
           <div className="activity-body">
             <div className="activity-title">{item.title}</div>
@@ -46,7 +49,8 @@ export default function ActivityWidget({ activity }: Props) {
           </div>
           <span className="activity-time">{relativeTime(item.at)}</span>
         </li>
-      ))}
+        );
+      })}
     </ul>
   );
 }

@@ -10,6 +10,7 @@ import {
   type EnrollmentSummary,
 } from '@/lib/api';
 import { getToken } from '@/lib/session';
+import { useDialogA11y } from '@/lib/useDialogA11y';
 
 interface StartConsultationDialogProps {
   citizenId: string;
@@ -118,6 +119,7 @@ export default function StartConsultationDialog({
   }
 
   async function handleCreateAndNavigate() {
+    if (submitting) return;
     const token = getToken();
     if (!token || !selectedEnrollmentId || !eventId) return;
 
@@ -136,6 +138,9 @@ export default function StartConsultationDialog({
     }
   }
 
+  // Shared dialog behaviour: Escape close, focus trap, focus restore (M35C).
+  const dialogRef = useDialogA11y(open, () => { if (!submitting) onClose(); });
+
   if (!open) return null;
 
   return (
@@ -146,7 +151,7 @@ export default function StartConsultationDialog({
     >
       <div
         className="modal"
-        role="dialog"
+        ref={dialogRef} role="dialog"
         aria-modal="true"
         aria-labelledby="sc-dialog-title"
         onClick={(e) => e.stopPropagation()}

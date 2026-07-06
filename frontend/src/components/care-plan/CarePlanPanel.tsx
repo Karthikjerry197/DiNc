@@ -61,7 +61,7 @@ export default function CarePlanPanel({ citizenId, citizenName, worklistItemId }
 
   async function handleQuickProgress() {
     const token = getToken();
-    if (!token || !summary || !progressNote.trim()) return;
+    if (saving || !token || !summary || !progressNote.trim()) return;
     setSaving(true);
     try {
       await recordProgress(token, summary.id, {
@@ -178,7 +178,7 @@ export default function CarePlanPanel({ citizenId, citizenName, worklistItemId }
                       onClick={handleQuickProgress}
                       disabled={saving || !progressNote.trim()}
                     >
-                      {saving ? '…' : 'Save'}
+                      {saving ? 'Saving…' : 'Save'}
                     </button>
                   </div>
                   {savedMsg && (

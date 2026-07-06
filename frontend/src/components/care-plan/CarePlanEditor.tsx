@@ -15,7 +15,6 @@ import {
   recordCdseDecisions,
   recordProgress,
   updateCarePlan,
-  updateGoal,
   updateGoalStatus,
   updateIntervention,
   type CarePlan,
@@ -33,6 +32,7 @@ import { getToken } from '@/lib/session';
 import GoalCard from './GoalCard';
 import ProgressTimeline from './ProgressTimeline';
 import CdseGoalSuggestions from './CdseGoalSuggestions';
+import { ClipboardList } from 'lucide-react';
 
 type ActiveTab = 'plan' | 'progress' | 'cdse';
 
@@ -151,7 +151,7 @@ export default function CarePlanEditor({ citizenId, citizenName, onClose }: Prop
 
   async function handleCreatePlan() {
     const token = getToken();
-    if (!token || !newPlanTitle.trim()) return;
+    if (saving || !token || !newPlanTitle.trim()) return;
     setSaving(true);
     try {
       const created = await createCarePlan(token, citizenId, {
@@ -168,7 +168,7 @@ export default function CarePlanEditor({ citizenId, citizenName, onClose }: Prop
 
   async function handleStatusChange(status: string) {
     const token = getToken();
-    if (!token || !plan) return;
+    if (saving || !token || !plan) return;
     setSaving(true);
     try {
       const updated = await updateCarePlan(token, plan.id, { status: status as any });
@@ -180,7 +180,7 @@ export default function CarePlanEditor({ citizenId, citizenName, onClose }: Prop
 
   async function handleAddProblem() {
     const token = getToken();
-    if (!token || !plan || !addProblemForm.title.trim()) return;
+    if (saving || !token || !plan || !addProblemForm.title.trim()) return;
     setSaving(true);
     try {
       const updated = await addProblem(token, plan.id, {
@@ -200,7 +200,7 @@ export default function CarePlanEditor({ citizenId, citizenName, onClose }: Prop
 
   async function handleDeleteProblem(problemId: string) {
     const token = getToken();
-    if (!token || !plan) return;
+    if (saving || !token || !plan) return;
     if (!window.confirm('Remove this problem and all its goals?')) return;
     setSaving(true);
     try {
@@ -213,7 +213,7 @@ export default function CarePlanEditor({ citizenId, citizenName, onClose }: Prop
 
   async function handleAddGoal() {
     const token = getToken();
-    if (!token || !plan || !addGoalForm.title.trim()) return;
+    if (saving || !token || !plan || !addGoalForm.title.trim()) return;
     setSaving(true);
     try {
       await addGoal(token, plan.id, addGoalForm.problemId, {
@@ -251,7 +251,7 @@ export default function CarePlanEditor({ citizenId, citizenName, onClose }: Prop
 
   async function handleAddIntervention() {
     const token = getToken();
-    if (!token || !plan || !addInterventionForm.title.trim()) return;
+    if (saving || !token || !plan || !addInterventionForm.title.trim()) return;
     setSaving(true);
     try {
       const updated = await addIntervention(token, plan.id, addInterventionForm.goalId, {
@@ -307,7 +307,7 @@ export default function CarePlanEditor({ citizenId, citizenName, onClose }: Prop
 
   async function handleRecordProgress() {
     const token = getToken();
-    if (!token || !plan || !progressNote.trim()) return;
+    if (saving || !token || !plan || !progressNote.trim()) return;
     setSaving(true);
     try {
       const entry = await recordProgress(token, plan.id, {
@@ -327,7 +327,7 @@ export default function CarePlanEditor({ citizenId, citizenName, onClose }: Prop
 
   async function handleCdseDecisions(decisions: CdseDecisionEntry[]) {
     const token = getToken();
-    if (!token || !plan) return;
+    if (saving || !token || !plan) return;
     setSaving(true);
     try {
       await recordCdseDecisions(token, plan.id, decisions);
@@ -361,7 +361,7 @@ export default function CarePlanEditor({ citizenId, citizenName, onClose }: Prop
   if (!plan) {
     return (
       <div className="cp-editor cp-editor--empty">
-        <div className="cp-editor-empty-icon">📋</div>
+        <div className="cp-editor-empty-icon" aria-hidden="true"><ClipboardList size={24} /></div>
         <div className="cp-editor-empty-title">No Integrated Care Plan yet</div>
         <p className="cp-editor-empty-sub">
           Create an integrated longitudinal care plan to track problems, goals,

@@ -1,18 +1,11 @@
 'use client';
 
 import type { GuidebookDetail } from '@/lib/api';
+import { formatDate } from '@/lib/format';
 import { categoryIcon, categoryLabel } from './category';
 
 interface GuidebookHeaderProps {
   detail: GuidebookDetail;
-}
-
-function formatDate(iso: string): string {
-  return new Date(iso).toLocaleDateString(undefined, {
-    year: 'numeric',
-    month: 'short',
-    day: 'numeric',
-  });
 }
 
 /** Main-content header: program, title, status and clinical badges. */
@@ -33,7 +26,12 @@ export default function GuidebookHeader({ detail }: GuidebookHeaderProps) {
         </span>
         <span className="gb-badge gb-badge-code">{detail.code}</span>
         <span className="gb-badge">{categoryLabel(detail.category)}</span>
-        <span className="gb-badge gb-badge-muted" title="Version not recorded">Version —</span>
+        <span
+          className="gb-badge gb-badge-muted"
+          title={detail.version === null ? 'Version not recorded' : 'Current version'}
+        >
+          Version {detail.version ?? '—'}
+        </span>
         <span className="gb-badge gb-badge-muted">Updated {formatDate(detail.updatedAt)}</span>
       </div>
     </div>

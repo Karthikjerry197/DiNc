@@ -1,3 +1,4 @@
+import type { ReactNode } from 'react';
 /**
  * Dashboard Studio — pure types only.
  *
@@ -48,8 +49,8 @@ export interface WidgetMeta {
   id: string;
   label: string;
   description: string;
-  /** Emoji or icon identifier shown in Widget Library and the frame header. */
-  icon: string;
+  /** Icon (Lucide element) shown in Widget Library and the frame header. */
+  icon: ReactNode;
   category: WidgetCategory;
   defaultColSpan: ColSpan;
 }

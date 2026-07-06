@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react';
 import { fetchSchedulerAnalytics, type SchedulerAnalytics } from '@/lib/api';
 import { ProgressBar } from './Charts';
+import { SkeletonLines } from '@/components/shell/Skeleton';
 
 interface Props {
   token: string;
@@ -24,7 +25,7 @@ export default function SchedulerSection({ token }: Props) {
     return () => { alive = false; };
   }, [token]);
 
-  if (loading) return <div className="rp-loading">Loading scheduler analytics&hellip;</div>;
+  if (loading) return <SkeletonLines lines={6} />;
   if (error) return <div className="rp-error">{error}</div>;
   if (!data) return null;
 

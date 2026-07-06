@@ -9,6 +9,7 @@ import {
   type DuplicateRequest,
 } from '@/lib/api';
 import { getToken } from '@/lib/session';
+import { useDialogA11y } from '@/lib/useDialogA11y';
 
 export interface ReportDuplicateTarget {
   id: string;
@@ -92,11 +93,17 @@ export default function ReportDuplicateDialog({
       .slice(0, 50);
   }, [citizens, search]);
 
+  // Shared dialog behaviour: Escape close, focus trap, focus restore (M35C).
+  const dialogRef = useDialogA11y(open, () => {
+        if (!saving) onClose();
+      });
+
   if (!open) return null;
 
   const canSave = !!duplicateId && !!reason && !saving;
 
   async function handleSubmit() {
+    if (saving) return;
     setError('');
     const token = getToken();
     if (!token) {
@@ -133,7 +140,7 @@ export default function ReportDuplicateDialog({
     >
       <div
         className="modal"
-        role="dialog"
+        ref={dialogRef} role="dialog"
         aria-modal="true"
         aria-labelledby="report-duplicate-title"
         onClick={(e) => e.stopPropagation()}

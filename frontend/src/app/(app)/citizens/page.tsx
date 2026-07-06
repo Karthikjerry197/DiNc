@@ -1,7 +1,7 @@
 'use client';
 
-import { useCallback, useEffect, useRef, useState } from 'react';
-import { useRouter } from 'next/navigation';
+import { Suspense, useCallback, useEffect, useRef, useState } from 'react';
+import { useRouter, useSearchParams } from 'next/navigation';
 import {
   fetchCitizenDetail,
   fetchCitizenEnrollments,
@@ -28,15 +28,37 @@ import PatientTimeline from '@/components/citizens/PatientTimeline';
 import ClinicalJourney from '@/components/citizens/ClinicalJourney';
 import PatientActions from '@/components/patients/PatientActions';
 import ClinicalDecisionPanel from '@/components/consultation/ClinicalDecisionPanel';
+import Workspace from '@/components/workspace/Workspace';
+import WorkspaceHeader from '@/components/workspace/WorkspaceHeader';
+import WorkspaceGrid from '@/components/workspace/WorkspaceGrid';
+import { useWorkspaceShell } from '@/components/workspace/useWorkspaceShell';
+import { SkeletonLines } from '@/components/shell/Skeleton';
 
 /**
  * Citizen Workspace — the primary three-panel workspace opened from the
- * Worklist. This milestone builds the visual framework only: data is read-only
- * and every non-navigation action surfaces a "coming soon" notice.
+ * Worklist. Every rendered action is live (M35A Wave 1 removed the
+ * coming-soon placeholders).
+ *
+ * useSearchParams requires a Suspense boundary for static prerendering, so the
+ * page wraps the workspace (M35E — see the ?c= sync effect below).
  */
 export default function CitizensPage() {
+  return (
+    <Suspense fallback={null}>
+      <CitizensWorkspace />
+    </Suspense>
+  );
+}
+
+function CitizensWorkspace() {
   const { can } = useUser();
   const router = useRouter();
+  const searchParams = useSearchParams();
+
+  // Opt into the fixed, non-scrolling workspace shell (Part D) — only when the
+  // citizen registry is actually rendered, so the unauthorized fallback keeps
+  // its legacy scrolling page.
+  useWorkspaceShell(can('citizens.view'));
   const [citizens, setCitizens] = useState<CitizenListItem[]>([]);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [detail, setDetail] = useState<CitizenDetail | null>(null);
@@ -54,7 +76,10 @@ export default function CitizensPage() {
   const [addOpen, setAddOpen] = useState(false);
   const [addActivityOpen, setAddActivityOpen] = useState(false);
   const [startConsultOpen, setStartConsultOpen] = useState(false);
-  const [timelineRefresh, setTimelineRefresh] = useState(0);
+  // Consultations happen on a separate route, so returning here remounts the
+  // page and the timeline reloads naturally; the key exists for future in-page
+  // refresh triggers and currently never changes.
+  const [timelineRefresh] = useState(0);
   const [enrollmentsRefresh, setEnrollmentsRefresh] = useState(0);
   const pendingEnrollmentId = useRef<string | null>(null);
   const [activeTab, setActiveTab] = useState<'profile' | 'journey'>('profile');
@@ -79,11 +104,6 @@ export default function CitizensPage() {
         /* keep existing list on failure */
       });
   }, []);
-
-  const notify = useCallback(
-    (label: string) => flash(`${label} — Coming in a future milestone.`),
-    [flash],
-  );
 
   // Context-aware: resolve the selected enrollment's guidebook, then navigate to
   // the Guidebooks page with it preselected. Falls back to the generic page.
@@ -272,6 +292,17 @@ export default function CitizensPage() {
     };
   }, []);
 
+  // Keep the selection in sync when ?c= changes after mount. Same-route
+  // navigations (e.g. a TopBar bell alert clicked while already on Citizens)
+  // do not remount the page, so the mount-time read alone would leave the URL
+  // updated but the selection unchanged (M35E fix).
+  const requestedId = searchParams.get('c');
+  useEffect(() => {
+    if (requestedId) {
+      setSelectedId((current) => (current === requestedId ? current : requestedId));
+    }
+  }, [requestedId]);
+
   if (!can('citizens.view')) {
     return (
       <ComingSoon
@@ -281,51 +312,49 @@ export default function CitizensPage() {
     );
   }
 
+  const citizenListPanel = listLoading ? (
+    <aside className="cz-list">
+      <SkeletonLines lines={6} />
+    </aside>
+  ) : (
+    <CitizenList citizens={citizens} selectedId={selectedId} onSelect={setSelectedId} />
+  );
+
   return (
-    <div className="page cz-page">
-      <div className="page-head cz-page-head">
-        <div>
-          <h1 className="page-title">Citizens</h1>
-          <p className="page-subtitle">Patient registry &amp; workspace</p>
-        </div>
-        <PatientActions variant="toolbar" onChanged={reloadCitizens} onToast={flash} />
-      </div>
+    <Workspace aria-label="Citizens">
+      <WorkspaceHeader
+        title="Citizens"
+        subtitle="Patient registry & workspace"
+        actions={
+          <PatientActions variant="toolbar" onChanged={reloadCitizens} onToast={flash} />
+        }
+        tabs={
+          <div className="cz-tab-bar">
+            <button
+              type="button"
+              className={`cz-tab-btn${activeTab === 'profile' ? ' active' : ''}`}
+              onClick={() => setActiveTab('profile')}
+            >
+              Profile
+            </button>
+            <button
+              type="button"
+              className={`cz-tab-btn${activeTab === 'journey' ? ' active' : ''}`}
+              onClick={() => setActiveTab('journey')}
+            >
+              Clinical Journey
+            </button>
+          </div>
+        }
+      />
 
       {error && <div className="dash-error">{error}</div>}
 
-      {/* ── Tab bar ── */}
-      <div className="cz-tab-bar">
-        <button
-          type="button"
-          className={`cz-tab-btn${activeTab === 'profile' ? ' active' : ''}`}
-          onClick={() => setActiveTab('profile')}
-        >
-          Profile
-        </button>
-        <button
-          type="button"
-          className={`cz-tab-btn${activeTab === 'journey' ? ' active' : ''}`}
-          onClick={() => setActiveTab('journey')}
-        >
-          Clinical Journey
-        </button>
-      </div>
+      {activeTab === 'profile' ? (
+        <>
+          <WorkspaceGrid template="list-primary-inspector">
+            {citizenListPanel}
 
-      <div className={`cz-workspace${activeTab === 'journey' ? ' cz-workspace--journey' : ''}`}>
-        {listLoading ? (
-          <aside className="cz-list">
-            <div className="dash-loading">Loading&hellip;</div>
-          </aside>
-        ) : (
-          <CitizenList
-            citizens={citizens}
-            selectedId={selectedId}
-            onSelect={setSelectedId}
-          />
-        )}
-
-        {activeTab === 'profile' ? (
-          <>
             <CitizenSummary
               detail={detail}
               loading={detailLoading}
@@ -335,10 +364,11 @@ export default function CitizensPage() {
               onSelectEnrollment={setSelectedEnrollmentId}
               enrollmentDetail={enrollmentDetail}
               enrollmentDetailLoading={enrollmentDetailLoading}
+              activities={activities}
+              activitiesLoading={activitiesLoading}
               onAddProgram={() => detail && setAddOpen(true)}
               onOpenGuidebook={openGuidebook}
               onStartConsultation={() => selectedId && setStartConsultOpen(true)}
-              onComingSoon={notify}
               onBack={() => router.push('/worklist')}
             />
 
@@ -353,17 +383,21 @@ export default function CitizensPage() {
                 router.push(`/worklist/${activityId}/consult?returnUrl=${returnUrl}`);
               }}
             />
-          </>
-        ) : (
+          </WorkspaceGrid>
+
+          <div className="cz-timeline-dock">
+            <PatientTimeline citizenId={selectedId} refreshKey={timelineRefresh} />
+          </div>
+        </>
+      ) : (
+        <WorkspaceGrid template="list-detail">
+          {citizenListPanel}
+
           <div className="cz-journey-main">
             <ClinicalDecisionPanel citizenId={selectedId} />
             <ClinicalJourney citizenId={selectedId} />
           </div>
-        )}
-      </div>
-
-      {activeTab === 'profile' && (
-        <PatientTimeline citizenId={selectedId} refreshKey={timelineRefresh} />
+        </WorkspaceGrid>
       )}
 
       {selectedId && (
@@ -408,7 +442,7 @@ export default function CitizensPage() {
         />
       )}
 
-      {toast && <div className="cz-toast">{toast}</div>}
-    </div>
+      {toast && <div className="cz-toast" role="status">{toast}</div>}
+    </Workspace>
   );
 }

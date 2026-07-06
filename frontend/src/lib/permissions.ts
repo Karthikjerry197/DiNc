@@ -9,6 +9,10 @@
 const ROLE_PERMISSIONS: Record<string, ReadonlySet<string>> = {
   ADMIN: new Set([
     'worklist.view',
+    // Sees every worklist item / dashboard activity regardless of assignee
+    // (mirrored in backend auth/permissions.ts, where the scoping happens).
+    'worklist.view.all',
+    'dashboard.view.all',
     'citizens.view',
     'reports.view',
     'reports.admin',

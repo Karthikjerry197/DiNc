@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
 import {
   fetchSchedulerStatus,
@@ -10,6 +10,8 @@ import {
 import { getToken } from '@/lib/session';
 import { useUser } from '@/lib/UserContext';
 import ComingSoon from '@/components/shell/ComingSoon';
+import { Inbox, Play, RefreshCw } from 'lucide-react';
+import { SkeletonTable } from '@/components/shell/Skeleton';
 
 function dt(iso: string | null): string {
   if (!iso) return '—';
@@ -38,6 +40,11 @@ export default function SchedulerPage() {
   const [running, setRunning] = useState(false);
   const [error, setError] = useState('');
   const [toast, setToast] = useState('');
+  const toastTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(() => {
+    return () => { if (toastTimer.current) clearTimeout(toastTimer.current); };
+  }, []);
 
   const load = useCallback(() => {
     const token = getToken();
@@ -51,20 +58,22 @@ export default function SchedulerPage() {
   useEffect(() => { if (isAdmin) load(); }, [isAdmin, load]);
 
   const runNow = useCallback(async () => {
+    if (running) return;
     const token = getToken();
     if (!token) return;
     setRunning(true);
     try {
       const run = await runSchedulerNow(token);
       setToast(`Scheduler ran: ${run.dueFound} due · ${run.rulesProcessed} processed · ${run.escalations} escalated.`);
-      setTimeout(() => setToast(''), 3200);
+      if (toastTimer.current) clearTimeout(toastTimer.current);
+      toastTimer.current = setTimeout(() => setToast(''), 3200);
       load();
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Unable to run the scheduler.');
     } finally {
       setRunning(false);
     }
-  }, [load]);
+  }, [load, running]);
 
   if (!isAdmin) {
     return <ComingSoon title="Scheduler" description="The automation engine is available to administrators only." />;
@@ -96,9 +105,9 @@ export default function SchedulerPage() {
           </p>
         </div>
         <div className="op-toolbar">
-          <button type="button" className="btn btn-ghost btn-sm" onClick={load} disabled={running}>↻ Refresh</button>
+          <button type="button" className="btn btn-ghost btn-sm" onClick={load} disabled={running}><RefreshCw size={13} aria-hidden="true" /> Refresh</button>
           <button type="button" className="btn btn-primary btn-sm" onClick={runNow} disabled={running}>
-            {running ? 'Running…' : '▶ Run Scheduler Now'}
+            {running ? 'Running…' : <><Play size={13} aria-hidden="true" /> Run Scheduler Now</>}
           </button>
         </div>
       </div>
@@ -137,10 +146,10 @@ export default function SchedulerPage() {
       <div className="panel">
         <div className="panel-head"><h2 className="panel-title">Recent Runs</h2></div>
         {loading ? (
-          <div className="dash-loading">Loading runs&hellip;</div>
+          <SkeletonTable rows={5} />
         ) : !data || data.recentRuns.length === 0 ? (
           <div className="empty-state">
-            <div className="empty-state-icon" aria-hidden="true">∅</div>
+            <div className="empty-state-icon" aria-hidden="true"><Inbox size={22} /></div>
             <div className="empty-state-text">No scheduler runs recorded yet.</div>
           </div>
         ) : (
@@ -171,7 +180,7 @@ export default function SchedulerPage() {
         )}
       </div>
 
-      {toast && <div className="cz-toast">{toast}</div>}
+      {toast && <div className="cz-toast" role="status">{toast}</div>}
     </div>
   );
 }

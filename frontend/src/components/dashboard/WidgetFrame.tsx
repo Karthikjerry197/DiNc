@@ -2,6 +2,7 @@
 
 import type { WidgetDefinition } from './registry';
 import type { ColSpan, StudioLayoutItem } from './dashboard.types';
+import { Eye, EyeOff } from 'lucide-react';
 
 interface Props {
   item: StudioLayoutItem;
@@ -109,7 +110,7 @@ export default function WidgetFrame({
               aria-label={hidden ? 'Show widget' : 'Hide widget'}
               onClick={onToggleVisible}
             >
-              {hidden ? '👁' : '🙈'}
+              {hidden ? <Eye size={13} aria-hidden="true" /> : <EyeOff size={13} aria-hidden="true" />}
             </button>
           )}
 
@@ -144,7 +145,7 @@ export default function WidgetFrame({
         <div className="sf-body">
           {hidden && editing ? (
             <div className="sf-hidden-msg">
-              Widget hidden — click <span aria-hidden="true">👁</span> to show
+              Widget hidden — click <span aria-hidden="true"><Eye size={12} /></span> to show
             </div>
           ) : (
             children

@@ -4,18 +4,20 @@ import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { login } from '@/lib/api';
 import { saveSession, startGuestSession } from '@/lib/session';
+import type { ReactNode } from 'react';
+import { HeartHandshake, HeartPulse, Lock, Shield, Stethoscope } from 'lucide-react';
 
 interface RoleOption {
   id: string;
   name: string;
   desc: string;
-  icon: string;
+  icon: ReactNode;
 }
 
 const ROLE_OPTIONS: RoleOption[] = [
-  { id: 'ADMIN', name: 'Administrator', desc: 'Full system access', icon: '🛡️' },
-  { id: 'CLINICIAN', name: 'Clinical Staff', desc: 'Clinical operations', icon: '🩺' },
-  { id: 'CARE_ASSISTANT', name: 'Care Assistant', desc: 'Frontline care support', icon: '🤝' },
+  { id: 'ADMIN', name: 'Administrator', desc: 'Full system access', icon: <Shield size={16} /> },
+  { id: 'CLINICIAN', name: 'Clinical Staff', desc: 'Clinical operations', icon: <Stethoscope size={16} /> },
+  { id: 'CARE_ASSISTANT', name: 'Care Assistant', desc: 'Frontline care support', icon: <HeartHandshake size={16} /> },
 ];
 
 export default function LoginPage() {
@@ -30,6 +32,7 @@ export default function LoginPage() {
   const [loading, setLoading] = useState(false);
 
   async function handleSignIn() {
+    if (loading) return;
     setError('');
     setInfo('');
     if (!username.trim() || !password) {
@@ -68,7 +71,7 @@ export default function LoginPage() {
         <div className="login-left">
           <div>
             <div className="brand">
-              <div className="brand-badge">🏥</div>
+              <div className="brand-badge"><HeartPulse size={24} aria-hidden="true" /></div>
               <div>
                 <div className="brand-title">Digital Integrated Care Network (DiNC)</div>
                 <div className="brand-sub">Public Health Operations Platform</div>
@@ -95,7 +98,7 @@ export default function LoginPage() {
 
         <div className="login-right">
           <div className="signin-head">
-            <div className="signin-emoji">🔐</div>
+            <div className="signin-emoji" aria-hidden="true"><Lock size={22} /></div>
             <div className="signin-title">Sign In</div>
             <div className="signin-context">{selectedRole.name}</div>
           </div>

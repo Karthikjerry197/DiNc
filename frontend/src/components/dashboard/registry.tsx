@@ -25,6 +25,7 @@ import ProgramsWidget     from './widgets/ProgramsWidget';
 import ServicesWidget     from './widgets/ServicesWidget';
 import ActivityWidget     from './widgets/ActivityWidget';
 import StatCardWidget     from './widgets/StatCardWidget';
+import { BarChart3, ClipboardCheck, ClipboardList, History, Layers, ListChecks, Stethoscope, TriangleAlert, UsersRound, Zap } from 'lucide-react';
 
 // ── Render-props contract ─────────────────────────────────────────────────────
 
@@ -78,7 +79,7 @@ const WIDGET_REGISTRY: Record<string, WidgetDefinition> = {
     id:           'quick-actions',
     label:        'Quick Actions',
     description:  'Frequently used operational shortcuts',
-    icon:         '⚡',
+    icon:         <Zap size={15} />,
     category:     'Operations',
     defaultColSpan: 1,
     defaultForRoles: {
@@ -96,7 +97,7 @@ const WIDGET_REGISTRY: Record<string, WidgetDefinition> = {
     id:           'worklist',
     label:        "Today's Worklist",
     description:  "Active worklist items, overdue tasks, and today's consultations",
-    icon:         '📋',
+    icon:         <ClipboardList size={15} />,
     category:     'Operations',
     defaultColSpan: 2,
     defaultForRoles: {
@@ -120,7 +121,7 @@ const WIDGET_REGISTRY: Record<string, WidgetDefinition> = {
     id:           'activity',
     label:        'Recent Activity',
     description:  'Latest system activity across all modules',
-    icon:         '🕐',
+    icon:         <History size={15} />,
     category:     'Operations',
     defaultColSpan: 1,
     defaultForRoles: {
@@ -138,7 +139,7 @@ const WIDGET_REGISTRY: Record<string, WidgetDefinition> = {
     id:           'kpi-cards',
     label:        'Key Indicators',
     description:  'At-a-glance overview of all operational KPIs in one panel',
-    icon:         '📊',
+    icon:         <BarChart3 size={15} />,
     category:     'Analytics',
     defaultColSpan: 1,
     defaultForRoles: {
@@ -151,7 +152,7 @@ const WIDGET_REGISTRY: Record<string, WidgetDefinition> = {
     id:           'stat-citizens',
     label:        'Registered Citizens',
     description:  'Total registered citizens in the system',
-    icon:         '👥',
+    icon:         <UsersRound size={15} />,
     category:     'Analytics',
     defaultColSpan: 1,
     defaultForRoles: {
@@ -162,7 +163,7 @@ const WIDGET_REGISTRY: Record<string, WidgetDefinition> = {
       <StatCardWidget
         value={data?.stats.registeredCitizens}
         label="Registered Citizens"
-        icon="👥"
+        icon={<UsersRound size={18} />}
         color="blue"
       />
     ),
@@ -172,7 +173,7 @@ const WIDGET_REGISTRY: Record<string, WidgetDefinition> = {
     id:           'stat-enrollments',
     label:        'Active Enrolments',
     description:  'Citizens currently enrolled in active programmes',
-    icon:         '📝',
+    icon:         <ClipboardCheck size={15} />,
     category:     'Analytics',
     defaultColSpan: 1,
     defaultForRoles: {
@@ -183,7 +184,7 @@ const WIDGET_REGISTRY: Record<string, WidgetDefinition> = {
       <StatCardWidget
         value={data?.stats.activeEnrollments}
         label="Active Enrolments"
-        icon="📝"
+        icon={<ClipboardCheck size={18} />}
         color="green"
       />
     ),
@@ -193,7 +194,7 @@ const WIDGET_REGISTRY: Record<string, WidgetDefinition> = {
     id:           'stat-programs',
     label:        'Programmes',
     description:  'Total active health programmes',
-    icon:         '🏥',
+    icon:         <Layers size={15} />,
     category:     'Analytics',
     defaultColSpan: 1,
     defaultForRoles: {
@@ -203,7 +204,7 @@ const WIDGET_REGISTRY: Record<string, WidgetDefinition> = {
       <StatCardWidget
         value={data?.stats.programs}
         label="Programmes"
-        icon="🏥"
+        icon={<Layers size={18} />}
         color="purple"
       />
     ),
@@ -213,7 +214,7 @@ const WIDGET_REGISTRY: Record<string, WidgetDefinition> = {
     id:           'stat-tasks',
     label:        'Pending Tasks',
     description:  'Open worklist items awaiting action',
-    icon:         '⏳',
+    icon:         <ListChecks size={15} />,
     category:     'Analytics',
     defaultColSpan: 1,
     defaultForRoles: {
@@ -225,7 +226,7 @@ const WIDGET_REGISTRY: Record<string, WidgetDefinition> = {
       <StatCardWidget
         value={data?.stats.pendingTasks}
         label="Pending Tasks"
-        icon="⏳"
+        icon={<ListChecks size={18} />}
         color="amber"
       />
     ),
@@ -235,7 +236,7 @@ const WIDGET_REGISTRY: Record<string, WidgetDefinition> = {
     id:           'stat-overdue',
     label:        'Overdue Tasks',
     description:  'Tasks that have passed their due date',
-    icon:         '⚠️',
+    icon:         <TriangleAlert size={15} />,
     category:     'Analytics',
     defaultColSpan: 1,
     defaultForRoles: {
@@ -246,7 +247,7 @@ const WIDGET_REGISTRY: Record<string, WidgetDefinition> = {
       <StatCardWidget
         value={data?.stats.overdueTasks}
         label="Overdue"
-        icon="⚠️"
+        icon={<TriangleAlert size={18} />}
         color="red"
       />
     ),
@@ -258,7 +259,7 @@ const WIDGET_REGISTRY: Record<string, WidgetDefinition> = {
     id:           'programs',
     label:        'Programme Summary',
     description:  'Enrolment breakdown by active programme',
-    icon:         '🗂️',
+    icon:         <Layers size={15} />,
     category:     'Clinical',
     defaultColSpan: 1,
     defaultForRoles: {
@@ -277,7 +278,7 @@ const WIDGET_REGISTRY: Record<string, WidgetDefinition> = {
     id:           'services',
     label:        'CPHC Services',
     description:  'Available CPHC service categories and shortcuts',
-    icon:         '🏛️',
+    icon:         <Stethoscope size={15} />,
     category:     'Administration',
     defaultColSpan: 1,
     defaultForRoles: {

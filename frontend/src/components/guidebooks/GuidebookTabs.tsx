@@ -1,44 +1,44 @@
 'use client';
 
-export interface GuidebookTab {
-  key: string;
-  label: string;
+/**
+ * Formats an arbitrary section key into a human label. Pure formatting — it does
+ * NOT know or assume any section names, so any future key (camelCase, snake_case
+ * or kebab-case) renders sensibly with no code changes.
+ *   "dangerSigns" → "Danger Signs", "laboratory_tests" → "Laboratory Tests"
+ */
+export function humanizeSectionKey(key: string): string {
+  return key
+    .replace(/[_-]+/g, ' ')
+    .replace(/([a-z0-9])([A-Z])/g, '$1 $2')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .replace(/\b\w/g, (c) => c.toUpperCase());
 }
 
-/** Tab definitions. Only "overview" renders real content this milestone. */
-export const GUIDEBOOK_TABS: GuidebookTab[] = [
-  { key: 'overview', label: 'Overview' },
-  { key: 'protocol', label: 'Protocol' },
-  { key: 'danger-signs', label: 'Danger Signs' },
-  { key: 'assessment', label: 'Assessment' },
-  { key: 'treatment', label: 'Treatment' },
-  { key: 'counselling', label: 'Counselling' },
-  { key: 'nutrition', label: 'Nutrition' },
-  { key: 'dos-donts', label: "Do's & Don'ts" },
-  { key: 'follow-up', label: 'Follow-up' },
-  { key: 'faqs', label: 'FAQs' },
-  { key: 'training', label: 'Training' },
-  { key: 'references', label: 'References' },
-];
-
 interface GuidebookTabsProps {
+  /** Section keys, in the order supplied by the data. */
+  tabs: string[];
   active: string;
   onChange: (key: string) => void;
 }
 
-export default function GuidebookTabs({ active, onChange }: GuidebookTabsProps) {
+/**
+ * Renders one tab per section present in the guidebook. Fully data-driven: the
+ * tab set comes entirely from the guidebook's sections, in stored order.
+ */
+export default function GuidebookTabs({ tabs, active, onChange }: GuidebookTabsProps) {
   return (
     <div className="gb-tabs" role="tablist" aria-label="Guidebook sections">
-      {GUIDEBOOK_TABS.map((tab) => (
+      {tabs.map((key) => (
         <button
-          key={tab.key}
+          key={key}
           type="button"
           role="tab"
-          aria-selected={active === tab.key}
-          className={`gb-tab${active === tab.key ? ' active' : ''}`}
-          onClick={() => onChange(tab.key)}
+          aria-selected={active === key}
+          className={`gb-tab${active === key ? ' active' : ''}`}
+          onClick={() => onChange(key)}
         >
-          {tab.label}
+          {humanizeSectionKey(key)}
         </button>
       ))}
     </div>

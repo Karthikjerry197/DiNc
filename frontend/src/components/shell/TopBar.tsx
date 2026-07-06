@@ -2,10 +2,11 @@
 
 import Link from 'next/link';
 import { useEffect, useRef, useState } from 'react';
-import { Bell, Settings, Palette, HelpCircle, Info, LogOut, TriangleAlert, CircleAlert, RefreshCw, Check } from 'lucide-react';
+import { Bell, Settings, Palette, LogOut, TriangleAlert, CircleAlert, RefreshCw, Check } from 'lucide-react';
 import type { AlertWithCitizen, AuthUser, DevUser } from '@/lib/api';
-import { fetchActiveAlerts, fetchDevUsers } from '@/lib/api';
+import { fetchActiveAlerts, fetchDevUsers, markAlertRead } from '@/lib/api';
 import { getToken } from '@/lib/session';
+import { roleLabel } from '@/lib/format';
 
 interface TopBarProps {
   user: AuthUser;
@@ -14,17 +15,13 @@ interface TopBarProps {
   onSwitchUser: (username: string) => void;
 }
 
-/** Friendly display label for internal role codes. */
-function roleLabel(role: string): string {
-  switch (role) {
-    case 'ADMIN':          return 'Administrator';
-    case 'CLINICIAN':      return 'Clinical Staff';
-    case 'CARE_ASSISTANT': return 'Care Assistant';
-    case 'ANM':            return 'ANM';
-    case 'Guest':          return 'Guest';
-    default:               return role;
-  }
-}
+/**
+ * Development-only affordances (Switch User) render only in dev builds.
+ * NODE_ENV is inlined at build time, so the entire block is compiled out of
+ * production bundles — the backend dev endpoints are never reachable from
+ * production UI.
+ */
+const IS_DEV = process.env.NODE_ENV !== 'production';
 
 /** Two-letter initials from a full name. */
 function initials(name: string): string {
@@ -62,13 +59,14 @@ export default function TopBar({ user, onLogout, onSwitchUser }: TopBarProps) {
   const [bellLoading, setBellLoading]   = useState(false);
   const bellRef = useRef<HTMLDivElement>(null);
 
-  // Poll active alert count every 60 s
+  // Poll the unread alert count every 60 s (read alerts stay in the feed but
+  // no longer contribute to the badge).
   useEffect(() => {
     function loadCount() {
       const token = getToken();
       if (!token) return;
       fetchActiveAlerts(token)
-        .then((alerts) => setAlertCount(alerts.length))
+        .then((alerts) => setAlertCount(alerts.filter((a) => !a.isRead).length))
         .catch(() => undefined);
     }
     loadCount();
@@ -76,27 +74,53 @@ export default function TopBar({ user, onLogout, onSwitchUser }: TopBarProps) {
     return () => clearInterval(t);
   }, []);
 
-  // Close bell on click-outside
+  // Close bell on click-outside or Escape
   useEffect(() => {
     if (!bellOpen) return;
     function onOutside(e: MouseEvent) {
       if (bellRef.current && !bellRef.current.contains(e.target as Node)) setBellOpen(false);
     }
+    function onEscape(e: KeyboardEvent) {
+      if (e.key === 'Escape') setBellOpen(false);
+    }
     document.addEventListener('mousedown', onOutside);
-    return () => document.removeEventListener('mousedown', onOutside);
+    document.addEventListener('keydown', onEscape);
+    return () => {
+      document.removeEventListener('mousedown', onOutside);
+      document.removeEventListener('keydown', onEscape);
+    };
   }, [bellOpen]);
 
   async function handleBellClick() {
     const next = !bellOpen;
     setBellOpen(next);
-    if (next && bellAlerts.length === 0 && !bellLoading) {
-      setBellLoading(true);
+    if (next && !bellLoading) {
+      // Refresh on every open so the list matches the polled badge count;
+      // the loading state only shows before the first successful load.
+      if (bellAlerts.length === 0) setBellLoading(true);
       try {
         const token = getToken();
-        if (token) setBellAlerts(await fetchActiveAlerts(token));
+        if (token) {
+          const alerts = await fetchActiveAlerts(token);
+          setBellAlerts(alerts);
+          setAlertCount(alerts.filter((a) => !a.isRead).length);
+        }
       } catch { /* silent */ }
       finally { setBellLoading(false); }
     }
+  }
+
+  // Opening an alert marks it read: optimistic local update (muted row, badge
+  // decrement) plus a fire-and-forget persist — navigation must not wait.
+  function handleAlertOpen(alert: AlertWithCitizen) {
+    setBellOpen(false);
+    if (alert.isRead) return;
+    setBellAlerts((prev) =>
+      prev.map((a) => (a.id === alert.id ? { ...a, isRead: true } : a)),
+    );
+    setAlertCount((n) => Math.max(0, n - 1));
+    const token = getToken();
+    if (token) markAlertRead(token, alert.id).catch(() => undefined);
   }
 
   // Close on click-outside and Escape key
@@ -183,10 +207,15 @@ export default function TopBar({ user, onLogout, onSwitchUser }: TopBarProps) {
               {!bellLoading && bellAlerts.length === 0 && (
                 <div className="bell-empty">No active clinical alerts.</div>
               )}
+              {/* Each alert is a direct shortcut to the patient (same /citizens?c=
+                * route as Priority Alerts and the Action Centre cards). */}
               {!bellLoading && bellAlerts.map((a) => (
-                <div
+                <Link
                   key={a.id}
-                  className={`bell-alert bell-alert--${a.riskLevel.toLowerCase()}`}
+                  href={`/citizens?c=${a.citizenId}`}
+                  className={`bell-alert bell-alert--${a.riskLevel.toLowerCase()}${a.isRead ? ' bell-alert--read' : ''}`}
+                  title="Open the citizen workspace"
+                  onClick={() => handleAlertOpen(a)}
                 >
                   <span className="bell-alert-icon" aria-hidden="true">
                     {a.riskLevel === 'SEVERE'
@@ -199,7 +228,7 @@ export default function TopBar({ user, onLogout, onSwitchUser }: TopBarProps) {
                       {a.disease ?? 'General'} · {a.riskLevel}
                     </div>
                   </div>
-                </div>
+                </Link>
               ))}
             </div>
           )}
@@ -241,22 +270,24 @@ export default function TopBar({ user, onLogout, onSwitchUser }: TopBarProps) {
 
               <div className="acm-divider" role="separator" />
 
-              {/* ── Switch User (dev) ── */}
-              <button
-                type="button"
-                className="acm-item acm-item--expand"
-                role="menuitem"
-                aria-haspopup="true"
-                aria-expanded={showSwitch}
-                onClick={() => { void handleShowSwitch(); }}
-              >
-                <span className="acm-item-icon" aria-hidden="true"><RefreshCw size={16} /></span>
-                <span className="acm-item-label">Switch User</span>
-                <span className="acm-dev-badge">DEV</span>
-                <span className="acm-arrow" aria-hidden="true">{showSwitch ? '▴' : '▾'}</span>
-              </button>
+              {/* ── Switch User (dev builds only) ── */}
+              {IS_DEV && (
+                <button
+                  type="button"
+                  className="acm-item acm-item--expand"
+                  role="menuitem"
+                  aria-haspopup="true"
+                  aria-expanded={showSwitch}
+                  onClick={() => { void handleShowSwitch(); }}
+                >
+                  <span className="acm-item-icon" aria-hidden="true"><RefreshCw size={16} /></span>
+                  <span className="acm-item-label">Switch User</span>
+                  <span className="acm-dev-badge">DEV</span>
+                  <span className="acm-arrow" aria-hidden="true">{showSwitch ? '▴' : '▾'}</span>
+                </button>
+              )}
 
-              {showSwitch && (
+              {IS_DEV && showSwitch && (
                 <div className="acm-sub" role="group" aria-label="Switch to user">
                   {loadingUsers && (
                     <div className="acm-sub-item acm-sub-loading" role="none">
@@ -307,30 +338,6 @@ export default function TopBar({ user, onLogout, onSwitchUser }: TopBarProps) {
                 <span className="acm-item-icon" aria-hidden="true"><Palette size={16} /></span>
                 <span className="acm-item-label">Preferences</span>
               </Link>
-
-              <button
-                type="button"
-                className="acm-item acm-item--disabled"
-                role="menuitem"
-                disabled
-                aria-disabled="true"
-              >
-                <span className="acm-item-icon" aria-hidden="true"><HelpCircle size={16} /></span>
-                <span className="acm-item-label">Help &amp; Documentation</span>
-                <span className="acm-coming">Soon</span>
-              </button>
-
-              <button
-                type="button"
-                className="acm-item acm-item--disabled"
-                role="menuitem"
-                disabled
-                aria-disabled="true"
-              >
-                <span className="acm-item-icon" aria-hidden="true"><Info size={16} /></span>
-                <span className="acm-item-label">About DiNC</span>
-                <span className="acm-coming">Soon</span>
-              </button>
 
               <div className="acm-divider" role="separator" />
 

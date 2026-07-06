@@ -6,13 +6,15 @@ import KnowledgeSearch from '@/components/knowledge/KnowledgeSearch';
 import FaqModule from '@/components/knowledge/FaqModule';
 import TrainingCatalogue from '@/components/knowledge/TrainingModule';
 import EmergencyModule from '@/components/knowledge/EmergencyModule';
+import type { ReactNode } from 'react';
+import { GraduationCap, HelpCircle, Siren } from 'lucide-react';
 
 type Tab = 'faq' | 'training' | 'emergency';
 
-const TABS: { key: Tab; label: string; icon: string }[] = [
-  { key: 'faq', label: 'FAQ', icon: '❓' },
-  { key: 'training', label: 'Training', icon: '🎓' },
-  { key: 'emergency', label: 'Emergency', icon: '🚨' },
+const TABS: { key: Tab; label: string; icon: ReactNode }[] = [
+  { key: 'faq', label: 'FAQ', icon: <HelpCircle size={14} /> },
+  { key: 'training', label: 'Training', icon: <GraduationCap size={14} /> },
+  { key: 'emergency', label: 'Emergency', icon: <Siren size={14} /> },
 ];
 
 /**
@@ -25,12 +27,14 @@ export default function KnowledgeHubPage() {
   const isAdmin = can('admin.pages');
   const [tab, setTab] = useState<Tab>('faq');
   const [toast, setToast] = useState('');
+  const [toastKind, setToastKind] = useState<'ok' | 'err'>('ok');
   const toastTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  const flash = useCallback((message: string) => {
+  const flash = useCallback((message: string, kind: 'ok' | 'err' = 'ok') => {
     setToast(message);
+    setToastKind(kind);
     if (toastTimer.current) clearTimeout(toastTimer.current);
-    toastTimer.current = setTimeout(() => setToast(''), 2600);
+    toastTimer.current = setTimeout(() => setToast(''), kind === 'err' ? 4200 : 2600);
   }, []);
 
   return (
@@ -65,7 +69,11 @@ export default function KnowledgeHubPage() {
         {tab === 'emergency' && <EmergencyModule />}
       </div>
 
-      {toast && <div className="cz-toast">{toast}</div>}
+      {toast && (
+        <div className={`cz-toast${toastKind === 'err' ? ' cz-toast--err' : ''}`} role="status">
+          {toast}
+        </div>
+      )}
     </div>
   );
 }

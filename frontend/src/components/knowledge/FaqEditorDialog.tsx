@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react';
 import { createFaq, updateFaq, type KnowledgeFaq } from '@/lib/api';
 import { getToken } from '@/lib/session';
+import { useDialogA11y } from '@/lib/useDialogA11y';
 
 interface FaqEditorDialogProps {
   /** When provided, the dialog edits this FAQ; otherwise it creates a new one. */
@@ -35,9 +36,13 @@ export default function FaqEditorDialog({
     setError('');
   }, [open, faq]);
 
+  // Shared dialog behaviour: Escape close, focus trap, focus restore (M35C).
+  const dialogRef = useDialogA11y(open, () => !saving && onClose());
+
   if (!open) return null;
 
   async function handleSave() {
+    if (saving) return;
     setError('');
     const token = getToken();
     if (!token) return setError('Your session has expired. Please sign in again.');
@@ -57,7 +62,7 @@ export default function FaqEditorDialog({
 
   return (
     <div className="modal-overlay" role="presentation" onClick={() => !saving && onClose()}>
-      <div className="modal" role="dialog" aria-modal="true" aria-labelledby="faq-editor-title" onClick={(e) => e.stopPropagation()}>
+      <div className="modal" ref={dialogRef} role="dialog" aria-modal="true" aria-labelledby="faq-editor-title" onClick={(e) => e.stopPropagation()}>
         <div className="modal-head">
           <h2 id="faq-editor-title" className="modal-title">{faq ? 'Edit FAQ' : 'Add FAQ'}</h2>
           <button type="button" className="modal-close" aria-label="Close" onClick={onClose} disabled={saving}>×</button>

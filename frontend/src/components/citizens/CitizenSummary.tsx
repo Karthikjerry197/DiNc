@@ -1,6 +1,10 @@
 'use client';
 
-import type { CitizenDetail, EnrollmentDetail, EnrollmentSummary } from '@/lib/api';
+import { Plus, UserRound } from 'lucide-react';
+import type { Activity, CitizenDetail, EnrollmentDetail, EnrollmentSummary } from '@/lib/api';
+import { formatDate } from '@/lib/format';
+import { SkeletonLines } from '@/components/shell/Skeleton';
+import CareJourneyProgress from './CareJourneyProgress';
 
 interface CitizenSummaryProps {
   detail: CitizenDetail | null;
@@ -11,28 +15,17 @@ interface CitizenSummaryProps {
   onSelectEnrollment: (id: string) => void;
   enrollmentDetail: EnrollmentDetail | null;
   enrollmentDetailLoading: boolean;
+  /** Selected enrollment's workflow activities — drives Care Journey Progress (M37A). */
+  activities: Activity[];
+  activitiesLoading: boolean;
   onAddProgram: () => void;
   onOpenGuidebook: () => void;
   onStartConsultation: () => void;
-  onComingSoon: (label: string) => void;
   onBack: () => void;
 }
 
-/** Action buttons. "Guidebook" and "Start Consultation" are live; others remain UI-only. */
-const PRIMARY_ACTIONS = ['Guidebook', 'Start Consultation', 'Edit', 'Close', 'Remove'];
-const SECONDARY_ACTIONS = ['Guide Book', 'FAQs', 'Manage Activities'];
-
 function val(text: string | null | undefined): string {
   return text && String(text).trim() ? String(text) : '—';
-}
-
-function formatDate(iso: string | null): string {
-  if (!iso) return '—';
-  return new Date(iso).toLocaleDateString(undefined, {
-    year: 'numeric',
-    month: 'short',
-    day: 'numeric',
-  });
 }
 
 export default function CitizenSummary({
@@ -44,16 +37,17 @@ export default function CitizenSummary({
   onSelectEnrollment,
   enrollmentDetail,
   enrollmentDetailLoading,
+  activities,
+  activitiesLoading,
   onAddProgram,
   onOpenGuidebook,
   onStartConsultation,
-  onComingSoon,
   onBack,
 }: CitizenSummaryProps) {
   if (loading) {
     return (
       <section className="cz-center">
-        <div className="dash-loading">Loading citizen&hellip;</div>
+        <SkeletonLines lines={7} />
       </section>
     );
   }
@@ -62,7 +56,7 @@ export default function CitizenSummary({
     return (
       <section className="cz-center">
         <div className="empty-state cz-center-empty">
-          <div className="empty-state-icon" aria-hidden="true">👤</div>
+          <div className="empty-state-icon" aria-hidden="true"><UserRound size={22} /></div>
           <div className="empty-state-text">Select a citizen to view their workspace.</div>
         </div>
       </section>
@@ -117,6 +111,14 @@ export default function CitizenSummary({
         </div>
       </div>
 
+      {/* Care Journey Progress (M37A) — derived live from the selected
+        * enrollment's workflow activities; nothing is stored. */}
+      <CareJourneyProgress
+        activities={activities}
+        loading={activitiesLoading}
+        hasEnrollment={!!selectedEnrollmentId}
+      />
+
       {/* Active programs — live enrollments; selecting one updates the panel below. */}
       <div className="cz-section">
         <div className="cz-section-head">
@@ -130,7 +132,7 @@ export default function CitizenSummary({
             title="Add Program"
             onClick={onAddProgram}
           >
-            ＋ Add Program
+            <Plus size={13} aria-hidden="true" /> Add Program
           </button>
         </div>
         {enrollmentsLoading ? (
@@ -189,55 +191,37 @@ export default function CitizenSummary({
             <span className="cz-stat-label">Total</span>
           </div>
           <div className="cz-stat">
-            <span className="cz-stat-value" style={{ color: '#24a148' }}>{stats.completed}</span>
+            <span className="cz-stat-value" style={{ color: 'var(--p)' }}>{stats.completed}</span>
             <span className="cz-stat-label">Completed</span>
           </div>
           <div className="cz-stat">
-            <span className="cz-stat-value" style={{ color: '#d97706' }}>{stats.pending}</span>
+            <span className="cz-stat-value" style={{ color: 'var(--warn)' }}>{stats.pending}</span>
             <span className="cz-stat-label">Pending</span>
           </div>
         </div>
       </div>
 
-      {/* Action buttons */}
+      {/* Action buttons — every action here is live (M35A Wave 1 removed the
+        * Edit / Close / Remove / FAQs / Manage Activities placeholders; they
+        * return only when their functionality ships). */}
       <div className="cz-actions">
         <div className="cz-actions-row">
-          {PRIMARY_ACTIONS.map((label) => (
-            <button
-              key={label}
-              type="button"
-              className="wl-btn wl-btn-soft"
-              title={
-                label === 'Guidebook'
-                  ? 'Open the guidebook for this enrollment'
-                  : label === 'Start Consultation'
-                    ? 'Start or continue a consultation for this citizen'
-                    : label
-              }
-              onClick={
-                label === 'Guidebook'
-                  ? onOpenGuidebook
-                  : label === 'Start Consultation'
-                    ? onStartConsultation
-                    : () => onComingSoon(label)
-              }
-            >
-              {label}
-            </button>
-          ))}
-        </div>
-        <div className="cz-actions-row">
-          {SECONDARY_ACTIONS.map((label) => (
-            <button
-              key={label}
-              type="button"
-              className="wl-btn"
-              title={label}
-              onClick={() => onComingSoon(label)}
-            >
-              {label}
-            </button>
-          ))}
+          <button
+            type="button"
+            className="wl-btn wl-btn-soft"
+            title="Open the guidebook for this enrollment"
+            onClick={onOpenGuidebook}
+          >
+            Guidebook
+          </button>
+          <button
+            type="button"
+            className="wl-btn wl-btn-soft"
+            title="Start or continue a consultation for this citizen"
+            onClick={onStartConsultation}
+          >
+            Start Consultation
+          </button>
         </div>
       </div>
     </section>

@@ -3,6 +3,9 @@
 import { useEffect, useState } from 'react';
 import { fetchClinicalJourney, type ClinicalJourneyEntry } from '@/lib/api';
 import { getToken } from '@/lib/session';
+import { formatDate } from '@/lib/format';
+import type { ReactNode } from 'react';
+import { ClipboardCheck, Inbox, ListChecks, Phone, Stethoscope, UserRound } from 'lucide-react';
 
 type FilterKey = 'all' | 'consultations' | 'calls' | 'referrals' | 'outcomes';
 
@@ -24,22 +27,15 @@ function applyFilter(entries: ClinicalJourneyEntry[], f: FilterKey): ClinicalJou
   }
 }
 
-function formatDate(iso: string | null): string {
-  if (!iso) return '—';
-  return new Date(iso).toLocaleDateString(undefined, {
-    year: 'numeric', month: 'short', day: 'numeric',
-  });
-}
-
 function formatTime(iso: string | null): string {
   if (!iso) return '';
   return new Date(iso).toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' });
 }
 
-function eventIcon(e: ClinicalJourneyEntry): string {
-  if (e.eventType === 'ENROLLMENT') return '🏁';
-  if (e.eventType === 'CONSULTATION') return '📋';
-  return '⏳';
+function eventIcon(e: ClinicalJourneyEntry): ReactNode {
+  if (e.eventType === 'ENROLLMENT') return <ClipboardCheck size={14} />;
+  if (e.eventType === 'CONSULTATION') return <Stethoscope size={14} />;
+  return <ListChecks size={14} />;
 }
 
 function eventLabel(e: ClinicalJourneyEntry): string {
@@ -126,12 +122,12 @@ export default function ClinicalJourney({ citizenId }: { citizenId: string | nul
           <div className="dash-error">{error}</div>
         ) : !citizenId ? (
           <div className="empty-state">
-            <div className="empty-state-icon" aria-hidden="true">👤</div>
+            <div className="empty-state-icon" aria-hidden="true"><UserRound size={22} /></div>
             <div className="empty-state-text">Select a citizen to view their clinical journey.</div>
           </div>
         ) : visible.length === 0 ? (
           <div className="empty-state">
-            <div className="empty-state-icon" aria-hidden="true">∅</div>
+            <div className="empty-state-icon" aria-hidden="true"><Inbox size={22} /></div>
             <div className="empty-state-text">
               {filter === 'all'
                 ? 'No clinical events recorded yet.'
@@ -205,7 +201,7 @@ export default function ClinicalJourney({ citizenId }: { citizenId: string | nul
                       )}
                       {entry.callCount > 0 && (
                         <span style={{ fontSize: 10, color: '#0369a1', fontWeight: 600 }}>
-                          📞 {entry.callCount} call{entry.callCount === 1 ? '' : 's'}
+                          <Phone size={10} aria-hidden="true" /> {entry.callCount} call{entry.callCount === 1 ? '' : 's'}
                         </span>
                       )}
                       {entry.recordedBy && (

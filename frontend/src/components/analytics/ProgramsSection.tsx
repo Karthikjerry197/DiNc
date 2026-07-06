@@ -7,6 +7,8 @@ import {
   type ProgramAnalyticsRow,
 } from '@/lib/api';
 import { ProgressBar } from './Charts';
+import { Inbox } from 'lucide-react';
+import { SkeletonLines } from '@/components/shell/Skeleton';
 
 interface Props {
   token: string;
@@ -30,14 +32,14 @@ export default function ProgramsSection({ token, params }: Props) {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [token, JSON.stringify(params)]);
 
-  if (loading) return <div className="rp-loading">Loading program analytics&hellip;</div>;
+  if (loading) return <SkeletonLines lines={6} />;
   if (error) return <div className="rp-error">{error}</div>;
 
   if (rows.length === 0) {
     return (
       <div className="panel">
         <div className="empty-state">
-          <div className="empty-state-icon" aria-hidden="true">📊</div>
+          <div className="empty-state-icon" aria-hidden="true"><Inbox size={22} /></div>
           <div className="empty-state-text">No program data for the selected filters.</div>
         </div>
       </div>

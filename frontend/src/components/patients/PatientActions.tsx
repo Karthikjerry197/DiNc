@@ -3,6 +3,7 @@
 import { useState } from 'react';
 import Link from 'next/link';
 import dynamic from 'next/dynamic';
+import { UserPlus, Upload, ClipboardList, BookOpen } from 'lucide-react';
 import type { BulkRegistrationResult, RegistrationResult } from '@/lib/api';
 import RegistrationWizard from './RegistrationWizard';
 
@@ -70,7 +71,7 @@ export default function PatientActions({
             className="qa-compact-btn qa-compact-btn--primary"
             onClick={() => setNewOpen(true)}
           >
-            <span className="qa-compact-icon" aria-hidden="true">➕</span>
+            <span className="qa-compact-icon" aria-hidden="true"><UserPlus size={16} /></span>
             New Patient
           </button>
           <button
@@ -78,17 +79,17 @@ export default function PatientActions({
             className="qa-compact-btn"
             onClick={() => setBulkOpen(true)}
           >
-            <span className="qa-compact-icon" aria-hidden="true">📂</span>
+            <span className="qa-compact-icon" aria-hidden="true"><Upload size={16} /></span>
             Bulk Upload
           </button>
           {includeNavShortcuts && (
             <>
               <Link href="/worklist" className="qa-compact-btn">
-                <span className="qa-compact-icon" aria-hidden="true">📋</span>
+                <span className="qa-compact-icon" aria-hidden="true"><ClipboardList size={16} /></span>
                 Worklist
               </Link>
               <Link href="/guidebooks" className="qa-compact-btn">
-                <span className="qa-compact-icon" aria-hidden="true">📖</span>
+                <span className="qa-compact-icon" aria-hidden="true"><BookOpen size={16} /></span>
                 Guidebooks
               </Link>
             </>
@@ -113,7 +114,7 @@ export default function PatientActions({
           className={isCards ? 'quick-action qa-primary' : 'btn btn-primary btn-sm'}
           onClick={() => setNewOpen(true)}
         >
-          <span className="qa-icon" aria-hidden="true">➕</span>
+          <span className="qa-icon" aria-hidden="true"><UserPlus size={16} /></span>
           <span className="qa-label">New Patient</span>
         </button>
 
@@ -122,18 +123,18 @@ export default function PatientActions({
           className={isCards ? 'quick-action' : 'btn btn-ghost btn-sm'}
           onClick={() => setBulkOpen(true)}
         >
-          <span className="qa-icon" aria-hidden="true">📂</span>
+          <span className="qa-icon" aria-hidden="true"><Upload size={16} /></span>
           <span className="qa-label">Bulk Upload Patients</span>
         </button>
 
         {isCards && includeNavShortcuts && (
           <>
             <Link href="/worklist" className="quick-action">
-              <span className="qa-icon" aria-hidden="true">📋</span>
+              <span className="qa-icon" aria-hidden="true"><ClipboardList size={16} /></span>
               <span className="qa-label">Worklist</span>
             </Link>
             <Link href="/guidebooks" className="quick-action">
-              <span className="qa-icon" aria-hidden="true">📖</span>
+              <span className="qa-icon" aria-hidden="true"><BookOpen size={16} /></span>
               <span className="qa-label">Guidebooks</span>
             </Link>
           </>

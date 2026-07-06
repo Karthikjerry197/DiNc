@@ -16,6 +16,7 @@ import WIDGET_REGISTRY, {
 } from './registry';
 import WidgetFrame from './WidgetFrame';
 import WidgetLibrary from './WidgetLibrary';
+import { Pencil } from 'lucide-react';
 
 interface Props {
   token: string;
@@ -130,6 +131,7 @@ export default function DashboardStudio({
   }
 
   async function saveEdit() {
+    if (saving) return;
     const layoutToSave = editLayout;
     const rollback = cancelSnapshot.current;
     setSaving(true);
@@ -315,7 +317,7 @@ export default function DashboardStudio({
       {isAdmin && (
         editing ? (
           <div className="studio-toolbar">
-            <span className="studio-toolbar-label">✏️ Editing layout for:</span>
+            <span className="studio-toolbar-label"><Pencil size={13} aria-hidden="true" /> Editing layout for:</span>
 
             <select
               className="studio-role-select"
@@ -376,7 +378,7 @@ export default function DashboardStudio({
               className="studio-btn"
               onClick={enterEdit}
             >
-              ✏️ Edit Dashboard
+              <Pencil size={13} aria-hidden="true" /> Edit Dashboard
             </button>
           </div>
         )

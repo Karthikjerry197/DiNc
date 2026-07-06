@@ -7,6 +7,7 @@ import {
   type RegistrationAnalytics,
 } from '@/lib/api';
 import { BarChart } from './Charts';
+import { SkeletonLines } from '@/components/shell/Skeleton';
 
 interface Props {
   token: string;
@@ -30,7 +31,7 @@ export default function RegistrationsSection({ token, params }: Props) {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [token, JSON.stringify(params)]);
 
-  if (loading) return <div className="rp-loading">Loading registration analytics&hellip;</div>;
+  if (loading) return <SkeletonLines lines={6} />;
   if (error) return <div className="rp-error">{error}</div>;
   if (!data) return null;
 

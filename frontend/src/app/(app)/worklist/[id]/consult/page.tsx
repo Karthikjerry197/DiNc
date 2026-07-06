@@ -20,6 +20,8 @@ import CounsellingWizard from '@/components/consultation/CounsellingWizard';
 import ConsultationOutcomeDialog from '@/components/consultation/ConsultationOutcomeDialog';
 import ClinicalDecisionPanel from '@/components/consultation/ClinicalDecisionPanel';
 import CarePlanPanel from '@/components/care-plan/CarePlanPanel';
+import { CircleCheck, Phone } from 'lucide-react';
+import { SkeletonLines } from '@/components/shell/Skeleton';
 
 type CallPhase = 'ready' | 'in-progress' | 'ended';
 
@@ -183,11 +185,13 @@ export default function ConsultationWorkspacePage() {
   );
   const displayNote = noteMode === 'auto' ? autoNote : manualNote;
 
-  // Read returnUrl from the query string once on mount
+  // Read returnUrl from the query string once on mount. Only internal app
+  // paths are accepted — an absolute or protocol-relative URL here would let a
+  // crafted link redirect the worker off-site after saving (open redirect).
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     const raw = params.get('returnUrl');
-    if (raw) setReturnUrl(raw);
+    if (raw && raw.startsWith('/') && !raw.startsWith('//')) setReturnUrl(raw);
   }, []);
 
   // Load context on mount
@@ -314,7 +318,7 @@ export default function ConsultationWorkspacePage() {
   if (loading) {
     return (
       <div className="page">
-        <div className="cw-loading">Loading consultation workspace&hellip;</div>
+        <SkeletonLines lines={8} />
       </div>
     );
   }
@@ -345,7 +349,11 @@ export default function ConsultationWorkspacePage() {
         <div style={{ flex: 1, minWidth: 200 }}>
           <div className="cw-breadcrumb">
             <Link href={returnUrl}>
-              {returnUrl.startsWith('/citizens') ? 'Citizens' : 'My Worklist'}
+              {returnUrl.startsWith('/citizens')
+                ? 'Citizens'
+                : returnUrl.startsWith('/dashboard')
+                  ? 'Dashboard'
+                  : 'My Worklist'}
             </Link>
             <span className="cw-breadcrumb-sep">›</span>
             Consultation
@@ -395,7 +403,7 @@ export default function ConsultationWorkspacePage() {
               onClick={handleStartCall}
               disabled={callStarting}
             >
-              <span className="cw-consult-call-icon">📞</span>
+              <span className="cw-consult-call-icon"><Phone size={16} aria-hidden="true" /></span>
               {callStarting
                 ? 'Starting call…'
                 : patient.phone
@@ -442,7 +450,8 @@ export default function ConsultationWorkspacePage() {
 
         {saveResult && (
           <span style={{ fontSize: 13, color: '#15803d', fontWeight: 600 }}>
-            ✓ Consultation saved — returning…
+            <CircleCheck size={14} aria-hidden="true" /> Consultation saved
+            {saveResult.workflowMessage ? ` · ${saveResult.workflowMessage}` : ''} — returning…
           </span>
         )}
       </div>

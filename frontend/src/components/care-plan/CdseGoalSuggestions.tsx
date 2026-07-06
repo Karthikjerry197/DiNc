@@ -2,6 +2,7 @@
 
 import { useState } from 'react';
 import type { CdseDecisionEntry, CdseGoalSuggestion, GoalPriority } from '@/lib/api';
+import { Check, X } from 'lucide-react';
 
 const PRIORITY_LABELS: Record<GoalPriority, string> = {
   CRITICAL: 'Critical',
@@ -121,7 +122,7 @@ export default function CdseGoalSuggestions({ suggestions, onSubmit, onClose, sa
                     onClick={() => setDecision(s.cdseRuleId, st?.decision === 'ACCEPTED' ? null : 'ACCEPTED')}
                     disabled={saving}
                   >
-                    ✓ Accept
+                    <Check size={13} aria-hidden="true" /> Accept
                   </button>
                   <button
                     type="button"
@@ -129,7 +130,7 @@ export default function CdseGoalSuggestions({ suggestions, onSubmit, onClose, sa
                     onClick={() => setDecision(s.cdseRuleId, st?.decision === 'DECLINED' ? null : 'DECLINED')}
                     disabled={saving}
                   >
-                    ✕ Decline
+                    <X size={13} aria-hidden="true" /> Decline
                   </button>
                 </div>
               )}

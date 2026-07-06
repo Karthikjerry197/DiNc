@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import {
   fetchWorklistItemGuidebook,
@@ -10,15 +10,21 @@ import {
 } from '@/lib/api';
 import { getToken } from '@/lib/session';
 import { useUser } from '@/lib/UserContext';
+import { sortByUrgency } from '@/lib/urgency';
 import ComingSoon from '@/components/shell/ComingSoon';
 import WorklistToolbar from '@/components/worklist/WorklistToolbar';
-import WorklistFilters from '@/components/worklist/WorklistFilters';
+import WorklistFilters, {
+  EMPTY_WORKLIST_FILTERS,
+  applyWorklistFilters,
+  type WorklistFilterState,
+} from '@/components/worklist/WorklistFilters';
 import TeamMonitoring from '@/components/worklist/TeamMonitoring';
 import WorklistTable from '@/components/worklist/WorklistTable';
 import ReportDuplicateDialog, {
   type ReportDuplicateTarget,
 } from '@/components/dataquality/ReportDuplicateDialog';
 import PatientActions from '@/components/patients/PatientActions';
+import { SkeletonTable } from '@/components/shell/Skeleton';
 
 const EMPTY: WorklistOverview = {
   stats: {
@@ -47,11 +53,34 @@ export default function WorklistPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [reportTarget, setReportTarget] = useState<ReportDuplicateTarget | null>(null);
+  const [filters, setFilters] = useState<WorklistFilterState>(EMPTY_WORKLIST_FILTERS);
   const [toast, setToast] = useState('');
 
+  // Care managers (no view-all) work their own queue, so it is ordered by
+  // urgency (M36): overdue → severe → due today → high priority → remaining.
+  // Visual ordering only — the backend response is untouched, and supervisors
+  // (worklist.view.all) keep today's ordering exactly as-is.
+  const careView = !can('worklist.view.all');
+
+  // Live filtering (M33.1): applied client-side to the loaded items.
+  const filteredItems = useMemo(() => {
+    const filtered = applyWorklistFilters(data.items, filters);
+    return careView ? sortByUrgency(filtered) : filtered;
+  }, [data.items, filters, careView]);
+  const diseaseOptions = useMemo(
+    () => Array.from(new Set(data.items.map((i) => i.type).filter((t): t is string => !!t))).sort(),
+    [data.items],
+  );
+
+  const toastTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const flash = useCallback((message: string) => {
     setToast(message);
-    setTimeout(() => setToast(''), 2600);
+    if (toastTimer.current) clearTimeout(toastTimer.current);
+    toastTimer.current = setTimeout(() => setToast(''), 2600);
+  }, []);
+
+  useEffect(() => {
+    return () => { if (toastTimer.current) clearTimeout(toastTimer.current); };
   }, []);
 
   const reportDuplicate = useCallback((item: WorklistItem) => {
@@ -72,7 +101,10 @@ export default function WorklistPage() {
       return;
     }
     fetchWorklistOverview(token)
-      .then((overview) => setData(overview))
+      .then((overview) => {
+        setData(overview);
+        setError('');
+      })
       .catch(() => setError('Unable to load worklist data.'));
   }, []);
 
@@ -86,7 +118,13 @@ export default function WorklistPage() {
       }
       try {
         const guidebook = await fetchWorklistItemGuidebook(token, itemId);
-        router.push(guidebook ? `/guidebooks?g=${guidebook.id}` : '/guidebooks');
+        // `activity` lets the Guidebooks page offer a direct path into the
+        // consultation workspace for this item (M33.1 navigation).
+        router.push(
+          guidebook
+            ? `/guidebooks?g=${guidebook.id}&activity=${itemId}`
+            : `/guidebooks?activity=${itemId}`,
+        );
       } catch {
         router.push('/guidebooks');
       }
@@ -138,30 +176,33 @@ export default function WorklistPage() {
       <div className="op-toolbar-bar">
         <PatientActions variant="toolbar" onChanged={reload} onToast={flash} />
       </div>
-      <WorklistFilters programs={data.programs} assignees={data.assignees} />
-      <TeamMonitoring monitoring={data.monitoring} />
+      <WorklistFilters
+        programs={data.programs}
+        assignees={data.assignees}
+        diseases={diseaseOptions}
+        filters={filters}
+        onChange={setFilters}
+      />
+      {/* Team-wide workload is a supervision view — only for view-all holders. */}
+      {can('worklist.view.all') && <TeamMonitoring monitoring={data.monitoring} />}
 
       {error && <div className="dash-error">{error}</div>}
 
       {loading ? (
-        <div className="dash-loading">Loading worklist&hellip;</div>
+        <div className="panel"><SkeletonTable rows={8} /></div>
       ) : (
         <>
           <WorklistTable
-            items={data.items}
+            items={filteredItems}
             onOpenGuidebook={openGuidebook}
             onReportDuplicate={reportDuplicate}
             onStartCall={startCall}
           />
           <div className="wl-footer">
             <span>
-              Showing {data.items.length} {data.items.length === 1 ? 'item' : 'items'}
+              Showing {filteredItems.length} of {data.items.length}{' '}
+              {data.items.length === 1 ? 'item' : 'items'}
             </span>
-            <div className="wl-pagination">
-              <button type="button" className="wl-page-btn" disabled title="Previous page">‹</button>
-              <span className="wl-page-current">1</span>
-              <button type="button" className="wl-page-btn" disabled title="Next page">›</button>
-            </div>
           </div>
         </>
       )}
@@ -178,7 +219,7 @@ export default function WorklistPage() {
         />
       )}
 
-      {toast && <div className="cz-toast">{toast}</div>}
+      {toast && <div className="cz-toast" role="status">{toast}</div>}
     </div>
   );
 }

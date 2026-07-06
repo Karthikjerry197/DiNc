@@ -18,12 +18,16 @@ import RegistrationsSection from '@/components/analytics/RegistrationsSection';
 import SchedulerSection from '@/components/analytics/SchedulerSection';
 import WorkflowSection from '@/components/analytics/WorkflowSection';
 import KnowledgeSection from '@/components/analytics/KnowledgeSection';
+import RiskSection from '@/components/analytics/RiskSection';
+import DiseasesSection from '@/components/analytics/DiseasesSection';
 
-type Tab = 'operations' | 'executive' | 'programs' | 'worklist' | 'workers' | 'registrations' | 'scheduler' | 'workflow' | 'knowledge';
+type Tab = 'operations' | 'executive' | 'programs' | 'worklist' | 'workers' | 'registrations' | 'scheduler' | 'workflow' | 'knowledge' | 'risk' | 'diseases';
 
 const TABS: { key: Tab; label: string }[] = [
   { key: 'operations', label: 'Operations' },
   { key: 'executive', label: 'Executive' },
+  { key: 'risk', label: 'Clinical Risk' },
+  { key: 'diseases', label: 'Disease Analytics' },
   { key: 'programs', label: 'Programs' },
   { key: 'worklist', label: 'Worklist' },
   { key: 'workers', label: 'Workers' },
@@ -35,14 +39,38 @@ const TABS: { key: Tab; label: string }[] = [
 
 const EMPTY_PARAMS: AnalyticsQueryParams = {};
 
-const FILTER_TABS: Tab[] = ['operations', 'executive', 'programs', 'worklist', 'workers', 'registrations', 'workflow'];
+const FILTER_TABS: Tab[] = ['operations', 'executive', 'programs', 'worklist', 'workers', 'registrations', 'workflow', 'risk', 'diseases'];
 
 export default function ReportsPage() {
   const { can } = useUser();
   const isAdmin = can('reports.admin');
   const token = getToken() ?? '';
+  const allowed = can('reports.view');
 
-  if (!can('reports.view')) {
+  // Hooks must run unconditionally (before any early return) or React throws
+  // when the permission result changes between renders (e.g. user switch).
+  const [tab, setTab] = useState<Tab>('operations');
+  const [params, setParams] = useState<AnalyticsQueryParams>(EMPTY_PARAMS);
+  const [options, setOptions] = useState<AnalyticsFilterOptions | null>(null);
+
+  // Allow deep links from KPI cards (e.g. /reports?tab=risk) to open a tab
+  // directly. Read from window.location to avoid the useSearchParams Suspense
+  // requirement; runs once on mount.
+  useEffect(() => {
+    const requested = new URLSearchParams(window.location.search).get('tab');
+    if (requested && TABS.some((t) => t.key === requested)) setTab(requested as Tab);
+  }, []);
+
+  useEffect(() => {
+    if (!token || !allowed) return;
+    fetchAnalyticsFilterOptions(token)
+      .then(setOptions)
+      .catch(() => { /* filter options are non-critical */ });
+  }, [token, allowed]);
+
+  const handleReset = useCallback(() => setParams(EMPTY_PARAMS), []);
+
+  if (!allowed) {
     return (
       <div className="page">
         <div className="page-head"><div><h1 className="page-title">Reports &amp; Analytics</h1></div></div>
@@ -50,19 +78,6 @@ export default function ReportsPage() {
       </div>
     );
   }
-
-  const [tab, setTab] = useState<Tab>('operations');
-  const [params, setParams] = useState<AnalyticsQueryParams>(EMPTY_PARAMS);
-  const [options, setOptions] = useState<AnalyticsFilterOptions | null>(null);
-
-  useEffect(() => {
-    if (!token) return;
-    fetchAnalyticsFilterOptions(token)
-      .then(setOptions)
-      .catch(() => { /* filter options are non-critical */ });
-  }, [token]);
-
-  const handleReset = useCallback(() => setParams(EMPTY_PARAMS), []);
 
   const showFilters = FILTER_TABS.includes(tab);
 
@@ -128,6 +143,12 @@ export default function ReportsPage() {
       )}
       {tab === 'knowledge' && (
         <KnowledgeSection token={token} />
+      )}
+      {tab === 'risk' && (
+        <RiskSection token={token} params={params} />
+      )}
+      {tab === 'diseases' && (
+        <DiseasesSection token={token} params={params} />
       )}
     </div>
   );

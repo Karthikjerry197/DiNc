@@ -1,6 +1,7 @@
 'use client';
 
 import type { CounsellingSection } from '@/lib/api';
+import { Check } from 'lucide-react';
 
 interface CounsellingWizardProps {
   sections: CounsellingSection[];
@@ -96,7 +97,7 @@ export default function CounsellingWizard({
                 disabled={disabled}
               >
                 <span className="cw-wizard-check" aria-hidden="true">
-                  {isSelected ? '✓' : ''}
+                  {isSelected ? <Check size={14} /> : null}
                 </span>
                 <span className="cw-wizard-item-text">{item.body}</span>
               </button>

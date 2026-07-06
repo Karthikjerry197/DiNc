@@ -7,20 +7,13 @@ import {
   type PatientComparisonSide,
 } from '@/lib/api';
 import { getToken } from '@/lib/session';
+import { formatDate } from '@/lib/format';
+import { useDialogA11y } from '@/lib/useDialogA11y';
 
 interface CompareRecordsDialogProps {
   requestId: string;
   open: boolean;
   onClose: () => void;
-}
-
-function formatDate(iso: string | null): string {
-  if (!iso) return '—';
-  return new Date(iso).toLocaleDateString(undefined, {
-    year: 'numeric',
-    month: 'short',
-    day: 'numeric',
-  });
 }
 
 /** Renders one patient column of the side-by-side comparison. */
@@ -164,13 +157,16 @@ export default function CompareRecordsDialog({
     };
   }, [open, requestId]);
 
+  // Shared dialog behaviour: Escape close, focus trap, focus restore (M35C).
+  const dialogRef = useDialogA11y(open, onClose);
+
   if (!open) return null;
 
   return (
     <div className="modal-overlay" role="presentation" onClick={onClose}>
       <div
         className="modal modal-wide"
-        role="dialog"
+        ref={dialogRef} role="dialog"
         aria-modal="true"
         aria-labelledby="compare-records-title"
         onClick={(e) => e.stopPropagation()}

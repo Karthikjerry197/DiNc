@@ -3,6 +3,8 @@
 import { useState } from 'react';
 import type { CarePlanGoal, GoalPriority, GoalStatus, InterventionStatus } from '@/lib/api';
 import InterventionItem from './InterventionItem';
+import type { ReactNode } from 'react';
+import { Activity, ArrowUpRight, ClipboardList, Pill, Stethoscope } from 'lucide-react';
 
 const PRIORITY_LABELS: Record<GoalPriority, string> = {
   CRITICAL: 'Critical',
@@ -18,12 +20,12 @@ const STATUS_LABELS: Record<GoalStatus, string> = {
   DEFERRED:     'Deferred',
 };
 
-const CATEGORY_ICONS: Record<string, string> = {
-  CLINICAL:   '🩺',
-  LIFESTYLE:  '🏃',
-  MEDICATION: '💊',
-  EDUCATION:  '📋',
-  REFERRAL:   '↗',
+const CATEGORY_ICONS: Record<string, ReactNode> = {
+  CLINICAL:   <Stethoscope size={13} />,
+  LIFESTYLE:  <Activity size={13} />,
+  MEDICATION: <Pill size={13} />,
+  EDUCATION:  <ClipboardList size={13} />,
+  REFERRAL:   <ArrowUpRight size={13} />,
 };
 
 interface Props {

@@ -1,6 +1,8 @@
 'use client';
 
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
+import Link from 'next/link';
+import dynamic from 'next/dynamic';
 import {
   fetchGuidebookDetail,
   fetchGuidebooksList,
@@ -11,37 +13,53 @@ import { getToken } from '@/lib/session';
 import GuidebookToolbar from '@/components/guidebooks/GuidebookToolbar';
 import GuidebookList from '@/components/guidebooks/GuidebookList';
 import GuidebookHeader from '@/components/guidebooks/GuidebookHeader';
-import GuidebookTabs, { GUIDEBOOK_TABS } from '@/components/guidebooks/GuidebookTabs';
-import GuidebookOverview from '@/components/guidebooks/GuidebookOverview';
+import GuidebookTabs from '@/components/guidebooks/GuidebookTabs';
+import GuidebookSection from '@/components/guidebooks/GuidebookSection';
 import GuidebookActionBar from '@/components/guidebooks/GuidebookActionBar';
 import EmptyGuidebook from '@/components/guidebooks/EmptyGuidebook';
+import ImportProtocolDialog from '@/components/guidebooks/ImportProtocolDialog';
+import VersionHistoryDialog from '@/components/guidebooks/VersionHistoryDialog';
+import { downloadGuidebookPdf } from '@/lib/guidebookPdf';
+import { SkeletonLines } from '@/components/shell/Skeleton';
+
+// Lazy-loaded so the Excel parser (xlsx) is only fetched when an administrator
+// actually opens Bulk Upload — same pattern as PatientActions' BulkUploadDialog.
+const BulkUploadProtocolsDialog = dynamic(
+  () => import('@/components/guidebooks/BulkUploadProtocolsDialog'),
+  { ssr: false },
+);
 
 /**
- * Guidebooks & Clinical Decision Support workspace — visual framework only.
- * Real guidebook data populates the list and the Overview tab; every other tab
- * and every action button is a placeholder ("Coming in a future milestone").
+ * Guidebooks & Clinical Decision Support workspace. The section tabs are fully
+ * data-driven: one tab per key in the guidebook's stored sections, in stored
+ * order — unknown future sections appear automatically. Action-bar buttons
+ * are all live (import, bulk upload, PDF export, version history).
  */
 export default function GuidebooksPage() {
   const [guidebooks, setGuidebooks] = useState<GuidebookListItem[]>([]);
+  // Guidebook → Consultation (M33.1): when opened from a worklist item
+  // (?activity=<id>), offer a direct path into its consultation workspace.
+  const [consultActivityId, setConsultActivityId] = useState<string | null>(null);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [detail, setDetail] = useState<GuidebookDetail | null>(null);
   const [listLoading, setListLoading] = useState(true);
   const [detailLoading, setDetailLoading] = useState(false);
-  const [activeTab, setActiveTab] = useState('overview');
+  const [activeTab, setActiveTab] = useState('');
+  const [importOpen, setImportOpen] = useState(false);
+  const [bulkOpen, setBulkOpen] = useState(false);
+  const [historyOpen, setHistoryOpen] = useState(false);
+  const [downloading, setDownloading] = useState(false);
   const [error, setError] = useState('');
   const [toast, setToast] = useState('');
+  const [toastKind, setToastKind] = useState<'ok' | 'err'>('ok');
   const toastTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  const notify = useCallback((label: string) => {
-    setToast(`${label} — Coming in a future milestone.`);
+  const showToast = useCallback((message: string, kind: 'ok' | 'err' = 'ok') => {
+    setToast(message);
+    setToastKind(kind);
     if (toastTimer.current) clearTimeout(toastTimer.current);
-    toastTimer.current = setTimeout(() => setToast(''), 2600);
+    toastTimer.current = setTimeout(() => setToast(''), kind === 'err' ? 4200 : 2600);
   }, []);
-
-  const categories = useMemo(
-    () => Array.from(new Set(guidebooks.map((g) => g.category))).sort(),
-    [guidebooks],
-  );
 
   useEffect(() => {
     let active = true;
@@ -58,9 +76,11 @@ export default function GuidebooksPage() {
         setListLoading(false);
         // Context-aware entry: ?g=<guidebookId> preselects that guidebook
         // (and so highlights its program/category); otherwise the first.
-        const requested = new URLSearchParams(window.location.search).get('g');
+        const params = new URLSearchParams(window.location.search);
+        const requested = params.get('g');
         const initial = list.find((g) => g.id === requested)?.id ?? list[0]?.id ?? null;
         setSelectedId(initial);
+        setConsultActivityId(params.get('activity'));
       })
       .catch(() => {
         if (active) {
@@ -84,11 +104,11 @@ export default function GuidebooksPage() {
 
     let active = true;
     setDetailLoading(true);
-    setActiveTab('overview');
     fetchGuidebookDetail(token, selectedId)
       .then((d) => {
         if (active) {
           setDetail(d);
+          setActiveTab(Object.keys(d.sections)[0] ?? '');
           setDetailLoading(false);
         }
       })
@@ -110,36 +130,90 @@ export default function GuidebooksPage() {
     };
   }, []);
 
-  const activeTabLabel =
-    GUIDEBOOK_TABS.find((t) => t.key === activeTab)?.label ?? 'This section';
+  /** Section keys in stored order — the entire tab set, no hardcoded names. */
+  const sectionKeys = detail ? Object.keys(detail.sections) : [];
+
+  /** Adds a freshly imported guidebook to the list (server sort order) and opens it. */
+  const handleImported = useCallback(
+    (created: GuidebookListItem) => {
+      setImportOpen(false);
+      setGuidebooks((prev) =>
+        [...prev, created].sort(
+          (a, b) =>
+            a.category.localeCompare(b.category) || a.title.localeCompare(b.title),
+        ),
+      );
+      setSelectedId(created.id);
+      showToast(`Protocol '${created.code}' imported.`);
+    },
+    [showToast],
+  );
+
+  /** After a bulk upload creates guidebooks, re-fetch the list from the server. */
+  const handleBulkUploaded = useCallback(
+    (result: { created: number }) => {
+      const token = getToken();
+      if (!token) return;
+      fetchGuidebooksList(token)
+        .then((list) => {
+          setGuidebooks(list);
+          showToast(`${result.created} protocol(s) imported.`);
+        })
+        .catch(() => undefined);
+    },
+    [showToast],
+  );
+
+  const handleDownloadPdf = useCallback(async () => {
+    if (!detail || downloading) return;
+    setDownloading(true);
+    try {
+      await downloadGuidebookPdf(detail);
+    } catch {
+      showToast('Unable to generate the PDF.', 'err');
+    } finally {
+      setDownloading(false);
+    }
+  }, [detail, downloading, showToast]);
 
   return (
     <div className="page gb-page">
       <GuidebookToolbar
-        categories={categories}
         total={guidebooks.length}
-        onComingSoon={notify}
+        onNewProtocol={() => setImportOpen(true)}
+        onBulkUpload={() => setBulkOpen(true)}
       />
 
       {error && <div className="dash-error">{error}</div>}
 
+      {consultActivityId && (
+        <div className="gb-consult-banner">
+          <span>You opened this guidebook from a worklist activity.</span>
+          <Link
+            className="btn btn-primary gb-consult-banner-btn"
+            href={`/worklist/${consultActivityId}/consult`}
+          >
+            Start Consultation →
+          </Link>
+        </div>
+      )}
+
       <div className="gb-workspace">
         {listLoading ? (
           <aside className="gb-list">
-            <div className="dash-loading">Loading&hellip;</div>
+            <SkeletonLines lines={6} />
           </aside>
         ) : (
           <GuidebookList
             guidebooks={guidebooks}
             selectedId={selectedId}
             onSelect={setSelectedId}
-            onComingSoon={notify}
           />
         )}
 
         <div className="gb-main">
           {detailLoading ? (
-            <div className="dash-loading">Loading guidebook&hellip;</div>
+            <SkeletonLines lines={8} />
           ) : !detail ? (
             <EmptyGuidebook
               title="Select a guidebook"
@@ -148,25 +222,57 @@ export default function GuidebooksPage() {
           ) : (
             <>
               <GuidebookHeader detail={detail} />
-              <GuidebookTabs active={activeTab} onChange={setActiveTab} />
-              <div className="gb-tab-content">
-                {activeTab === 'overview' ? (
-                  <GuidebookOverview detail={detail} />
-                ) : (
+              {sectionKeys.length === 0 ? (
+                <div className="gb-tab-content">
                   <EmptyGuidebook
-                    icon="🚧"
-                    title={activeTabLabel}
-                    message="Coming in a future milestone."
+                    title="No sections available"
+                    message="This guidebook has no structured content in the current records."
                   />
-                )}
-              </div>
-              <GuidebookActionBar onComingSoon={notify} />
+                </div>
+              ) : (
+                <>
+                  <GuidebookTabs tabs={sectionKeys} active={activeTab} onChange={setActiveTab} />
+                  <div className="gb-tab-content">
+                    <GuidebookSection value={detail.sections[activeTab]} />
+                  </div>
+                </>
+              )}
+              <GuidebookActionBar
+                onDownloadPdf={handleDownloadPdf}
+                onVersionHistory={() => setHistoryOpen(true)}
+                downloading={downloading}
+              />
             </>
           )}
         </div>
       </div>
 
-      {toast && <div className="cz-toast">{toast}</div>}
+      <ImportProtocolDialog
+        open={importOpen}
+        onClose={() => setImportOpen(false)}
+        onImported={handleImported}
+      />
+
+      {bulkOpen && (
+        <BulkUploadProtocolsDialog
+          open
+          onClose={() => setBulkOpen(false)}
+          onUploaded={handleBulkUploaded}
+        />
+      )}
+
+      <VersionHistoryDialog
+        open={historyOpen}
+        guidebookId={selectedId}
+        guidebookTitle={detail ? `${detail.code} · ${detail.title}` : ''}
+        onClose={() => setHistoryOpen(false)}
+      />
+
+      {toast && (
+        <div className={`cz-toast${toastKind === 'err' ? ' cz-toast--err' : ''}`} role="status">
+          {toast}
+        </div>
+      )}
     </div>
   );
 }

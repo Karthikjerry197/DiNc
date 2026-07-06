@@ -1,11 +1,12 @@
 'use client';
+import type { ReactNode } from 'react';
 
 type Color = 'blue' | 'green' | 'purple' | 'amber' | 'red' | 'gray';
 
 interface Props {
   value: number | null | undefined;
   label: string;
-  icon: string;
+  icon: ReactNode;
   color: Color;
   suffix?: string;
 }

@@ -9,6 +9,7 @@ import {
   fetchRbacRoles,
   fetchUserAccess,
   fetchUsers,
+  setUserOverrides,
   setUserRoles,
   updateUser,
   type AdminUser,
@@ -72,9 +73,16 @@ export default function UserWorkspace({ mode, userId }: UserWorkspaceProps) {
   const [username, setUsername] = useState('');
   const [fullName, setFullName] = useState('');
   const [email, setEmail] = useState('');
+  const [phone, setPhone] = useState('');
+  const [designation, setDesignation] = useState('');
+  const [department, setDepartment] = useState('');
+  const [facility, setFacility] = useState('');
   const [password, setPassword] = useState('');
   const [isActive, setIsActive] = useState(true);
   const [roleKey, setRoleKey] = useState('');
+  // Per-user permission overrides (permissionKey → grant). Editable; layered on
+  // top of the role's inherited permissions. Empty map = pure role inheritance.
+  const [overrides, setOverrides] = useState<Map<string, boolean>>(new Map());
   // Centre-panel UI state (refinement pass): permission search + collapsed groups.
   const [permQuery, setPermQuery] = useState('');
   const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
@@ -114,6 +122,10 @@ export default function UserWorkspace({ mode, userId }: UserWorkspaceProps) {
           setUsername(user.username);
           setFullName(user.fullName);
           setEmail(user.email ?? '');
+          setPhone(user.phone ?? '');
+          setDesignation(user.designation ?? '');
+          setDepartment(user.department ?? '');
+          setFacility(user.facility ?? '');
           setIsActive(user.isActive);
           const primary = access.roles.find((r) => r.isPrimary)?.key ?? access.roles[0]?.key;
           setRoleKey(
@@ -122,6 +134,8 @@ export default function UserWorkspace({ mode, userId }: UserWorkspaceProps) {
             ?? roleList[0]?.key
             ?? '',
           );
+          // Load existing per-user overrides into editable local state.
+          setOverrides(new Map(access.overrides.map((o) => [o.permissionKey, o.grant])));
         } else {
           setRoleKey(roleList[0]?.key ?? '');
         }
@@ -137,10 +151,23 @@ export default function UserWorkspace({ mode, userId }: UserWorkspaceProps) {
     return () => { alive = false; };
   }, [isAdmin, mode, userId]);
 
-  // Effective permissions of the currently-selected role (live).
-  const effective = useMemo(
+  // Inherited = the selected role's permissions (read-only base set).
+  const inherited = useMemo(
     () => rolePerms.get(roleKey) ?? new Set<string>(),
     [rolePerms, roleKey],
+  );
+  // Effective = (role ∪ user grants) \ user denies — recomputes instantly.
+  const effective = useMemo(() => {
+    const s = new Set(inherited);
+    overrides.forEach((grant, key) => { if (grant) s.add(key); else s.delete(key); });
+    return s;
+  }, [inherited, overrides]);
+  const permLabel = useCallback(
+    (key: string) => {
+      for (const g of catalogue) for (const p of g.permissions) if (p.key === key) return p.label;
+      return key;
+    },
+    [catalogue],
   );
   const visibleNav = useMemo(
     () => NAV_ITEMS.filter((item) => !item.permission || effective.has(item.permission)),
@@ -187,6 +214,18 @@ export default function UserWorkspace({ mode, userId }: UserWorkspaceProps) {
     });
   }, []);
 
+  // Set a single permission's override state: 'inherit' clears it, 'grant'/'deny'
+  // force it. Nothing persists until Save.
+  const setOverride = useCallback((key: string, state: 'inherit' | 'grant' | 'deny') => {
+    setOverrides((prev) => {
+      const next = new Map(prev);
+      if (state === 'inherit') next.delete(key);
+      else next.set(key, state === 'grant');
+      return next;
+    });
+  }, []);
+  const resetOverrides = useCallback(() => setOverrides(new Map()), []);
+
   const validate = useCallback((): string => {
     if (mode === 'new') {
       const u = username.trim();
@@ -211,29 +250,41 @@ export default function UserWorkspace({ mode, userId }: UserWorkspaceProps) {
     setError('');
     try {
       const mail = email.trim();
+      const overrideList = [...overrides].map(([permissionKey, grant]) => ({ permissionKey, grant }));
       if (mode === 'new') {
         const created = await createUser(token, {
           username: username.trim(),
           fullName: fullName.trim(),
           email: mail || undefined,
+          phone: phone.trim() || undefined,
+          designation: designation.trim() || undefined,
+          department: department.trim() || undefined,
+          facility: facility.trim() || undefined,
           role: roleKey,
           password,
         });
         await setUserRoles(token, created.id, [roleKey]);
+        if (overrideList.length > 0) await setUserOverrides(token, created.id, overrideList);
       } else if (userId) {
         await updateUser(token, userId, {
           fullName: fullName.trim(),
           email: mail || null,
+          phone: phone.trim() || null,
+          designation: designation.trim() || null,
+          department: department.trim() || null,
+          facility: facility.trim() || null,
           isActive,
         });
         await setUserRoles(token, userId, [roleKey]);
+        // Always sync overrides (an empty list clears them = reset to role defaults).
+        await setUserOverrides(token, userId, overrideList);
       }
       router.push('/administration/users');
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Unable to save the user.');
       setSaving(false);
     }
-  }, [saving, validate, email, mode, username, fullName, roleKey, password, userId, isActive, router]);
+  }, [saving, validate, email, phone, designation, department, facility, mode, username, fullName, roleKey, password, userId, isActive, overrides, router]);
 
   if (!isAdmin) {
     return <ComingSoon title="User Workspace" description="Administrator access is required." />;
@@ -339,15 +390,29 @@ export default function UserWorkspace({ mode, userId }: UserWorkspaceProps) {
                   </div>
                 )}
 
-                {/* Directory fields not yet stored in the users table — shown for
-                    layout parity; they become editable when their columns are added. */}
+                {/* Directory fields — intrinsic user profile data persisted on the
+                    users master table (Milestone 3A). */}
                 <div className="uw-subhead">Directory</div>
-                {['Phone', 'Designation', 'Department', 'Facility'].map((label) => (
-                  <div className="fg" key={label}>
-                    <label className="fl">{label}</label>
-                    <div className="uw-readonly uw-readonly--muted">Not recorded</div>
-                  </div>
-                ))}
+                <div className="fg">
+                  <label className="fl" htmlFor="uw-phone">Phone</label>
+                  <input id="uw-phone" className="fc" type="tel" autoComplete="off" placeholder="optional"
+                    value={phone} disabled={saving} onChange={(e) => setPhone(e.target.value)} />
+                </div>
+                <div className="fg">
+                  <label className="fl" htmlFor="uw-designation">Designation</label>
+                  <input id="uw-designation" className="fc" autoComplete="off" placeholder="optional"
+                    value={designation} disabled={saving} onChange={(e) => setDesignation(e.target.value)} />
+                </div>
+                <div className="fg">
+                  <label className="fl" htmlFor="uw-department">Department</label>
+                  <input id="uw-department" className="fc" autoComplete="off" placeholder="optional"
+                    value={department} disabled={saving} onChange={(e) => setDepartment(e.target.value)} />
+                </div>
+                <div className="fg">
+                  <label className="fl" htmlFor="uw-facility">Facility</label>
+                  <input id="uw-facility" className="fc" autoComplete="off" placeholder="optional"
+                    value={facility} disabled={saving} onChange={(e) => setFacility(e.target.value)} />
+                </div>
               </div>
             )}
           </PanelContent>
@@ -357,7 +422,7 @@ export default function UserWorkspace({ mode, userId }: UserWorkspaceProps) {
         <Panel aria-label="Access configuration">
           <PanelHeader
             title="Access Configuration"
-            subtitle={loading ? undefined : `${grantedCount} permissions via role`}
+            subtitle={loading ? undefined : `${grantedCount} effective${overrides.size ? ` · ${overrides.size} override${overrides.size === 1 ? '' : 's'}` : ''}`}
           />
           <PanelContent>
             {loading ? (
@@ -398,18 +463,31 @@ export default function UserWorkspace({ mode, userId }: UserWorkspaceProps) {
 
                 <div className="uw-perm-head">
                   <div className="uw-subhead" style={{ margin: 0 }}>
-                    Effective Permissions
-                    <span className="uw-subhead-hint">granted by the assigned role · edit permissions in the Role workspace</span>
+                    Permissions
+                    <span className="uw-subhead-hint">
+                      inherited from role · grant or deny per user
+                      {overrides.size > 0 ? ` · ${overrides.size} override${overrides.size === 1 ? '' : 's'}` : ''}
+                    </span>
                   </div>
-                  <div className="uw-perm-search">
-                    <Search size={13} aria-hidden="true" />
-                    <input
-                      type="text"
-                      placeholder="Search permissions…"
-                      aria-label="Search permissions"
-                      value={permQuery}
-                      onChange={(e) => setPermQuery(e.target.value)}
-                    />
+                  <div className="uw-perm-tools">
+                    <button
+                      type="button"
+                      className="btn btn-ghost btn-sm uw-reset-btn"
+                      onClick={resetOverrides}
+                      disabled={saving || overrides.size === 0}
+                    >
+                      Reset to Role Defaults
+                    </button>
+                    <div className="uw-perm-search">
+                      <Search size={13} aria-hidden="true" />
+                      <input
+                        type="text"
+                        placeholder="Search permissions…"
+                        aria-label="Search permissions"
+                        value={permQuery}
+                        onChange={(e) => setPermQuery(e.target.value)}
+                      />
+                    </div>
                   </div>
                 </div>
 
@@ -438,11 +516,50 @@ export default function UserWorkspace({ mode, userId }: UserWorkspaceProps) {
                         ) : (
                           <ul className="uw-perm-list">
                             {group.permissions.map((p) => {
-                              const granted = effective.has(p.key);
+                              const inRole = inherited.has(p.key);
+                              const state = overrides.has(p.key)
+                                ? (overrides.get(p.key) ? 'grant' : 'deny')
+                                : 'inherit';
+                              const eff = effective.has(p.key);
                               return (
-                                <li key={p.key} className={`uw-perm${granted ? ' granted' : ''}`}>
-                                  <span className="uw-perm-check" aria-hidden="true">{granted ? <Check size={12} /> : null}</span>
-                                  <span className="uw-perm-label" title={p.description ?? undefined}>{p.label}</span>
+                                <li
+                                  key={p.key}
+                                  className={`uw-perm uw-perm-ovr${eff ? ' granted' : ''}${state !== 'inherit' ? ' overridden' : ''}`}
+                                >
+                                  <span className="uw-perm-check" aria-hidden="true">{eff ? <Check size={12} /> : null}</span>
+                                  <span className="uw-perm-label" title={p.description ?? undefined}>
+                                    {p.label}
+                                    <span className="uw-perm-src">{inRole ? 'role grants this' : 'not in role'}</span>
+                                  </span>
+                                  <span className="uw-ovr" role="group" aria-label={`Override ${p.label}`}>
+                                    <button
+                                      type="button"
+                                      className={`uw-ovr-btn${state === 'inherit' ? ' on' : ''}`}
+                                      onClick={() => setOverride(p.key, 'inherit')}
+                                      disabled={saving}
+                                      aria-pressed={state === 'inherit'}
+                                    >
+                                      Inherit
+                                    </button>
+                                    <button
+                                      type="button"
+                                      className={`uw-ovr-btn uw-ovr-grant${state === 'grant' ? ' on' : ''}`}
+                                      onClick={() => setOverride(p.key, 'grant')}
+                                      disabled={saving}
+                                      aria-pressed={state === 'grant'}
+                                    >
+                                      Grant
+                                    </button>
+                                    <button
+                                      type="button"
+                                      className={`uw-ovr-btn uw-ovr-deny${state === 'deny' ? ' on' : ''}`}
+                                      onClick={() => setOverride(p.key, 'deny')}
+                                      disabled={saving}
+                                      aria-pressed={state === 'deny'}
+                                    >
+                                      Deny
+                                    </button>
+                                  </span>
                                   <span className="uw-perm-key mono">{p.key}</span>
                                 </li>
                               );
@@ -468,7 +585,7 @@ export default function UserWorkspace({ mode, userId }: UserWorkspaceProps) {
               <div className="uw-preview">
                 <div className="uw-preview-note">
                   <ShieldCheck size={13} aria-hidden="true" />
-                  Updates instantly as the role changes.
+                  Effective access · updates instantly as role &amp; overrides change.
                 </div>
 
                 {selectedRole && (
@@ -515,6 +632,19 @@ export default function UserWorkspace({ mode, userId }: UserWorkspaceProps) {
                     </div>
                   ))}
                 </div>
+
+                {overrides.size > 0 && (
+                  <>
+                    <div className="uw-subhead" style={{ marginTop: 12 }}>User Overrides</div>
+                    <div className="uw-chips">
+                      {[...overrides].map(([key, grant]) => (
+                        <span key={key} className={`uw-chip ${grant ? 'uw-chip-grant' : 'uw-chip-deny'}`}>
+                          {grant ? '+ ' : '− '}{permLabel(key)}
+                        </span>
+                      ))}
+                    </div>
+                  </>
+                )}
 
                 <div className="uw-subhead" style={{ marginTop: 12 }}>Effective Permissions</div>
                 <div className="uw-preview-count">

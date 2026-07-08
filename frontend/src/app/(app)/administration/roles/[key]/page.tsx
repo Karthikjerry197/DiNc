@@ -1,6 +1,6 @@
 import RoleWorkspace from '@/components/admin/RoleWorkspace';
 
-/** Modify Access — opens the Role Designer for an existing role (by key). */
+/** Role Workspace — opens with a specific role preselected (by key). */
 export default function EditRolePage({ params }: { params: { key: string } }) {
-  return <RoleWorkspace mode="edit" roleKey={decodeURIComponent(params.key)} />;
+  return <RoleWorkspace initialMode="edit" initialRoleKey={decodeURIComponent(params.key)} />;
 }

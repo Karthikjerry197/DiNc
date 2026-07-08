@@ -61,12 +61,34 @@ export interface RbacUserRoleDto {
   isPrimary: boolean;
 }
 
-/** A user's assigned roles plus the union of their effective permissions. */
+/**
+ * A per-user permission override (enterprise RBAC). `grant: true` force-allows a
+ * permission the role does not confer; `grant: false` force-denies one the role
+ * does confer. Absence of an override means the permission is inherited from the
+ * role. Stored additively in `rbac_user_permission_overrides`; role definitions
+ * are never modified.
+ */
+export interface RbacUserOverrideDto {
+  permissionKey: string;
+  grant: boolean;
+}
+
+/**
+ * A user's assigned roles plus the resolved permission model:
+ *   effective = (role permissions ∪ user grants) \ user denies
+ * `rolePermissions` (inherited, read-only) and `overrides` (editable) are exposed
+ * separately so the User Workspace can distinguish the two without recomputation.
+ */
 export interface RbacUserAccessDto {
   userId: string;
   username: string;
   fullName: string;
   roles: RbacUserRoleDto[];
+  /** Permissions inherited from the assigned role(s) — the read-only base set. */
+  rolePermissions: string[];
+  /** Per-user grant/deny overrides layered on top of the role. */
+  overrides: RbacUserOverrideDto[];
+  /** Final resolved set after applying overrides. */
   effectivePermissions: string[];
 }
 

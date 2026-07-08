@@ -10046,6 +10046,8 @@ a.wl-icon-btn {
   padding: 6px 9px;
 }
 .rd-color-row { display: flex; align-items: center; gap: 10px; }
+/* "New Role" affordance at the top of the Role Workspace master list. */
+.rd-new-role { width: 100%; justify-content: center; margin-bottom: var(--sp-3); }
 .rd-color {
   width: 44px;
   height: 32px;
@@ -10078,7 +10080,6 @@ a.wl-icon-btn {
 .rd-perm-desc { font-size: 10.5px; color: var(--ts); line-height: 1.35; }
 .rd-perm-req { font-size: 10px; color: var(--warn); font-weight: 600; }
 
-/* ============================================================================
    AI Decision-Support Layer (docs/AI-LAYER-SPEC.md)
    Namespace: ai-* (panel/badges/gauge) and wl-ai-* (worklist enhancements).
    Reuses the existing --risk-* / spacing / radius tokens throughout.
@@ -10196,3 +10197,37 @@ a.wl-icon-btn {
 .wl-ai-preset.active { background: var(--pl); border-color: var(--p); color: var(--ps); }
 .wl-ai-sort { display: inline-flex; align-items: center; gap: 6px; font-size: var(--fs-xs); color: var(--ts); }
 .wl-ai-sort select { font-size: var(--fs-xs); padding: 4px 8px; border: 1px solid var(--bd); border-radius: var(--radius-sm); background: var(--card); color: var(--tp); }
+=======
+/* User Workspace — per-user permission overrides (grant / deny / inherit) */
+.uw-perm-tools { display: flex; align-items: center; gap: 8px; }
+.uw-reset-btn { white-space: nowrap; }
+.uw-perm-ovr { align-items: center; padding: 5px 2px; border-radius: 6px; }
+.uw-perm-ovr .uw-perm-label { display: flex; flex-direction: column; line-height: 1.25; }
+.uw-perm-src { font-size: 9.5px; color: #9ca3af; font-weight: 500; }
+.uw-perm-ovr.overridden { background: #fffdf5; box-shadow: inset 2px 0 0 var(--warn, #d97706); }
+.uw-ovr {
+  display: inline-flex;
+  flex-shrink: 0;
+  border: 1px solid var(--bd);
+  border-radius: 7px;
+  overflow: hidden;
+}
+.uw-ovr-btn {
+  border: none;
+  border-left: 1px solid var(--bd);
+  background: #fff;
+  color: var(--ts);
+  font: inherit;
+  font-size: 10.5px;
+  font-weight: 600;
+  padding: 3px 9px;
+  cursor: pointer;
+}
+.uw-ovr-btn:first-child { border-left: none; }
+.uw-ovr-btn:hover:not(:disabled):not(.on) { background: #f4f8f5; }
+.uw-ovr-btn:disabled { cursor: default; opacity: 0.6; }
+.uw-ovr-btn.on { background: #64748b; color: #fff; }               /* inherit */
+.uw-ovr-btn.uw-ovr-grant.on { background: #16a34a; color: #fff; }  /* grant   */
+.uw-ovr-btn.uw-ovr-deny.on { background: var(--er); color: #fff; } /* deny    */
+.uw-chip-grant { background: #dcfce7; color: #166534; border-color: #bbf7d0; }
+.uw-chip-deny { background: #fee2e2; color: #991b1b; border-color: #fecaca; }

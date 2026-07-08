@@ -36,8 +36,22 @@ export class UsersService {
       passwordHash,
       fullName: input.fullName.trim(),
       email: input.email?.trim() || null,
+      phone: input.phone?.trim() || null,
+      department: input.department?.trim() || null,
+      designation: input.designation?.trim() || null,
+      facility: input.facility?.trim() || null,
       role: input.role,
     });
+  }
+
+  /**
+   * Partial-update helper: an omitted field (undefined) keeps its current value;
+   * a provided field is trimmed and empty strings collapse to null. Keeps the
+   * User Workspace's profile edits truly additive per field.
+   */
+  private static patch(next: string | null | undefined, current: string | null): string | null {
+    if (next === undefined) return current;
+    return next?.trim() || null;
   }
 
   async updateUser(
@@ -64,6 +78,10 @@ export class UsersService {
     const updated = await this.repo.updateUser(id, {
       fullName: (input.fullName ?? existing.fullName).trim(),
       email: input.email !== undefined ? input.email?.trim() || null : existing.email,
+      phone: UsersService.patch(input.phone, existing.phone),
+      department: UsersService.patch(input.department, existing.department),
+      designation: UsersService.patch(input.designation, existing.designation),
+      facility: UsersService.patch(input.facility, existing.facility),
       role: nextRole,
       isActive: nextActive,
     });

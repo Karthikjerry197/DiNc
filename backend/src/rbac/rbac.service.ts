@@ -105,4 +105,27 @@ export class RbacService {
     if (!ok) throw new NotFoundException('User not found.');
     return this.getUserAccess(userId);
   }
+
+  /**
+   * Replace a user's per-user permission overrides, returning the refreshed access
+   * view (with recomputed effective permissions). An empty list resets the user to
+   * role defaults. `actorUsername` is recorded as `created_by`.
+   */
+  async setUserOverrides(
+    userId: string,
+    overrides: { permissionKey: string; grant: boolean }[],
+    actorUsername?: string | null,
+  ): Promise<RbacUserAccessDto> {
+    const clean = (overrides ?? [])
+      .map((o) => ({ permissionKey: String(o?.permissionKey ?? '').trim(), grant: Boolean(o?.grant) }))
+      .filter((o) => o.permissionKey.length > 0);
+    let ok: boolean;
+    try {
+      ok = await this.repo.setUserOverrides(userId, clean, actorUsername);
+    } catch (error) {
+      throw new BadRequestException((error as Error).message);
+    }
+    if (!ok) throw new NotFoundException('User not found.');
+    return this.getUserAccess(userId);
+  }
 }

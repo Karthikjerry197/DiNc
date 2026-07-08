@@ -7,13 +7,17 @@ interface AdminUserRow {
   username: string;
   full_name: string;
   email: string | null;
+  phone: string | null;
+  department: string | null;
+  designation: string | null;
+  facility: string | null;
   role: string;
   is_active: boolean;
   last_login: Date | null;
   created_at: Date;
 }
 
-const ADMIN_USER_COLUMNS = `id, username, full_name, email, role, is_active, last_login, created_at`;
+const ADMIN_USER_COLUMNS = `id, username, full_name, email, phone, department, designation, facility, role, is_active, last_login, created_at`;
 
 @Injectable()
 export class UsersRepository implements OnModuleInit {
@@ -21,14 +25,34 @@ export class UsersRepository implements OnModuleInit {
 
   constructor(private readonly db: DatabaseService) {}
 
-  /** Additive column for Users & Roles administration; recorded on each login. */
+  /**
+   * Additive columns for Users & Roles administration. `last_login` is recorded
+   * on each login; phone/department/designation/facility are intrinsic user
+   * profile fields edited in the User Workspace (Milestone 3A). All are plain,
+   * nullable columns on the existing users master table — never a duplicate
+   * profile table — following the additive `ADD COLUMN IF NOT EXISTS` convention.
+   *
+   * `phone` is inherently free-text. `department`, `designation` and `facility`
+   * are free-text user attributes today (per Milestone 3A scope). Future
+   * scalability note: `facility` is the strongest candidate to become an
+   * administrator-configurable PostgreSQL lookup/reference (it likely maps to the
+   * facility / geographic hierarchy); `designation` and `department` are plausible
+   * configurable reference lists too. Migrating them would be additive (add a
+   * nullable FK alongside, backfill, switch the UI to a DB-driven dropdown) and is
+   * intentionally NOT implemented here.
+   */
   async onModuleInit(): Promise<void> {
     try {
       await this.db.query(
-        `ALTER TABLE public.users ADD COLUMN IF NOT EXISTS last_login timestamptz`,
+        `ALTER TABLE public.users
+           ADD COLUMN IF NOT EXISTS last_login  timestamptz,
+           ADD COLUMN IF NOT EXISTS phone       varchar(30),
+           ADD COLUMN IF NOT EXISTS department  varchar(120),
+           ADD COLUMN IF NOT EXISTS designation varchar(120),
+           ADD COLUMN IF NOT EXISTS facility    varchar(160)`,
       );
     } catch (error) {
-      this.logger.error(`users.last_login provisioning failed: ${(error as Error).message}`);
+      this.logger.error(`users profile column provisioning failed: ${(error as Error).message}`);
     }
   }
 
@@ -99,27 +123,48 @@ export class UsersRepository implements OnModuleInit {
     passwordHash: string;
     fullName: string;
     email: string | null;
+    phone: string | null;
+    department: string | null;
+    designation: string | null;
+    facility: string | null;
     role: string;
   }): Promise<AdminUserDto> {
     const result = await this.db.query<AdminUserRow>(
-      `INSERT INTO public.users (username, password_hash, full_name, email, role, is_active)
-       VALUES ($1, $2, $3, $4, $5, true)
+      `INSERT INTO public.users
+         (username, password_hash, full_name, email, phone, department, designation, facility, role, is_active)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, true)
        RETURNING ${ADMIN_USER_COLUMNS}`,
-      [input.username, input.passwordHash, input.fullName, input.email, input.role],
+      [
+        input.username, input.passwordHash, input.fullName, input.email,
+        input.phone, input.department, input.designation, input.facility, input.role,
+      ],
     );
     return UsersRepository.toDto(result.rows[0]);
   }
 
   async updateUser(
     id: string,
-    input: { fullName: string; email: string | null; role: string; isActive: boolean },
+    input: {
+      fullName: string;
+      email: string | null;
+      phone: string | null;
+      department: string | null;
+      designation: string | null;
+      facility: string | null;
+      role: string;
+      isActive: boolean;
+    },
   ): Promise<AdminUserDto | null> {
     const result = await this.db.query<AdminUserRow>(
       `UPDATE public.users
-       SET full_name = $2, email = $3, role = $4, is_active = $5, updated_at = now()
+       SET full_name = $2, email = $3, phone = $4, department = $5, designation = $6,
+           facility = $7, role = $8, is_active = $9, updated_at = now()
        WHERE id = $1
        RETURNING ${ADMIN_USER_COLUMNS}`,
-      [id, input.fullName, input.email, input.role, input.isActive],
+      [
+        id, input.fullName, input.email, input.phone, input.department,
+        input.designation, input.facility, input.role, input.isActive,
+      ],
     );
     return result.rows[0] ? UsersRepository.toDto(result.rows[0]) : null;
   }
@@ -149,6 +194,10 @@ export class UsersRepository implements OnModuleInit {
       username: row.username,
       fullName: row.full_name,
       email: row.email,
+      phone: row.phone,
+      department: row.department,
+      designation: row.designation,
+      facility: row.facility,
       role: row.role,
       isActive: row.is_active,
       lastLogin: row.last_login ? row.last_login.toISOString() : null,

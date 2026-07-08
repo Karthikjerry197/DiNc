@@ -20,6 +20,26 @@ export class CreateUserDto {
   @MaxLength(160)
   email?: string;
 
+  @IsOptional()
+  @IsString()
+  @MaxLength(30)
+  phone?: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(120)
+  department?: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(120)
+  designation?: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(160)
+  facility?: string;
+
   @IsIn(ASSIGNABLE_ROLES as readonly string[], {
     message: `Role must be one of: ${ASSIGNABLE_ROLES.join(', ')}.`,
   })

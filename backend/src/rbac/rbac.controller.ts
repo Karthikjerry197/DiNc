@@ -16,6 +16,7 @@ import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { JwtPayload } from '../auth/types/jwt-payload.type';
 import { RbacService } from './rbac.service';
 import { SetUserRolesDto } from './dto/set-user-roles.dto';
+import { SetUserOverridesDto } from './dto/set-user-overrides.dto';
 import { CreateRoleDto } from './dto/create-role.dto';
 import { UpdateRoleDto } from './dto/update-role.dto';
 import { SetRolePermissionsDto } from './dto/set-role-permissions.dto';
@@ -99,6 +100,18 @@ export class RbacController {
     RbacController.requireAdmin(req);
     if (!UUID_RE.test(id)) throw new NotFoundException('User not found.');
     return this.rbac.setUserRoles(id, body.roleKeys);
+  }
+
+  /** Replace a user's per-user permission overrides (grant/deny). Empty = reset. */
+  @Put('users/:id/overrides')
+  setUserOverrides(
+    @Param('id') id: string,
+    @Body() body: SetUserOverridesDto,
+    @Req() req: Request,
+  ): Promise<RbacUserAccessDto> {
+    const admin = RbacController.requireAdmin(req);
+    if (!UUID_RE.test(id)) throw new NotFoundException('User not found.');
+    return this.rbac.setUserOverrides(id, body.overrides, admin.sub);
   }
 
   private static requireAdmin(req: Request): JwtPayload {

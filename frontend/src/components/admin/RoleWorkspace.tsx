@@ -1,7 +1,6 @@
 'use client';
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { useRouter } from 'next/navigation';
 import {
   createRole,
   fetchRbacPermissions,
@@ -11,6 +10,7 @@ import {
   updateRole,
   type RbacPermission,
   type RbacPermissionGroup,
+  type RbacRoleSummary,
 } from '@/lib/api';
 import { getToken } from '@/lib/session';
 import { useUser } from '@/lib/UserContext';
@@ -24,90 +24,198 @@ import PanelContent from '@/components/workspace/PanelContent';
 import { useWorkspaceShell } from '@/components/workspace/useWorkspaceShell';
 import ComingSoon from '@/components/shell/ComingSoon';
 import { SkeletonLines } from '@/components/shell/Skeleton';
-import { Check, ChevronDown, ChevronRight, Lock, Search, ShieldCheck } from 'lucide-react';
+import { Check, ChevronDown, ChevronRight, Lock, Plus, Search, ShieldCheck } from 'lucide-react';
 
 interface RoleWorkspaceProps {
-  mode: 'new' | 'edit';
-  roleKey?: string;
+  /** Optional entry point: preselect a role by key, or start in create mode. */
+  initialRoleKey?: string;
+  initialMode?: 'new' | 'edit';
 }
 
 const DEFAULT_COLOR = '#2563eb';
 
+/** A local snapshot of the editable role draft, used for dirty-tracking and Cancel. */
+interface RoleDraft {
+  name: string;
+  description: string;
+  color: string;
+  isActive: boolean;
+  granted: Set<string>;
+}
+
+function emptyDraft(): RoleDraft {
+  return { name: '', description: '', color: DEFAULT_COLOR, isActive: true, granted: new Set() };
+}
+
+function setsEqual(a: Set<string>, b: Set<string>): boolean {
+  if (a.size !== b.size) return false;
+  for (const v of a) if (!b.has(v)) return false;
+  return true;
+}
+
+function draftsEqual(a: RoleDraft, b: RoleDraft): boolean {
+  return (
+    a.name === b.name &&
+    a.description === b.description &&
+    a.color === b.color &&
+    a.isActive === b.isActive &&
+    setsEqual(a.granted, b.granted)
+  );
+}
+
 /**
- * Role Designer (Milestone 3) — the enterprise role-design environment. Three
- * panels: Role Details · Permission Designer · Live Preview. Every permission,
- * group, description and dependency is loaded from the RBAC database; nothing is
- * hardcoded. The designer enforces permission dependencies: enabling a permission
- * auto-grants its prerequisites, disabling one cascades to its dependents, and
- * the backend re-validates on save.
+ * Role Workspace (Milestone 3B) — the enterprise role-design environment and the
+ * ONLY place permissions are edited. Master–detail, three panels:
+ *   LEFT   · every role from the RBAC database (select to load its configuration)
+ *   CENTRE · editable Role Configuration — name/description/colour + permission
+ *            groups (groups, permissions, descriptions and dependencies all from
+ *            PostgreSQL; nothing hardcoded)
+ *   RIGHT  · Live Preview, recomputed instantly from the unsaved draft
+ *
+ * Save persists ONLY to `rbac_roles` (metadata) and `rbac_role_permissions`
+ * (grants); it never touches `users` or `rbac_user_roles`, so user assignments
+ * are untouched. The designer reuses the DB dependency model: enabling a
+ * permission auto-grants prerequisites, disabling cascades to dependents, and the
+ * backend re-validates on save. Cancel discards the unsaved draft.
  */
-export default function RoleWorkspace({ mode, roleKey }: RoleWorkspaceProps) {
-  const router = useRouter();
+export default function RoleWorkspace({ initialRoleKey, initialMode }: RoleWorkspaceProps) {
   const { can } = useUser();
   const isAdmin = can('admin.pages');
   useWorkspaceShell(isAdmin);
 
-  const [loading, setLoading] = useState(true);
+  const [loadingList, setLoadingList] = useState(true);
+  const [loadingDetail, setLoadingDetail] = useState(false);
   const [error, setError] = useState('');
   const [saving, setSaving] = useState(false);
 
+  // Reference data from the RBAC database.
+  const [roles, setRoles] = useState<RbacRoleSummary[]>([]);
   const [catalogue, setCatalogue] = useState<RbacPermissionGroup[]>([]);
 
-  // Editable role details + grants.
-  const [name, setName] = useState('');
-  const [description, setDescription] = useState('');
-  const [color, setColor] = useState(DEFAULT_COLOR);
-  const [isActive, setIsActive] = useState(true);
-  const [granted, setGranted] = useState<Set<string>>(new Set());
+  // Selection + editable draft.
+  const [mode, setMode] = useState<'new' | 'edit'>('edit');
+  const [selectedKey, setSelectedKey] = useState<string | null>(null);
   const [isSystem, setIsSystem] = useState(false);
-  const [existingKey, setExistingKey] = useState('');
   const [userCount, setUserCount] = useState(0);
+  const [draft, setDraft] = useState<RoleDraft>(emptyDraft());
+  // Baseline = the last persisted state; drives dirty-detection and Cancel.
+  const [baseline, setBaseline] = useState<RoleDraft>(emptyDraft());
 
-  // Centre UI state.
+  // Centre-panel UI state.
   const [permQuery, setPermQuery] = useState('');
   const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
 
-  useEffect(() => {
-    if (!isAdmin) { setLoading(false); return; }
+  const setDraftField = useCallback(
+    <K extends keyof RoleDraft>(key: K, value: RoleDraft[K]) =>
+      setDraft((prev) => ({ ...prev, [key]: value })),
+    [],
+  );
+
+  // ── Load a single role's configuration into the draft ───────────────────────
+  const loadRole = useCallback(async (key: string) => {
     const token = getToken();
-    if (!token) { setLoading(false); return; }
+    if (!token) return;
+    setLoadingDetail(true);
+    setError('');
+    try {
+      const [detail, summaries] = await Promise.all([
+        fetchRbacRole(token, key),
+        fetchRbacRoles(token),
+      ]);
+      const next: RoleDraft = {
+        name: detail.name,
+        description: detail.description ?? '',
+        color: detail.color ?? DEFAULT_COLOR,
+        isActive: detail.isActive,
+        granted: new Set(detail.permissionKeys),
+      };
+      setRoles(summaries);
+      setMode('edit');
+      setSelectedKey(detail.key);
+      setIsSystem(detail.isSystem);
+      setUserCount(summaries.find((r) => r.key === detail.key)?.userCount ?? 0);
+      setDraft(next);
+      setBaseline({ ...next, granted: new Set(next.granted) });
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Unable to load the role.');
+    } finally {
+      setLoadingDetail(false);
+    }
+  }, []);
+
+  const enterNewMode = useCallback(() => {
+    const fresh = emptyDraft();
+    setMode('new');
+    setSelectedKey(null);
+    setIsSystem(false);
+    setUserCount(0);
+    setDraft(fresh);
+    setBaseline({ ...fresh, granted: new Set() });
+    setPermQuery('');
+    setError('');
+  }, []);
+
+  // Initial load: permission catalogue + role list, then pick the entry selection.
+  useEffect(() => {
+    if (!isAdmin) { setLoadingList(false); return; }
+    const token = getToken();
+    if (!token) { setLoadingList(false); return; }
     let alive = true;
-    setLoading(true);
+    setLoadingList(true);
 
     (async () => {
       try {
-        const groups = await fetchRbacPermissions(token);
+        const [groups, roleList] = await Promise.all([
+          fetchRbacPermissions(token),
+          fetchRbacRoles(token),
+        ]);
         if (!alive) return;
         setCatalogue(groups);
+        setRoles(roleList);
+        setLoadingList(false);
 
-        if (mode === 'edit' && roleKey) {
-          const [detail, summaries] = await Promise.all([
-            fetchRbacRole(token, roleKey),
-            fetchRbacRoles(token),
-          ]);
-          if (!alive) return;
-          setName(detail.name);
-          setDescription(detail.description ?? '');
-          setColor(detail.color ?? DEFAULT_COLOR);
-          setIsActive(detail.isActive);
-          setIsSystem(detail.isSystem);
-          setExistingKey(detail.key);
-          setGranted(new Set(detail.permissionKeys));
-          setUserCount(summaries.find((r) => r.key === detail.key)?.userCount ?? 0);
+        if (initialMode === 'new') {
+          enterNewMode();
+        } else {
+          const startKey =
+            (initialRoleKey && roleList.find((r) => r.key === initialRoleKey)?.key) ||
+            roleList[0]?.key;
+          if (startKey) await loadRole(startKey);
         }
-        setLoading(false);
       } catch (err) {
         if (alive) {
-          setError(err instanceof Error ? err.message : 'Unable to load the role designer.');
-          setLoading(false);
+          setError(err instanceof Error ? err.message : 'Unable to load the role workspace.');
+          setLoadingList(false);
         }
       }
     })();
 
     return () => { alive = false; };
-  }, [isAdmin, mode, roleKey]);
+  }, [isAdmin, initialMode, initialRoleKey, enterNewMode, loadRole]);
 
-  // ── Dependency graph (from the DB catalogue) ────────────────────────────────
+  // ── Dirty tracking ──────────────────────────────────────────────────────────
+  const dirty = useMemo(() => !draftsEqual(draft, baseline), [draft, baseline]);
+
+  // Guard role/new switches when there are unsaved edits.
+  const confirmDiscard = useCallback((): boolean => {
+    if (!dirty) return true;
+    return typeof window === 'undefined'
+      ? true
+      : window.confirm('Discard unsaved changes to this role?');
+  }, [dirty]);
+
+  const selectRole = useCallback((key: string) => {
+    if (key === selectedKey && mode === 'edit') return;
+    if (!confirmDiscard()) return;
+    void loadRole(key);
+  }, [selectedKey, mode, confirmDiscard, loadRole]);
+
+  const startNew = useCallback(() => {
+    if (!confirmDiscard()) return;
+    enterNewMode();
+  }, [confirmDiscard, enterNewMode]);
+
+  // ── Dependency graph (entirely from the DB catalogue) ───────────────────────
   const permByKey = useMemo(() => {
     const m = new Map<string, RbacPermission>();
     catalogue.forEach((g) => g.permissions.forEach((p) => m.set(p.key, p)));
@@ -142,8 +250,8 @@ export default function RoleWorkspace({ mode, roleKey }: RoleWorkspaceProps) {
   );
 
   const togglePerm = useCallback((key: string) => {
-    setGranted((prev) => {
-      const next = new Set(prev);
+    setDraft((prev) => {
+      const next = new Set(prev.granted);
       if (next.has(key)) {
         // Disable this permission and everything that (transitively) needs it.
         next.delete(key);
@@ -153,24 +261,24 @@ export default function RoleWorkspace({ mode, roleKey }: RoleWorkspaceProps) {
         next.add(key);
         closure(key, (k) => permByKey.get(k)?.requires ?? []).forEach((r) => next.add(r));
       }
-      return next;
+      return { ...prev, granted: next };
     });
   }, [closure, dependentsDirect, permByKey]);
 
-  // ── Derived (live) ──────────────────────────────────────────────────────────
-  const effective = granted;
+  // ── Derived (live preview) ──────────────────────────────────────────────────
+  const effective = draft.granted;
   const visibleNav = useMemo(
     () => NAV_ITEMS.filter((item) => !item.permission || effective.has(item.permission)),
     [effective],
   );
-  const grantedCount = granted.size;
+  const grantedCount = draft.granted.size;
   const groupStats = useMemo(
     () => catalogue.map((g) => ({
       group: g.group,
       total: g.permissions.length,
-      granted: g.permissions.filter((p) => granted.has(p.key)).length,
+      granted: g.permissions.filter((p) => draft.granted.has(p.key)).length,
     })),
-    [catalogue, granted],
+    [catalogue, draft.granted],
   );
   const searching = permQuery.trim().length > 0;
   const filteredCatalogue = useMemo(() => {
@@ -195,62 +303,81 @@ export default function RoleWorkspace({ mode, roleKey }: RoleWorkspaceProps) {
     });
   }, []);
 
+  // ── Save / Cancel ───────────────────────────────────────────────────────────
   const handleSave = useCallback(async () => {
     if (saving) return;
     const token = getToken();
     if (!token) { setError('Your session has expired. Please sign in again.'); return; }
-    if (!name.trim()) { setError('Role name is required.'); return; }
+    if (!draft.name.trim()) { setError('Role name is required.'); return; }
     setSaving(true);
     setError('');
     try {
-      const keys = [...granted];
+      const keys = [...draft.granted];
       if (mode === 'new') {
-        await createRole(token, {
-          name: name.trim(),
-          description: description.trim() || undefined,
-          color,
+        const created = await createRole(token, {
+          name: draft.name.trim(),
+          description: draft.description.trim() || undefined,
+          color: draft.color,
           permissionKeys: keys,
         });
-      } else if (existingKey) {
-        await updateRole(token, existingKey, {
-          name: name.trim(),
-          description: description.trim(),
-          color,
-          isActive,
+        await loadRole(created.key); // refresh list + select the new role
+      } else if (selectedKey) {
+        // Metadata → rbac_roles only; grants → rbac_role_permissions only.
+        await updateRole(token, selectedKey, {
+          name: draft.name.trim(),
+          description: draft.description.trim(),
+          color: draft.color,
+          isActive: draft.isActive,
         });
-        await setRolePermissions(token, existingKey, keys);
+        await setRolePermissions(token, selectedKey, keys);
+        await loadRole(selectedKey); // reload persisted values + refresh baseline
       }
-      router.push('/administration/users');
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Unable to save the role.');
+    } finally {
       setSaving(false);
     }
-  }, [saving, name, granted, mode, description, color, existingKey, isActive, router]);
+  }, [saving, draft, mode, selectedKey, loadRole]);
+
+  const handleCancel = useCallback(() => {
+    // Discard unsaved edits — revert the draft to the last persisted baseline.
+    setDraft({ ...baseline, granted: new Set(baseline.granted) });
+    setError('');
+  }, [baseline]);
 
   if (!isAdmin) {
-    return <ComingSoon title="Role Designer" description="Administrator access is required." />;
+    return <ComingSoon title="Role Workspace" description="Administrator access is required." />;
   }
 
-  const title = mode === 'new' ? 'New Role' : `Role Designer — ${name || existingKey}`;
+  const showForm = mode === 'new' || selectedKey !== null;
+  const title = mode === 'new' ? 'New Role' : `Role Workspace — ${draft.name || selectedKey || ''}`;
 
   return (
-    <Workspace aria-label="Role designer">
+    <Workspace aria-label="Role workspace">
       <WorkspaceHeader
         breadcrumb={[
           { label: 'Administration', href: '/administration' },
           { label: 'Users & Roles', href: '/administration/users' },
-          { label: mode === 'new' ? 'New Role' : 'Role Designer' },
+          { label: 'Roles' },
         ]}
         title={title}
         actions={
           <>
-            <button type="button" className="btn btn-ghost btn-sm"
-              onClick={() => router.push('/administration/users')} disabled={saving}>
+            <button
+              type="button"
+              className="btn btn-ghost btn-sm"
+              onClick={handleCancel}
+              disabled={saving || !dirty}
+            >
               Cancel
             </button>
-            <button type="button" className="btn btn-primary btn-sm"
-              onClick={handleSave} disabled={saving || loading}>
-              {saving ? 'Saving…' : mode === 'new' ? 'Create Role' : 'Save Role'}
+            <button
+              type="button"
+              className="btn btn-primary btn-sm"
+              onClick={handleSave}
+              disabled={saving || loadingDetail || !showForm || !dirty}
+            >
+              {saving ? 'Saving…' : mode === 'new' ? 'Create Role' : 'Save Changes'}
             </button>
           </>
         }
@@ -259,72 +386,113 @@ export default function RoleWorkspace({ mode, roleKey }: RoleWorkspaceProps) {
       {error && <div className="dash-error usr-error">{error}</div>}
 
       <WorkspaceGrid template="list-primary-inspector" className="uw-grid">
-        {/* ── LEFT: Role Details ── */}
-        <Panel aria-label="Role details">
-          <PanelHeader title="Role Details" />
+        {/* ── LEFT: all roles (master list, from PostgreSQL) ── */}
+        <Panel aria-label="Roles">
+          <PanelHeader title="Roles" subtitle={loadingList ? undefined : `${roles.length} defined`} />
           <PanelContent>
-            {loading ? (
-              <SkeletonLines lines={6} />
+            {loadingList ? (
+              <SkeletonLines lines={7} />
             ) : (
-              <div className="uw-form">
-                {isSystem && (
-                  <div className="rd-system-note">
-                    <Lock size={12} aria-hidden="true" /> System role — configurable, cannot be deleted.
-                  </div>
-                )}
-                <div className="fg">
-                  <label className="fl" htmlFor="rd-name">Role Name *</label>
-                  <input id="rd-name" className="fc" value={name} disabled={saving}
-                    placeholder="e.g. District Supervisor" onChange={(e) => setName(e.target.value)} />
+              <div className="uw-access">
+                <button type="button" className="btn btn-ghost btn-sm rd-new-role" onClick={startNew} disabled={saving}>
+                  <Plus size={14} aria-hidden="true" /> New Role
+                </button>
+                <div className="uw-role-list" role="listbox" aria-label="Roles">
+                  {roles.map((r) => {
+                    const selected = r.key === selectedKey && mode === 'edit';
+                    return (
+                      <button
+                        key={r.key}
+                        type="button"
+                        role="option"
+                        aria-selected={selected}
+                        className={`uw-role-card${selected ? ' selected' : ''}`}
+                        onClick={() => selectRole(r.key)}
+                        disabled={saving}
+                      >
+                        <span className="uw-role-dot" style={{ background: r.color ?? '#94a3b8' }} aria-hidden="true" />
+                        <span className="uw-role-body">
+                          <span className="uw-role-name">
+                            {r.name}
+                            {r.isSystem && <span className="uw-role-badge">System</span>}
+                          </span>
+                          {r.description && <span className="uw-role-desc">{r.description}</span>}
+                          <span className="uw-role-meta">
+                            {r.permissionCount} permission{r.permissionCount === 1 ? '' : 's'}
+                            {' · '}
+                            {r.userCount} user{r.userCount === 1 ? '' : 's'}
+                          </span>
+                        </span>
+                        {selected && <Check size={15} aria-hidden="true" className="uw-role-check" />}
+                      </button>
+                    );
+                  })}
                 </div>
-                {mode === 'edit' && (
-                  <div className="fg">
-                    <label className="fl">Key</label>
-                    <div className="uw-readonly mono">{existingKey}</div>
-                  </div>
-                )}
-                <div className="fg">
-                  <label className="fl" htmlFor="rd-desc">Description</label>
-                  <textarea id="rd-desc" className="fc modal-textarea" value={description} disabled={saving}
-                    placeholder="What this role is for…" maxLength={300}
-                    onChange={(e) => setDescription(e.target.value)} />
-                </div>
-                <div className="fg">
-                  <label className="fl" htmlFor="rd-color">Role Colour</label>
-                  <div className="rd-color-row">
-                    <input id="rd-color" type="color" className="rd-color" value={color} disabled={saving}
-                      onChange={(e) => setColor(e.target.value)} />
-                    <span className="rd-color-hex mono">{color}</span>
-                  </div>
-                </div>
-                {mode === 'edit' && (
-                  <div className="fg">
-                    <label className="fl">Status</label>
-                    <button type="button" className={`uw-status-toggle${isActive ? ' on' : ''}`}
-                      onClick={() => setIsActive((v) => !v)} disabled={saving} aria-pressed={isActive}>
-                      <span className={`pill ${isActive ? 'pill-active' : 'pill-inactive'}`}>
-                        {isActive ? 'Active' : 'Inactive'}
-                      </span>
-                      <span className="uw-status-hint">click to {isActive ? 'deactivate' : 'activate'}</span>
-                    </button>
-                  </div>
-                )}
               </div>
             )}
           </PanelContent>
         </Panel>
 
-        {/* ── CENTRE: Permission Designer ── */}
-        <Panel aria-label="Permission designer">
+        {/* ── CENTRE: Role Configuration (metadata + permissions) ── */}
+        <Panel aria-label="Role configuration">
           <PanelHeader
-            title="Permission Designer"
-            subtitle={loading ? undefined : `${grantedCount} granted`}
+            title="Role Configuration"
+            subtitle={loadingDetail || !showForm ? undefined : `${grantedCount} permission${grantedCount === 1 ? '' : 's'} granted`}
           />
           <PanelContent>
-            {loading ? (
+            {loadingDetail ? (
               <SkeletonLines lines={12} />
+            ) : !showForm ? (
+              <div className="uw-perm-empty">Select a role to configure, or create a new one.</div>
             ) : (
               <div className="uw-access">
+                {/* Role metadata */}
+                <div className="uw-form">
+                  {isSystem && (
+                    <div className="rd-system-note">
+                      <Lock size={12} aria-hidden="true" /> System role — configurable, cannot be deleted.
+                    </div>
+                  )}
+                  <div className="fg">
+                    <label className="fl" htmlFor="rd-name">Role Name *</label>
+                    <input id="rd-name" className="fc" value={draft.name} disabled={saving}
+                      placeholder="e.g. District Supervisor" onChange={(e) => setDraftField('name', e.target.value)} />
+                  </div>
+                  {mode === 'edit' && selectedKey && (
+                    <div className="fg">
+                      <label className="fl">Key</label>
+                      <div className="uw-readonly mono">{selectedKey}</div>
+                    </div>
+                  )}
+                  <div className="fg">
+                    <label className="fl" htmlFor="rd-desc">Description</label>
+                    <textarea id="rd-desc" className="fc modal-textarea" value={draft.description} disabled={saving}
+                      placeholder="What this role is for…" maxLength={300}
+                      onChange={(e) => setDraftField('description', e.target.value)} />
+                  </div>
+                  <div className="fg">
+                    <label className="fl" htmlFor="rd-color">Role Colour</label>
+                    <div className="rd-color-row">
+                      <input id="rd-color" type="color" className="rd-color" value={draft.color} disabled={saving}
+                        onChange={(e) => setDraftField('color', e.target.value)} />
+                      <span className="rd-color-hex mono">{draft.color}</span>
+                    </div>
+                  </div>
+                  {mode === 'edit' && (
+                    <div className="fg">
+                      <label className="fl">Status</label>
+                      <button type="button" className={`uw-status-toggle${draft.isActive ? ' on' : ''}`}
+                        onClick={() => setDraftField('isActive', !draft.isActive)} disabled={saving} aria-pressed={draft.isActive}>
+                        <span className={`pill ${draft.isActive ? 'pill-active' : 'pill-inactive'}`}>
+                          {draft.isActive ? 'Active' : 'Inactive'}
+                        </span>
+                        <span className="uw-status-hint">click to {draft.isActive ? 'deactivate' : 'activate'}</span>
+                      </button>
+                    </div>
+                  )}
+                </div>
+
+                {/* Permission designer (groups & permissions from PostgreSQL) */}
                 <div className="uw-perm-head">
                   <div className="uw-subhead" style={{ margin: 0 }}>
                     Permissions
@@ -358,9 +526,8 @@ export default function RoleWorkspace({ mode, roleKey }: RoleWorkspaceProps) {
                         ) : (
                           <ul className="uw-perm-list">
                             {group.permissions.map((p) => {
-                              const on = granted.has(p.key);
-                              const reqLabels = p.requires
-                                .map((r) => permByKey.get(r)?.label ?? r);
+                              const on = draft.granted.has(p.key);
+                              const reqLabels = p.requires.map((r) => permByKey.get(r)?.label ?? r);
                               return (
                                 <li key={p.key}>
                                   <button type="button"
@@ -395,7 +562,7 @@ export default function RoleWorkspace({ mode, roleKey }: RoleWorkspaceProps) {
         <Panel aria-label="Live preview" variant="subtle">
           <PanelHeader title="Live Preview" subtitle="What this role grants" />
           <PanelContent>
-            {loading ? (
+            {loadingDetail || !showForm ? (
               <SkeletonLines lines={8} />
             ) : (
               <div className="uw-preview">
@@ -405,10 +572,10 @@ export default function RoleWorkspace({ mode, roleKey }: RoleWorkspaceProps) {
                 </div>
 
                 <div className="uw-preview-role">
-                  <span className="uw-preview-role-dot" style={{ background: color }} aria-hidden="true" />
+                  <span className="uw-preview-role-dot" style={{ background: draft.color }} aria-hidden="true" />
                   <div className="uw-preview-role-body">
-                    <div className="uw-preview-role-name">{name || 'Untitled role'}</div>
-                    {description && <div className="uw-preview-role-desc">{description}</div>}
+                    <div className="uw-preview-role-name">{draft.name || 'Untitled role'}</div>
+                    {draft.description && <div className="uw-preview-role-desc">{draft.description}</div>}
                     {mode === 'edit' && (
                       <div className="uw-preview-role-desc">{userCount} user{userCount === 1 ? '' : 's'} assigned</div>
                     )}

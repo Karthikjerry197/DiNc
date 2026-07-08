@@ -2342,6 +2342,10 @@ export interface AdminUser {
   username: string;
   fullName: string;
   email: string | null;
+  phone: string | null;
+  department: string | null;
+  designation: string | null;
+  facility: string | null;
   role: string;
   isActive: boolean;
   lastLogin: string | null;
@@ -2369,6 +2373,10 @@ export interface CreateUserPayload {
   username: string;
   fullName: string;
   email?: string;
+  phone?: string;
+  department?: string;
+  designation?: string;
+  facility?: string;
   role: string;
   password: string;
 }
@@ -2377,6 +2385,10 @@ export interface CreateUserPayload {
 export interface UpdateUserPayload {
   fullName?: string;
   email?: string | null;
+  phone?: string | null;
+  department?: string | null;
+  designation?: string | null;
+  facility?: string | null;
   role?: string;
   isActive?: boolean;
 }
@@ -2470,11 +2482,22 @@ export interface RbacUserRole {
   isPrimary: boolean;
 }
 
+/** A per-user permission override: grant force-allows, !grant force-denies. */
+export interface RbacUserOverride {
+  permissionKey: string;
+  grant: boolean;
+}
+
 export interface RbacUserAccess {
   userId: string;
   username: string;
   fullName: string;
   roles: RbacUserRole[];
+  /** Permissions inherited from the assigned role (read-only base set). */
+  rolePermissions: string[];
+  /** Per-user grant/deny overrides layered on the role. */
+  overrides: RbacUserOverride[];
+  /** Resolved set: (role ∪ grants) \ denies. */
   effectivePermissions: string[];
 }
 
@@ -2523,6 +2546,26 @@ export async function setUserRoles(
     body: JSON.stringify({ roleKeys }),
   });
   if (!res.ok) throw await readError(res, 'Unable to update user roles.');
+  return res.json() as Promise<RbacUserAccess>;
+}
+
+/**
+ * Replace a user's per-user permission overrides (enterprise RBAC). Pass the full
+ * desired set; an empty array resets the user to role defaults. Returns refreshed
+ * access with recomputed effective permissions. Writes only to
+ * `rbac_user_permission_overrides` — role definitions are never modified.
+ */
+export async function setUserOverrides(
+  token: string,
+  userId: string,
+  overrides: RbacUserOverride[],
+): Promise<RbacUserAccess> {
+  const res = await fetch(`${API_BASE}/api/rbac/users/${userId}/overrides`, {
+    method: 'PUT',
+    headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ overrides }),
+  });
+  if (!res.ok) throw await readError(res, 'Unable to update user overrides.');
   return res.json() as Promise<RbacUserAccess>;
 }
 

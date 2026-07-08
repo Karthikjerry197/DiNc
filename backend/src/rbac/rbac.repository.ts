@@ -119,6 +119,22 @@ export class RbacRepository implements OnModuleInit {
       )
     `);
 
+    // Per-user permission overrides (enterprise RBAC enhancement). Additive; does
+    // NOT touch rbac_roles / rbac_permissions / rbac_role_permissions. `is_grant`
+    // avoids the reserved SQL keyword `grant` (the API exposes it as `grant`).
+    await this.db.query(`
+      CREATE TABLE IF NOT EXISTS public.rbac_user_permission_overrides (
+        id             UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
+        user_id        UUID        NOT NULL REFERENCES public.users(id) ON DELETE CASCADE,
+        permission_key TEXT        NOT NULL,
+        is_grant       BOOLEAN     NOT NULL,
+        created_by     UUID        REFERENCES public.users(id) ON DELETE SET NULL,
+        created_at     TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        updated_at     TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        UNIQUE (user_id, permission_key)
+      )
+    `);
+
     await this.db.query(`
       CREATE INDEX IF NOT EXISTS idx_rbac_permissions_group
         ON public.rbac_permissions (permission_group, sort_order)
@@ -126,6 +142,10 @@ export class RbacRepository implements OnModuleInit {
     await this.db.query(`
       CREATE INDEX IF NOT EXISTS idx_rbac_user_roles_user
         ON public.rbac_user_roles (user_id)
+    `);
+    await this.db.query(`
+      CREATE INDEX IF NOT EXISTS idx_rbac_user_overrides_user
+        ON public.rbac_user_permission_overrides (user_id)
     `);
   }
 
@@ -294,6 +314,14 @@ export class RbacRepository implements OnModuleInit {
       [userId],
     );
 
+    const overridesRes = await this.db.query<{ permission_key: string; is_grant: boolean }>(
+      `SELECT permission_key, is_grant
+       FROM public.rbac_user_permission_overrides
+       WHERE user_id = $1
+       ORDER BY permission_key`,
+      [userId],
+    );
+
     const roles: RbacUserRoleDto[] = rolesRes.rows.map((r) => ({
       id: r.id,
       key: r.key,
@@ -301,13 +329,77 @@ export class RbacRepository implements OnModuleInit {
       color: r.color,
       isPrimary: r.is_primary,
     }));
+
+    // effective = (role permissions ∪ grants) \ denies — literal per the model.
+    const rolePermissions = permsRes.rows.map((r) => r.key);
+    const overrides = overridesRes.rows.map((r) => ({
+      permissionKey: r.permission_key,
+      grant: r.is_grant,
+    }));
+    const effective = new Set(rolePermissions);
+    for (const o of overrides) {
+      if (o.grant) effective.add(o.permissionKey);
+      else effective.delete(o.permissionKey);
+    }
+
     return {
       userId: user.id,
       username: user.username,
       fullName: user.full_name,
       roles,
-      effectivePermissions: permsRes.rows.map((r) => r.key),
+      rolePermissions,
+      overrides,
+      effectivePermissions: [...effective].sort(),
     };
+  }
+
+  // ── User permission overrides (enterprise RBAC enhancement) ──────────────────
+
+  /**
+   * Replace a user's full override set. Each entry force-grants (`grant: true`) or
+   * force-denies (`grant: false`) a permission; omitting a permission removes its
+   * override (falls back to role inheritance). An empty list resets to role
+   * defaults. Writes ONLY to rbac_user_permission_overrides — role definitions and
+   * other users on the same role are untouched. Returns false when the user is
+   * unknown; throws on an unknown permission key.
+   */
+  async setUserOverrides(
+    userId: string,
+    overrides: { permissionKey: string; grant: boolean }[],
+    actorUsername?: string | null,
+  ): Promise<boolean> {
+    const userRes = await this.db.query<{ id: string }>(
+      `SELECT id FROM public.users WHERE id = $1 LIMIT 1`,
+      [userId],
+    );
+    if (!userRes.rows[0]) return false;
+
+    // Collapse duplicate keys (last write wins) and validate against the catalogue.
+    const byKey = new Map<string, boolean>();
+    for (const o of overrides) byKey.set(o.permissionKey, o.grant);
+    const keys = [...byKey.keys()];
+    if (keys.length > 0) {
+      const found = await this.db.query<{ key: string }>(
+        `SELECT key FROM public.rbac_permissions WHERE key = ANY($1::text[])`,
+        [keys],
+      );
+      const known = new Set(found.rows.map((r) => r.key));
+      const missing = keys.filter((k) => !known.has(k));
+      if (missing.length > 0) throw new Error(`Unknown permission(s): ${missing.join(', ')}`);
+    }
+
+    await this.db.query(
+      `DELETE FROM public.rbac_user_permission_overrides WHERE user_id = $1`,
+      [userId],
+    );
+    for (const [permissionKey, grant] of byKey) {
+      await this.db.query(
+        `INSERT INTO public.rbac_user_permission_overrides (user_id, permission_key, is_grant, created_by)
+         VALUES ($1, $2, $3, (SELECT id FROM public.users WHERE username = $4))`,
+        [userId, permissionKey, grant, actorUsername ?? null],
+      );
+    }
+    return true;
   }
 
   // ── Role writes (Milestone 3 — Role Designer) ───────────────────────────────

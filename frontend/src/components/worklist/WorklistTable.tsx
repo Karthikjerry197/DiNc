@@ -4,6 +4,8 @@ import { memo } from 'react';
 import Link from 'next/link';
 import { Bell, BookOpen, Eye, Flag, Inbox, Phone } from 'lucide-react';
 import type { WorklistItem } from '@/lib/api';
+import type { PatientIntelligence } from '@/lib/ai';
+import { RiskScoreBadge, DefaultProbBadge } from '@/components/intelligence/badges';
 import { displayValue as value, formatDate } from '@/lib/format';
 
 interface WorklistTableProps {
@@ -14,6 +16,14 @@ interface WorklistTableProps {
   onReportDuplicate?: (item: WorklistItem) => void;
   /** Starts the consultation: opens the Consultation Workspace and initiates the call. */
   onStartCall?: (item: WorklistItem) => void;
+  /** AI-assisted intelligence per citizen (spec §5.3). Enables the AI column + row emphasis. */
+  intelById?: Map<string, PatientIntelligence>;
+}
+
+/** A row is emphasised when it is high AI risk, a severe alert, or an escalation. */
+function isHot(item: WorklistItem, intel?: PatientIntelligence): boolean {
+  if (intel && (intel.risk.level === 'Critical' || intel.risk.level === 'High')) return true;
+  return item.riskLevel === 'SEVERE' || item.isEscalation;
 }
 
 /**
@@ -29,7 +39,9 @@ function WorklistTable({
   onOpenGuidebook,
   onReportDuplicate,
   onStartCall,
+  intelById,
 }: WorklistTableProps) {
+  const showAi = !!intelById;
   if (items.length === 0) {
     return (
       <div className="panel">
@@ -55,13 +67,16 @@ function WorklistTable({
             <th>Reminder</th>
             <th>Priority</th>
             <th>Risk</th>
+            {showAi && <th>AI Insight</th>}
             <th>Status</th>
             <th className="wl-col-actions">Actions</th>
           </tr>
         </thead>
         <tbody>
-          {items.map((item) => (
-            <tr key={item.id}>
+          {items.map((item) => {
+            const intel = item.citizenId ? intelById?.get(item.citizenId) : undefined;
+            return (
+            <tr key={item.id} className={isHot(item, intel) ? 'wl-row-hot' : undefined}>
               <td className="mono">{value(item.uhid)}</td>
               <td>{value(item.program)}</td>
               <td>{value(item.subProgram)}</td>
@@ -83,6 +98,18 @@ function WorklistTable({
                   <span className="pill pill-low">Routine</span>
                 )}
               </td>
+              {showAi && (
+                <td>
+                  {intel ? (
+                    <div className="wl-ai-cell">
+                      <RiskScoreBadge score={intel.risk.score} level={intel.risk.level} />
+                      <DefaultProbBadge probability={intel.followup.probability} band={intel.followup.band} />
+                    </div>
+                  ) : (
+                    <span className="wl-ai-empty">—</span>
+                  )}
+                </td>
+              )}
               <td>
                 <span className={`pill pill-${item.status.toLowerCase()}`}>{item.status}</span>
               </td>
@@ -128,7 +155,8 @@ function WorklistTable({
                 </div>
               </td>
             </tr>
-          ))}
+            );
+          })}
         </tbody>
       </table>
     </div>

@@ -27,6 +27,7 @@ import StartConsultationDialog from '@/components/citizens/StartConsultationDial
 import ClinicalJourney from '@/components/citizens/ClinicalJourney';
 import PatientActions from '@/components/patients/PatientActions';
 import ClinicalDecisionPanel from '@/components/consultation/ClinicalDecisionPanel';
+import IntelligencePanel from '@/components/intelligence/IntelligencePanel';
 import Workspace from '@/components/workspace/Workspace';
 import WorkspaceHeader from '@/components/workspace/WorkspaceHeader';
 import WorkspaceGrid from '@/components/workspace/WorkspaceGrid';
@@ -77,7 +78,7 @@ function CitizensWorkspace() {
   const [startConsultOpen, setStartConsultOpen] = useState(false);
   const [enrollmentsRefresh, setEnrollmentsRefresh] = useState(0);
   const pendingEnrollmentId = useRef<string | null>(null);
-  const [activeTab, setActiveTab] = useState<'profile' | 'journey'>('profile');
+  const [activeTab, setActiveTab] = useState<'profile' | 'journey' | 'intelligence'>('profile');
   const [error, setError] = useState('');
   const [toast, setToast] = useState('');
   const toastTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -345,6 +346,15 @@ function CitizensWorkspace() {
             >
               Clinical Journey
             </button>
+            <button
+              type="button"
+              role="tab"
+              aria-selected={activeTab === 'intelligence'}
+              className={`cz-tab-btn${activeTab === 'intelligence' ? ' active' : ''}`}
+              onClick={() => setActiveTab('intelligence')}
+            >
+              Intelligence
+            </button>
           </div>
         }
       />
@@ -384,13 +394,21 @@ function CitizensWorkspace() {
             }}
           />
         </WorkspaceGrid>
-      ) : (
+      ) : activeTab === 'journey' ? (
         <WorkspaceGrid template="list-detail">
           {citizenListPanel}
 
           <div className="cz-journey-main">
             <ClinicalDecisionPanel citizenId={selectedId} />
             <ClinicalJourney citizenId={selectedId} />
+          </div>
+        </WorkspaceGrid>
+      ) : (
+        <WorkspaceGrid template="list-detail">
+          {citizenListPanel}
+
+          <div className="cz-journey-main">
+            <IntelligencePanel citizenId={selectedId} />
           </div>
         </WorkspaceGrid>
       )}

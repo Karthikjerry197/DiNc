@@ -78,7 +78,19 @@ export default function GuidebooksPage() {
         // (and so highlights its program/category); otherwise the first.
         const params = new URLSearchParams(window.location.search);
         const requested = params.get('g');
-        const initial = list.find((g) => g.id === requested)?.id ?? list[0]?.id ?? null;
+        // `?q=<text>` deep-link (e.g. from AI care recommendations): when no
+        // explicit guidebook id is given, preselect the first whose searchable
+        // text matches the query. Purely additive — falls back to the first.
+        const query = params.get('q')?.trim().toLowerCase() ?? '';
+        const matched =
+          !requested && query
+            ? list.find((g) =>
+                Object.values(g).some(
+                  (v) => typeof v === 'string' && v.toLowerCase().includes(query),
+                ),
+              )?.id
+            : undefined;
+        const initial = list.find((g) => g.id === requested)?.id ?? matched ?? list[0]?.id ?? null;
         setSelectedId(initial);
         setConsultActivityId(params.get('activity'));
       })

@@ -5,6 +5,8 @@ import { BookOpen, Phone, Plus, UserRound } from 'lucide-react';
 import type { Activity, CitizenDetail, EnrollmentDetail, EnrollmentSummary } from '@/lib/api';
 import { formatDate } from '@/lib/format';
 import { SkeletonLines } from '@/components/shell/Skeleton';
+import { predictFollowupDefault } from '@/lib/ai';
+import { DefaultProbBadge } from '@/components/intelligence/badges';
 
 interface CitizenSummaryProps {
   detail: CitizenDetail | null;
@@ -66,6 +68,25 @@ export default function CitizenSummary({
 }: CitizenSummaryProps) {
   const kpi = useMemo(() => tally(activities), [activities]);
 
+  // Header follow-up default badge (spec §5.2). Approximation from the selected
+  // programme's activity tally only — overdue activities stand in for missed
+  // follow-ups; the full Intelligence tab uses the richer journey-based vector.
+  const followup = useMemo(
+    () =>
+      predictFollowupDefault({
+        priorMissed: kpi.overdue,
+        priorReschedules: 0,
+        attendanceRate: kpi.total ? kpi.done / kpi.total : null,
+        followUpGapDays: null,
+        chronicConditions: 1,
+        age: detail?.citizen.age ?? null,
+        overdueNow: kpi.overdue > 0,
+        daysSinceContact: null,
+        defaulterSignals: kpi.overdue,
+      }),
+    [kpi, detail?.citizen.age],
+  );
+
   if (loading) {
     return (
       <section className="cz-center czx-summary">
@@ -122,6 +143,9 @@ export default function CitizenSummary({
           <div className="czx-identity-top">
             <span className="czx-identity-uhid">{citizen.uhid}</span>
             {risk && <span className={`czx-risk czx-risk-${risk.toLowerCase()}`}>{risk}</span>}
+            {activities.length > 0 && (
+              <DefaultProbBadge probability={followup.probability} band={followup.band} />
+            )}
           </div>
           <div className="czx-identity-name">{name}</div>
           <div className="czx-identity-meta">

@@ -11,6 +11,12 @@ import {
 import { getToken } from '@/lib/session';
 import { useUser } from '@/lib/UserContext';
 import { sortByUrgency } from '@/lib/urgency';
+import {
+  worklistFeatures,
+  computePatientIntelligence,
+  type PatientIntelligence,
+} from '@/lib/ai';
+import { Sparkles } from 'lucide-react';
 import ComingSoon from '@/components/shell/ComingSoon';
 import WorklistToolbar from '@/components/worklist/WorklistToolbar';
 import WorklistFilters, {
@@ -55,6 +61,9 @@ export default function WorklistPage() {
   const [reportTarget, setReportTarget] = useState<ReportDuplicateTarget | null>(null);
   const [filters, setFilters] = useState<WorklistFilterState>(EMPTY_WORKLIST_FILTERS);
   const [toast, setToast] = useState('');
+  // AI prioritisation (spec §5.3): view-over-data only — never mutates the fetch.
+  const [aiSort, setAiSort] = useState<'default' | 'risk' | 'defaultProb' | 'priority'>('default');
+  const [preset, setPreset] = useState<'none' | 'highRisk' | 'needsAttention'>('none');
 
   // Care managers (no view-all) work their own queue, so it is ordered by
   // urgency (M36): overdue → severe → due today → high priority → remaining.
@@ -71,6 +80,51 @@ export default function WorklistPage() {
     () => Array.from(new Set(data.items.map((i) => i.type).filter((t): t is string => !!t))).sort(),
     [data.items],
   );
+
+  // Per-citizen AI intelligence from the loaded rows (approximate — worklist
+  // rows carry no journey/outcome text). Computed locally via the composer;
+  // the detail-page Intelligence tab uses the async Predictor seam + full data.
+  const intelById = useMemo(() => {
+    const map = new Map<string, PatientIntelligence>();
+    for (const [id, features] of worklistFeatures(data.items)) {
+      map.set(id, computePatientIntelligence(features));
+    }
+    return map;
+  }, [data.items]);
+
+  const intelFor = useCallback(
+    (item: WorklistItem): PatientIntelligence | undefined =>
+      item.citizenId ? intelById.get(item.citizenId) : undefined,
+    [intelById],
+  );
+
+  // Apply the AI preset filter, then the chosen ordering. Stable + non-mutating.
+  const displayItems = useMemo(() => {
+    let rows = filteredItems;
+    if (preset === 'highRisk') {
+      rows = rows.filter((i) => {
+        const lvl = intelFor(i)?.risk.level;
+        return lvl === 'Critical' || lvl === 'High';
+      });
+    } else if (preset === 'needsAttention') {
+      rows = rows.filter((i) => {
+        const intel = intelFor(i);
+        return (
+          i.isEscalation ||
+          i.riskLevel === 'SEVERE' ||
+          (intel ? intel.followup.band === 'High' || intel.risk.level === 'Critical' || intel.risk.level === 'High' : false)
+        );
+      });
+    }
+    if (aiSort === 'default') return rows;
+    const score = (i: WorklistItem): number => {
+      const intel = intelFor(i);
+      if (aiSort === 'risk') return intel?.risk.score ?? -1;
+      if (aiSort === 'defaultProb') return intel?.followup.probability ?? -1;
+      return intel?.care.priority === 'High' ? 2 : intel?.care.priority === 'Medium' ? 1 : 0;
+    };
+    return [...rows].sort((a, b) => score(b) - score(a));
+  }, [filteredItems, preset, aiSort, intelFor]);
 
   const toastTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const flash = useCallback((message: string) => {
@@ -192,15 +246,46 @@ export default function WorklistPage() {
         <div className="panel"><SkeletonTable rows={8} /></div>
       ) : (
         <>
+          <div className="wl-ai-controls">
+            <div className="wl-ai-presets">
+              <button
+                type="button"
+                className={`wl-ai-preset${preset === 'highRisk' ? ' active' : ''}`}
+                onClick={() => setPreset((p) => (p === 'highRisk' ? 'none' : 'highRisk'))}
+                aria-pressed={preset === 'highRisk'}
+              >
+                <Sparkles size={13} aria-hidden="true" /> AI High Risk
+              </button>
+              <button
+                type="button"
+                className={`wl-ai-preset${preset === 'needsAttention' ? ' active' : ''}`}
+                onClick={() => setPreset((p) => (p === 'needsAttention' ? 'none' : 'needsAttention'))}
+                aria-pressed={preset === 'needsAttention'}
+              >
+                <Sparkles size={13} aria-hidden="true" /> Needs Attention
+              </button>
+            </div>
+            <label className="wl-ai-sort">
+              <span>Sort</span>
+              <select value={aiSort} onChange={(e) => setAiSort(e.target.value as typeof aiSort)}>
+                <option value="default">Default</option>
+                <option value="risk">Highest AI Risk</option>
+                <option value="defaultProb">Highest Default Probability</option>
+                <option value="priority">Highest Priority</option>
+              </select>
+            </label>
+          </div>
+
           <WorklistTable
-            items={filteredItems}
+            items={displayItems}
             onOpenGuidebook={openGuidebook}
             onReportDuplicate={reportDuplicate}
             onStartCall={startCall}
+            intelById={intelById}
           />
           <div className="wl-footer">
             <span>
-              Showing {filteredItems.length} of {data.items.length}{' '}
+              Showing {displayItems.length} of {data.items.length}{' '}
               {data.items.length === 1 ? 'item' : 'items'}
             </span>
           </div>

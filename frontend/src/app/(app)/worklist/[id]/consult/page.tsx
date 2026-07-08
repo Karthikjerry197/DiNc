@@ -2,7 +2,6 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
-import Link from 'next/link';
 
 import {
   fetchConsultationContext,
@@ -17,10 +16,16 @@ import { getToken } from '@/lib/session';
 import { useDocumentationEngine } from '@/components/consultation/useDocumentationEngine';
 import DocumentationPreview from '@/components/consultation/DocumentationPreview';
 import CounsellingWizard from '@/components/consultation/CounsellingWizard';
-import ConsultationOutcomeDialog from '@/components/consultation/ConsultationOutcomeDialog';
+import ConsultationOutcomePanel from '@/components/consultation/ConsultationOutcomePanel';
 import ClinicalDecisionPanel from '@/components/consultation/ClinicalDecisionPanel';
 import CarePlanPanel from '@/components/care-plan/CarePlanPanel';
-import { CircleCheck, Phone } from 'lucide-react';
+import Workspace from '@/components/workspace/Workspace';
+import Panel from '@/components/workspace/Panel';
+import PanelContent from '@/components/workspace/PanelContent';
+import { useWorkspaceShell } from '@/components/workspace/useWorkspaceShell';
+import { useOverflowFades } from '@/components/workspace/useOverflowFades';
+import { Check, CircleAlert, CircleCheck, MapPin, Phone, TriangleAlert } from 'lucide-react';
+import { humanizeSectionKey } from '@/components/guidebooks/GuidebookTabs';
 import { SkeletonLines } from '@/components/shell/Skeleton';
 
 type CallPhase = 'ready' | 'in-progress' | 'ended';
@@ -46,7 +51,7 @@ function HistoryPanel({ history }: { history: ConsultationHistoryEntry[] }) {
   }
 
   if (history.length === 0) {
-    return <p className="cw-history-empty">No previous consultations recorded.</p>;
+    return <p className="cw-history-empty">No previous care records.</p>;
   }
 
   return (
@@ -124,7 +129,7 @@ function HistoryPanel({ history }: { history: ConsultationHistoryEntry[] }) {
                 )}
                 {hasNote && (
                   <div className="cw-history-field">
-                    <span className="cw-history-field-label">Consultation Note</span>
+                    <span className="cw-history-field-label">Care Record</span>
                     <pre className="cw-history-note">{entry.generatedNote}</pre>
                   </div>
                 )}
@@ -145,6 +150,12 @@ export default function ConsultationWorkspacePage() {
   const activityId = params.id as string;
   const token = getToken() ?? '';
 
+  // Fixed 3-column workspace (M37B) — page never scrolls as one container.
+  useWorkspaceShell();
+
+  // Horizontal-overflow edge fades when the 3-column grid scrolls (M39.1).
+  const gridRef = useOverflowFades<HTMLDivElement>();
+
   // Context and history
   const [ctx, setCtx] = useState<ConsultationContext | null>(null);
   const [history, setHistory] = useState<ConsultationHistoryEntry[]>([]);
@@ -158,16 +169,17 @@ export default function ConsultationWorkspacePage() {
   const [callSeconds, setCallSeconds] = useState(0);
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
-  // Counselling wizard state
-  const [currentStep, setCurrentStep] = useState(0);
+  // Counselling selections (drive the live note + CDSE mapping)
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
 
   // Return URL (set from ?returnUrl= query param on mount; supports Citizens → Workspace flow)
   const [returnUrl, setReturnUrl] = useState('/worklist');
 
-  // Outcome dialog
-  const [outcomeOpen, setOutcomeOpen] = useState(false);
+  // Save result (consultation completed)
   const [saveResult, setSaveResult] = useState<SaveConsultationResult | null>(null);
+
+  // The inline outcome form (End Call / Record Outcome scroll target)
+  const outcomeRef = useRef<HTMLDivElement | null>(null);
 
   // Note state
   const [noteMode, setNoteMode] = useState<'auto' | 'manual'>('auto');
@@ -217,7 +229,7 @@ export default function ConsultationWorkspacePage() {
       })
       .catch((err) => {
         if (!alive) return;
-        setError(err instanceof Error ? err.message : 'Unable to load consultation.');
+        setError(err instanceof Error ? err.message : 'Unable to load care record.');
         setLoading(false);
       });
 
@@ -270,10 +282,14 @@ export default function ConsultationWorkspacePage() {
     }
   }, [token, activityId]);
 
+  const scrollToOutcome = useCallback(() => {
+    outcomeRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  }, []);
+
   const handleEndCall = useCallback(() => {
     setCallPhase('ended');
-    setOutcomeOpen(true);
-  }, []);
+    scrollToOutcome();
+  }, [scrollToOutcome]);
 
   const handleToggle = useCallback((id: string) => {
     setSelectedIds((prev) => {
@@ -284,17 +300,6 @@ export default function ConsultationWorkspacePage() {
     });
     setNoteMode('auto');
   }, []);
-
-  // When wizard's "Complete →" is pressed on the last section, open outcome dialog
-  const handleStep = useCallback((step: number) => {
-    if (!ctx) return;
-    const sections = ctx.counsellingSections ?? [];
-    if (step >= sections.length) {
-      setOutcomeOpen(true);
-    } else {
-      setCurrentStep(Math.max(0, step));
-    }
-  }, [ctx]);
 
   const handleNoteChange = useCallback((value: string) => {
     setManualNote(value);
@@ -307,7 +312,6 @@ export default function ConsultationWorkspacePage() {
   }, []);
 
   const handleOutcomeSaved = useCallback((result: SaveConsultationResult) => {
-    setOutcomeOpen(false);
     setSaveResult(result);
     // Brief pause so the worker sees the success state before navigating
     setTimeout(() => router.push(returnUrl), 1200);
@@ -341,79 +345,48 @@ export default function ConsultationWorkspacePage() {
   const sections = ctx.counsellingSections ?? [];
   const totalSelected = selectedIds.size;
 
+  // Danger-sign sections surface in the centre panel as bordered cards (M37B);
+  // the remaining protocol sections stay in the left checklist. Same items,
+  // same selectedIds, same CDSE mapping — presentation only.
+  const isDangerSection = (name: string) => /danger/i.test(name);
+  const dangerItems = sections
+    .filter((s) => isDangerSection(s.name))
+    .flatMap((s) => s.items);
+  const protocolSections = sections.filter((s) => !isDangerSection(s.name));
+
+  // Referral-chain info bar (M37C) — the guidebook's referral/escalation
+  // section rendered as the reference's blue strip. Data-driven; hidden when
+  // the guidebook has no such section.
+  const refEntry = Object.entries(ctx.guidebook?.sections ?? {}).find(([key]) =>
+    /referral|escalat/i.test(key),
+  );
+  const referralChainText = refEntry
+    ? (Array.isArray(refEntry[1]) ? refEntry[1].join(' · ') : refEntry[1]).trim()
+    : '';
+
+  const noteWords = displayNote.trim() ? displayNote.trim().split(/\s+/).length : 0;
+
   return (
-    <div className="page cw-page-root">
+    <Workspace aria-label="Care" className="cw3-root">
 
-      {/* ── Patient header ── */}
-      <div className="cw-header">
-        <div style={{ flex: 1, minWidth: 200 }}>
-          <div className="cw-breadcrumb">
-            <Link href={returnUrl}>
-              {returnUrl.startsWith('/citizens')
-                ? 'Citizens'
-                : returnUrl.startsWith('/dashboard')
-                  ? 'Dashboard'
-                  : 'My Worklist'}
-            </Link>
-            <span className="cw-breadcrumb-sep">›</span>
-            Consultation
-          </div>
-          <div className="cw-patient-badge">
-            <span className="cw-patient-name">{patient.fullName ?? '—'}</span>
-            {patient.uhid && (
-              <>
-                <span className="cw-patient-sep">·</span>
-                <span className="cw-patient-uhid">{patient.uhid}</span>
-              </>
-            )}
-            {cc.program && (
-              <>
-                <span className="cw-patient-sep">·</span>
-                <span className="cw-patient-program">{cc.program}</span>
-              </>
-            )}
-            {cc.condition && (
-              <>
-                <span className="cw-patient-sep">·</span>
-                <span className="cw-patient-activity">{cc.condition}</span>
-              </>
-            )}
-            {totalSelected > 0 && (
-              <>
-                <span className="cw-patient-sep">·</span>
-                <span style={{ fontSize: 11, color: '#0369a1', fontWeight: 600 }}>
-                  {totalSelected} item{totalSelected === 1 ? '' : 's'} selected
-                </span>
-              </>
-            )}
-          </div>
-        </div>
-      </div>
-
-      {/* ── Call status bar ── */}
-      <div className={`cw-consult-callbar cw-consult-callbar-${callPhase}`}>
+      {/* ── Single compact header row: call action + patient metadata ──
+        * The breadcrumb and patient strip were merged in here (M37E) so the
+        * three-column workspace starts directly under the app header. */}
+      <div className={`cw-consult-callbar cw3-callbar cw-consult-callbar-${callPhase}`}>
         {callPhase === 'ready' && (
-          <>
-            {callError && (
-              <span className="cw-consult-callerr">{callError}</span>
-            )}
-            <button
-              type="button"
-              className="cw-consult-call-btn"
-              onClick={handleStartCall}
-              disabled={callStarting}
-            >
-              <span className="cw-consult-call-icon"><Phone size={16} aria-hidden="true" /></span>
-              {callStarting
-                ? 'Starting call…'
-                : patient.phone
-                  ? `Call ${patient.fullName ?? 'Patient'} · ${patient.phone}`
-                  : `Start Consultation · ${patient.fullName ?? 'Patient'}`}
-            </button>
-            <span className="cw-consult-call-hint">
-              Select counselling items during the call — the note updates live
-            </span>
-          </>
+          <button
+            type="button"
+            className="cw-consult-call-btn"
+            onClick={handleStartCall}
+            disabled={callStarting}
+          >
+            <span className="cw-consult-call-icon"><Phone size={16} aria-hidden="true" /></span>
+            {callStarting
+              ? 'Starting call…'
+              : patient.phone
+                ? `Call ${patient.phone}`
+                : 'Start Call'}
+          </button>
         )}
 
         {callPhase === 'in-progress' && (
@@ -421,27 +394,70 @@ export default function ConsultationWorkspacePage() {
             <span className="cw-call-dot" aria-hidden="true" />
             <span className="cw-consult-call-status">Call In Progress</span>
             <span className="cw-consult-call-timer">{formatDuration(callSeconds)}</span>
-            <button
-              type="button"
-              className="btn btn-danger"
-              style={{ marginLeft: 'auto', fontSize: 13, padding: '7px 18px' }}
-              onClick={handleEndCall}
-            >
-              End Call
-            </button>
           </>
+        )}
+
+        {/* Patient identity as inline metadata — always visible on a clinical screen */}
+        <span className="cw3-callbar-meta">
+          <span className="cw3-patient-name">{patient.fullName ?? '—'}</span>
+          {patient.uhid && (
+            <>
+              <span className="cw3-meta-sep" aria-hidden="true">•</span>
+              <span className="cw3-patient-uhid">{patient.uhid}</span>
+            </>
+          )}
+          {cc.program && (
+            <>
+              <span className="cw3-meta-sep" aria-hidden="true">•</span>
+              <span className="cw3-patient-program">{cc.program}</span>
+            </>
+          )}
+          {cc.condition && (
+            <>
+              <span className="cw3-meta-sep" aria-hidden="true">•</span>
+              <span className="cw3-patient-cond">{cc.condition}</span>
+            </>
+          )}
+          {totalSelected > 0 && (
+            <>
+              <span className="cw3-meta-sep" aria-hidden="true">•</span>
+              <span className="cw3-patient-sel">
+                {totalSelected} item{totalSelected === 1 ? '' : 's'} selected
+              </span>
+            </>
+          )}
+        </span>
+
+        {callPhase === 'ready' && (
+          <>
+            {callError && <span className="cw-consult-callerr">{callError}</span>}
+            <span className="cw-consult-call-hint cw3-callbar-right">
+              Select counselling items during the call — the note updates live
+            </span>
+          </>
+        )}
+
+        {callPhase === 'in-progress' && (
+          <button
+            type="button"
+            className="btn btn-danger cw3-callbar-right"
+            style={{ fontSize: 13, padding: '6px 16px' }}
+            onClick={handleEndCall}
+          >
+            End Call
+          </button>
         )}
 
         {callPhase === 'ended' && !saveResult && (
           <>
             <span style={{ fontSize: 13, color: '#6b7280' }}>
-              Call ended — record the outcome to complete the consultation.
+              Call ended — record the outcome to complete care.
             </span>
             <button
               type="button"
-              className="btn btn-primary"
-              style={{ marginLeft: 'auto', fontSize: 13, padding: '7px 18px' }}
-              onClick={() => setOutcomeOpen(true)}
+              className="btn btn-primary cw3-callbar-right"
+              style={{ fontSize: 13, padding: '6px 16px' }}
+              onClick={scrollToOutcome}
             >
               Record Outcome →
             </button>
@@ -450,69 +466,122 @@ export default function ConsultationWorkspacePage() {
 
         {saveResult && (
           <span style={{ fontSize: 13, color: '#15803d', fontWeight: 600 }}>
-            <CircleCheck size={14} aria-hidden="true" /> Consultation saved
+            <CircleCheck size={14} aria-hidden="true" /> Care saved
             {saveResult.workflowMessage ? ` · ${saveResult.workflowMessage}` : ''} — returning…
           </span>
         )}
       </div>
 
-      {/* ── 2-column workspace ── */}
-      <div className="cw-workspace-b">
+      {/* ── Fixed 3-column workspace: Protocol · Clinical Decision · Note ── */}
+      <div className="wsg-host wsg-host--card">
+      <div className="cw3-grid" ref={gridRef}>
 
-        {/* Left: Counselling Wizard */}
-        <div className="cw-wizard-col">
+        {/* LEFT — Protocol (steps counter · Guide/Script tabs · checklist) */}
+        <Panel aria-label="Protocol" className="cw3-left">
           <CounsellingWizard
-            sections={sections}
+            sections={protocolSections}
             selectedIds={selectedIds}
-            currentStep={currentStep}
             onToggle={handleToggle}
-            onStep={handleStep}
             disabled={!!saveResult}
+            guidebook={ctx.guidebook}
           />
-        </div>
+        </Panel>
 
-        {/* Right: CDSE panel + Care Plan panel + Live Clinical Note + History */}
-        <div className="cw-note-col">
-          <ClinicalDecisionPanel citizenId={patient.citizenId} />
-          <CarePlanPanel
-            citizenId={patient.citizenId}
-            citizenName={patient.fullName}
-            worklistItemId={ctx?.activity?.id}
-          />
-          <div className="cw-note-col-head">Live Clinical Note</div>
-          <DocumentationPreview
-            note={displayNote}
-            mode={noteMode}
-            disabled={!!saveResult}
-            noteSaving={noteSaving}
-            onChange={handleNoteChange}
-            onReset={handleNoteReset}
-          />
+        {/* CENTRE — Danger Signs & Outcome (primary workspace, scrollable) */}
+        <Panel aria-label="Clinical decision" className="cw3-center">
+          <div className="cw3-col-head cw3-col-head--danger">
+            <CircleAlert size={15} aria-hidden="true" />
+            Danger Signs &amp; Outcome
+          </div>
+          <PanelContent>
+            {dangerItems.length > 0 && (
+              <>
+                <div className="cw3-danger-label">
+                  <TriangleAlert size={12} aria-hidden="true" />
+                  Check all signs present
+                </div>
+                <div className="cw3-danger-list" role="group" aria-label="Danger signs">
+                  {dangerItems.map((item) => {
+                    const isSelected = selectedIds.has(item.id);
+                    return (
+                      <button
+                        key={item.id}
+                        type="button"
+                        role="checkbox"
+                        aria-checked={isSelected}
+                        className={`cw3-danger-card${isSelected ? ' cw3-danger-card-sel' : ''}`}
+                        onClick={() => !saveResult && handleToggle(item.id)}
+                        disabled={!!saveResult}
+                      >
+                        <span className="cw3-step-check" aria-hidden="true">
+                          {isSelected ? <Check size={13} /> : null}
+                        </span>
+                        <span className="cw3-danger-text">{item.body}</span>
+                      </button>
+                    );
+                  })}
+                </div>
+              </>
+            )}
 
-          <div className="cw-history-head" style={{ marginTop: 16 }}>Previous Consultations</div>
-          <HistoryPanel history={history} />
-        </div>
+            {/* Outcome form — inline (same fields, logic and save as before) */}
+            <div ref={outcomeRef}>
+              <ConsultationOutcomePanel
+                activityId={activityId}
+                context={ctx}
+                generatedNote={displayNote || undefined}
+                checkedItemIds={[...selectedIds]}
+                counsellingItemIds={sections.flatMap((s) => s.items.map((i) => i.id))}
+                disabled={!!saveResult}
+                onSaved={handleOutcomeSaved}
+              />
+            </div>
+
+            {/* Referral chain — guidebook referral/escalation guidance */}
+            {referralChainText && refEntry && (
+              <div className="cw3-refchain">
+                <MapPin size={13} aria-hidden="true" />
+                <span>
+                  <strong>{humanizeSectionKey(refEntry[0])}:</strong> {referralChainText}
+                </span>
+              </div>
+            )}
+
+            {/* Clinical risk classification (CDSE) — unchanged component */}
+            <ClinicalDecisionPanel citizenId={patient.citizenId} />
+
+            {/* Care plan — unchanged component */}
+            <CarePlanPanel
+              citizenId={patient.citizenId}
+              citizenName={patient.fullName}
+              worklistItemId={ctx.activity?.id}
+            />
+
+            <div className="cw-history-head" style={{ marginTop: 16 }}>Care History</div>
+            <HistoryPanel history={history} />
+          </PanelContent>
+        </Panel>
+
+        {/* RIGHT — Live Clinical Note (fixed) */}
+        <Panel aria-label="Live clinical record" className="cw3-right">
+          <div className="cw3-col-head">
+            Live Clinical Record
+            <span className="cw3-words">{noteWords} words</span>
+          </div>
+          <PanelContent className="cw3-note-body">
+            <DocumentationPreview
+              note={displayNote}
+              mode={noteMode}
+              disabled={!!saveResult}
+              noteSaving={noteSaving}
+              onChange={handleNoteChange}
+              onReset={handleNoteReset}
+            />
+          </PanelContent>
+        </Panel>
 
       </div>
-
-      {/* ── Outcome dialog — opens on End Call or wizard Complete ── */}
-      {ctx && outcomeOpen && (
-        <ConsultationOutcomeDialog
-          activityId={activityId}
-          context={ctx}
-          open={outcomeOpen}
-          generatedNote={displayNote || undefined}
-          checkedItemIds={[...selectedIds]}
-          counsellingItemIds={(ctx.counsellingSections ?? []).flatMap((s) =>
-            s.items.map((i) => i.id),
-          )}
-          onClose={() => {
-            setOutcomeOpen(false);
-          }}
-          onSaved={handleOutcomeSaved}
-        />
-      )}
-
-    </div>
+      </div>
+    </Workspace>
   );
 }

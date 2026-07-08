@@ -1,146 +1,141 @@
 'use client';
 
-import type { CounsellingSection } from '@/lib/api';
-import { Check } from 'lucide-react';
+import { useMemo, useState } from 'react';
+import type { CounsellingSection, GuidebookDetail } from '@/lib/api';
+import GuidebookSection from '@/components/guidebooks/GuidebookSection';
+import { humanizeSectionKey } from '@/components/guidebooks/GuidebookTabs';
+import { BookOpen, Check, CircleCheck, Phone } from 'lucide-react';
+
+type ProtoTab = 'steps' | 'guide' | 'script';
+
+/** Guidebook keys that read as call-script content (vs. reference guidance). */
+const SCRIPT_KEY = /script|counsel|dialog|say/i;
 
 interface CounsellingWizardProps {
   sections: CounsellingSection[];
   selectedIds: Set<string>;
-  currentStep: number;
   onToggle: (id: string) => void;
-  onStep: (step: number) => void;
   disabled?: boolean;
+  /** Guidebook content for the Guide/Script tabs (already in ConsultationContext). */
+  guidebook: GuidebookDetail | null;
 }
 
 /**
- * Tablet-optimised, database-driven counselling wizard.
+ * Protocol panel (M37C reference-matched) — the left column of the
+ * consultation workspace. Three tabs in the header band:
+ *   Steps  — the database-driven counselling checklist as one flat, numbered
+ *            list (checkbox + text, whitespace-separated, no cards); the tab
+ *            itself carries the done/total counter.
+ *   Guide  — the matched guidebook's reference sections.
+ *   Script — the guidebook's script-like sections (counselling points etc.).
  *
- * Renders one section at a time with large touch-friendly selectable item rows.
- * Section content comes entirely from the DB via ConsultationContext — no disease
- * content is hardcoded here. Selecting an item immediately updates the live note
- * via the selectedIds → useDocumentationEngine → DocumentationPreview chain.
- *
- * Navigation: tab strip (all sections visible) + Previous / Next / Complete buttons.
- * "Complete →" on the last section advances to step === sections.length, which
- * the parent page renders as the outcome + notes form.
+ * Selection logic is unchanged: toggling an item updates selectedIds, which
+ * drives the live note (useDocumentationEngine) and CDSE mapping exactly as
+ * before. No section content is hardcoded.
  */
 export default function CounsellingWizard({
   sections,
   selectedIds,
-  currentStep,
   onToggle,
-  onStep,
   disabled = false,
+  guidebook,
 }: CounsellingWizardProps) {
-  if (sections.length === 0) {
-    return (
-      <div className="cw-wizard-empty">
-        No counselling content configured for this programme.
-        <br />
-        Proceed to record the consultation outcome.
-      </div>
-    );
+  const [tab, setTab] = useState<ProtoTab>('steps');
+
+  // One continuous, numbered step list across all protocol sections (the
+  // reference shows a flat 1..N checklist with no section headers).
+  const steps = useMemo(() => sections.flatMap((s) => s.items), [sections]);
+  const done = steps.filter((i) => selectedIds.has(i.id)).length;
+
+  const entries = Object.entries(guidebook?.sections ?? {});
+  const scriptEntries = entries.filter(([key]) => SCRIPT_KEY.test(key));
+  const guideEntries = entries.filter(([key]) => !SCRIPT_KEY.test(key));
+
+  const tabs: { key: ProtoTab; label: React.ReactNode; icon: React.ReactNode }[] = [
+    {
+      key: 'steps',
+      icon: <CircleCheck size={14} className="cw3-tab-ico-ok" aria-hidden="true" />,
+      label: (
+        <>
+          Steps <span className="cw3-tab-count">{done}/{steps.length}</span>
+        </>
+      ),
+    },
+    { key: 'guide', icon: <BookOpen size={14} aria-hidden="true" />, label: 'Guide' },
+    { key: 'script', icon: <Phone size={14} aria-hidden="true" />, label: 'Script' },
+  ];
+
+  function renderGuidebookEntries(list: [string, string | string[]][], emptyText: string) {
+    if (list.length === 0) {
+      return <div className="cw-wizard-empty">{emptyText}</div>;
+    }
+    return list.map(([key, value]) => (
+      <section key={key} className="cw3-proto-section">
+        <h3 className="cw3-proto-section-title">{humanizeSectionKey(key)}</h3>
+        <GuidebookSection value={value} />
+      </section>
+    ));
   }
 
-  const section = sections[currentStep];
-  const sectionCounts = sections.map((s) =>
-    s.items.filter((i) => selectedIds.has(i.id)).length,
-  );
-
   return (
-    <div className="cw-wizard">
-      {/* ── Tab strip ─────────────────────────────────────────────────────────── */}
-      <div className="cw-wizard-tabs" role="tablist" aria-label="Counselling sections">
-        {sections.map((s, idx) => (
+    <div className="cw3-proto">
+      {/* Header band: Steps counter tab · Guide · Script */}
+      <div className="cw3-tabs" role="tablist" aria-label="Protocol views">
+        {tabs.map((t) => (
           <button
-            key={s.id}
-            role="tab"
+            key={t.key}
             type="button"
-            aria-selected={idx === currentStep}
-            className={`cw-wizard-tab${idx === currentStep ? ' cw-wizard-tab-active' : ''}`}
-            onClick={() => onStep(idx)}
-            disabled={disabled}
+            role="tab"
+            aria-selected={tab === t.key}
+            className="cw3-tab"
+            onClick={() => setTab(t.key)}
           >
-            <span className="cw-wizard-tab-name">{s.name}</span>
-            {sectionCounts[idx] > 0 && (
-              <span className="cw-wizard-tab-badge" aria-label={`${sectionCounts[idx]} selected`}>
-                {sectionCounts[idx]}
-              </span>
-            )}
+            {t.icon}
+            {t.label}
           </button>
         ))}
       </div>
 
-      {/* ── Section header ────────────────────────────────────────────────────── */}
-      <div className="cw-wizard-progress">
-        <span className="cw-wizard-section-title">{section.name}</span>
-        <span className="cw-wizard-step-indicator">
-          Section {currentStep + 1} of {sections.length}
-        </span>
-      </div>
-
-      {/* ── Item list ─────────────────────────────────────────────────────────── */}
-      <div className="cw-wizard-items" role="group" aria-label={`${section.name} items`}>
-        {section.items.length === 0 ? (
-          <div className="cw-wizard-empty">No items in this section.</div>
+      {/* Scrollable body — independent of the centre panel */}
+      <div className="cw3-proto-body">
+        {tab === 'steps' ? (
+          steps.length === 0 ? (
+            <div className="cw-wizard-empty">
+              No counselling content configured for this programme.
+              <br />
+              Record the care outcome in the centre panel.
+            </div>
+          ) : (
+            steps.map((item, idx) => {
+              const isSelected = selectedIds.has(item.id);
+              return (
+                <button
+                  key={item.id}
+                  type="button"
+                  role="checkbox"
+                  aria-checked={isSelected}
+                  className={`cw3-step${isSelected ? ' cw3-step-sel' : ''}`}
+                  onClick={() => !disabled && onToggle(item.id)}
+                  disabled={disabled}
+                >
+                  <span className="cw3-step-check" aria-hidden="true">
+                    {isSelected ? <Check size={13} /> : null}
+                  </span>
+                  <span className="cw3-step-text">{idx + 1}. {item.body}</span>
+                </button>
+              );
+            })
+          )
+        ) : tab === 'guide' ? (
+          renderGuidebookEntries(
+            guideEntries,
+            'No guidebook is mapped to this activity.',
+          )
         ) : (
-          section.items.map((item) => {
-            const isSelected = selectedIds.has(item.id);
-            return (
-              <button
-                key={item.id}
-                type="button"
-                role="checkbox"
-                aria-checked={isSelected}
-                className={`cw-wizard-item${isSelected ? ' cw-wizard-item-sel' : ''}`}
-                onClick={() => !disabled && onToggle(item.id)}
-                disabled={disabled}
-              >
-                <span className="cw-wizard-check" aria-hidden="true">
-                  {isSelected ? <Check size={14} /> : null}
-                </span>
-                <span className="cw-wizard-item-text">{item.body}</span>
-              </button>
-            );
-          })
-        )}
-      </div>
-
-      {/* ── Navigation bar ────────────────────────────────────────────────────── */}
-      <div className="cw-wizard-nav">
-        <button
-          type="button"
-          className="btn btn-ghost"
-          onClick={() => onStep(currentStep - 1)}
-          disabled={currentStep === 0 || disabled}
-        >
-          ← Previous
-        </button>
-
-        <span className="cw-wizard-sel-count">
-          {sectionCounts[currentStep]
-            ? `${sectionCounts[currentStep]} item${sectionCounts[currentStep] === 1 ? '' : 's'} selected`
-            : 'None selected'}
-        </span>
-
-        {currentStep < sections.length - 1 ? (
-          <button
-            type="button"
-            className="btn btn-primary"
-            onClick={() => onStep(currentStep + 1)}
-            disabled={disabled}
-          >
-            Next →
-          </button>
-        ) : (
-          <button
-            type="button"
-            className="btn btn-primary"
-            onClick={() => onStep(sections.length)}
-            disabled={disabled}
-          >
-            Complete →
-          </button>
+          renderGuidebookEntries(
+            scriptEntries,
+            'No call script is configured for this guidebook.',
+          )
         )}
       </div>
     </div>

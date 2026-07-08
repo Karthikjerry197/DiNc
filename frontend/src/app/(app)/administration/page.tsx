@@ -22,7 +22,7 @@ const TILES: AdminTile[] = [
   },
   {
     label: 'Workflow Rules',
-    description: 'Configure what happens after each consultation outcome — no code changes.',
+    description: 'Configure what happens after each care outcome — no code changes.',
     href: '/administration/workflow-rules',
     icon: <Workflow size={20} />,
   },

@@ -21,13 +21,19 @@ function avatarText(citizen: CitizenListItem): string {
   return initials || '#';
 }
 
-function meta(citizen: CitizenListItem): string {
-  const bits = [
-    citizen.age != null ? `${citizen.age}y` : null,
-    citizen.gender,
-    citizen.district,
-  ].filter(Boolean);
-  return bits.length ? bits.join(' · ') : 'No demographics on record';
+/** Compact programme-count meta shown under the UHID (matches the reference). */
+function programMeta(citizen: CitizenListItem): string {
+  const n = citizen.programs.length;
+  return n === 1 ? '1 enrolled programme' : `${n} enrolled programmes`;
+}
+
+/** Short backend-driven risk chip for severe/moderate; null otherwise. */
+function riskChip(citizen: CitizenListItem): { label: string; cls: string } | null {
+  switch (citizen.riskLevel) {
+    case 'SEVERE':   return { label: 'SEV', cls: 'severe' };
+    case 'MODERATE': return { label: 'MOD', cls: 'moderate' };
+    default:         return null;
+  }
 }
 
 /** Distinct sorted values across an array field of the citizen list. */
@@ -73,9 +79,9 @@ function CitizenList({ citizens, selectedId, onSelect }: CitizenListProps) {
   }, [citizens, query, status, risk, program, disease, worker]);
 
   return (
-    <aside className="cz-list">
+    <aside className="cz-list czx-list">
       <div className="cz-list-head">
-        <h2 className="cz-panel-title">Patient Records</h2>
+        <h2 className="cz-panel-title">Patients</h2>
         <span className="cz-count">{filtered.length}</span>
       </div>
 
@@ -84,7 +90,7 @@ function CitizenList({ citizens, selectedId, onSelect }: CitizenListProps) {
         <input
           type="text"
           className="cz-search-input"
-          placeholder="Search by UHID or name…"
+          placeholder="Search UHID or name…"
           aria-label="Search citizens"
           value={query}
           onChange={(e) => setQuery(e.target.value)}
@@ -132,21 +138,29 @@ function CitizenList({ citizens, selectedId, onSelect }: CitizenListProps) {
             </div>
           </div>
         ) : (
-          filtered.map((citizen) => (
-            <button
-              key={citizen.id}
-              type="button"
-              className={`cz-card${citizen.id === selectedId ? ' active' : ''}`}
-              onClick={() => onSelect(citizen.id)}
-            >
-              <span className="cz-card-avatar" aria-hidden="true">{avatarText(citizen)}</span>
-              <span className="cz-card-body">
-                <span className="cz-card-name">{displayName(citizen)}</span>
-                <span className="cz-card-uhid">{citizen.uhid}</span>
-                <span className="cz-card-meta">{meta(citizen)}</span>
-              </span>
-            </button>
-          ))
+          filtered.map((citizen) => {
+            const risk = riskChip(citizen);
+            return (
+              <button
+                key={citizen.id}
+                type="button"
+                className={`cz-card czx-card${citizen.id === selectedId ? ' active' : ''}`}
+                onClick={() => onSelect(citizen.id)}
+                title={displayName(citizen)}
+              >
+                <span className="cz-card-avatar" aria-hidden="true">{avatarText(citizen)}</span>
+                <span className="cz-card-body">
+                  <span className="cz-card-uhid czx-card-uhid">{citizen.uhid}</span>
+                  <span className="cz-card-meta">{programMeta(citizen)}</span>
+                </span>
+                {risk && (
+                  <span className={`czx-card-risk czx-risk-${risk.cls}`} title={`${citizen.riskLevel} risk`}>
+                    {risk.label}
+                  </span>
+                )}
+              </button>
+            );
+          })
         )}
       </div>
     </aside>

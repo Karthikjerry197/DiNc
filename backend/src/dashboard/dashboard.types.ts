@@ -56,6 +56,8 @@ export interface ServiceItem {
 /** A program with its active-enrollment count for the Programs Summary widget. */
 export interface ProgramSummaryItem {
   name: string;
+  /** Programme colour indicator (hex), sourced from `programs.color`; null when unset. */
+  color: string | null;
   activeEnrollments: number;
 }
 

@@ -7,6 +7,7 @@ import {
   ConsultationNoteDto,
   ConsultationResponseInput,
   CounsellingSectionDto,
+  FieldCondition,
 } from './consultation.types';
 
 /** Raw context row for a teleconsultation, assembled in one join. */
@@ -1718,22 +1719,65 @@ export class ConsultationRepository implements OnModuleInit {
     };
   }
 
-  /** Normalises template fields jsonb into typed defs (tolerant of variants). */
+  /**
+   * Normalises template `fields` jsonb into typed defs (tolerant of variants).
+   * The core five attributes are always produced; the richer metadata (M37J)
+   * is passed through verbatim when present so the Outcome Renderer can drive
+   * sections, help text, defaults and conditional rules from configuration
+   * alone. Both snake_case and camelCase keys are accepted in the jsonb.
+   */
   private static normaliseFields(raw: unknown): ClinicalFieldDef[] {
     if (!Array.isArray(raw)) return [];
+    const pickString = (obj: Record<string, unknown>, ...keys: string[]) => {
+      for (const k of keys) if (typeof obj[k] === 'string') return obj[k] as string;
+      return undefined;
+    };
+    const pickNumber = (obj: Record<string, unknown>, ...keys: string[]) => {
+      for (const k of keys) if (typeof obj[k] === 'number') return obj[k] as number;
+      return undefined;
+    };
     return raw
       .map((f, i) => {
         const obj = (f ?? {}) as Record<string, unknown>;
-        return {
+        const def: ClinicalFieldDef = {
           type: typeof obj.type === 'string' ? obj.type : 'text',
           label: typeof obj.label === 'string' ? obj.label : `Field ${i + 1}`,
           options: Array.isArray(obj.options)
             ? obj.options.filter((o): o is string => typeof o === 'string')
             : [],
           required: obj.required === true,
-          sortOrder: typeof obj.sort_order === 'number' ? obj.sort_order : i,
+          sortOrder: pickNumber(obj, 'sort_order', 'sortOrder') ?? i,
+          key: pickString(obj, 'key'),
+          section: pickString(obj, 'section'),
+          sectionOrder: pickNumber(obj, 'section_order', 'sectionOrder'),
+          placeholder: pickString(obj, 'placeholder'),
+          helpText: pickString(obj, 'help_text', 'helpText'),
+          defaultValue:
+            obj.default_value ?? obj.defaultValue ?? undefined,
+          visibleWhen: ConsultationRepository.normaliseCondition(
+            obj.visible_when ?? obj.visibleWhen,
+          ),
+          requiredWhen: ConsultationRepository.normaliseCondition(
+            obj.required_when ?? obj.requiredWhen,
+          ),
         };
+        return def;
       })
       .sort((a, b) => a.sortOrder - b.sortOrder);
+  }
+
+  /** Normalises a conditional-rule object from the template jsonb. */
+  private static normaliseCondition(raw: unknown): FieldCondition | undefined {
+    if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return undefined;
+    const obj = raw as Record<string, unknown>;
+    const field = typeof obj.field === 'string' ? obj.field : undefined;
+    if (!field) return undefined;
+    const cond: FieldCondition = { field };
+    if (typeof obj.equals === 'string') cond.equals = obj.equals;
+    if (Array.isArray(obj.in)) {
+      cond.in = obj.in.filter((v): v is string => typeof v === 'string');
+    }
+    if (typeof obj.truthy === 'boolean') cond.truthy = obj.truthy;
+    return cond;
   }
 }

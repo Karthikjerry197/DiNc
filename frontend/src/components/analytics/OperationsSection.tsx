@@ -145,8 +145,8 @@ export default function OperationsSection({ token, params, isAdmin }: Props) {
 
       {/* ── 3. Consultation Summary ──────────────────────────────────────── */}
       <SectionHead
-        title="Consultation Summary"
-        sub="Today's consultation activity"
+        title="Care Summary"
+        sub="Today's care activity"
       />
       <div className="stat-grid" style={{ gridTemplateColumns: 'repeat(3, 1fr)', marginBottom: 20 }}>
         <KpiCard

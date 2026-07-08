@@ -90,7 +90,7 @@ export default function DocumentationPreview({
           <button
             type="button"
             className={`cw-note-tool-btn cw-note-copy-btn${copied ? ' cw-note-copied' : ''}`}
-            title="Copy consultation note to clipboard"
+            title="Copy clinical record to clipboard"
             onClick={handleCopy}
             disabled={disabled || !note.trim()}
           >

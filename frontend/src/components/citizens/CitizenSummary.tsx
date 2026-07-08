@@ -1,36 +1,57 @@
 'use client';
 
-import { Plus, UserRound } from 'lucide-react';
+import { useMemo } from 'react';
+import { BookOpen, Phone, Plus, UserRound } from 'lucide-react';
 import type { Activity, CitizenDetail, EnrollmentDetail, EnrollmentSummary } from '@/lib/api';
 import { formatDate } from '@/lib/format';
 import { SkeletonLines } from '@/components/shell/Skeleton';
-import CareJourneyProgress from './CareJourneyProgress';
 
 interface CitizenSummaryProps {
   detail: CitizenDetail | null;
   loading: boolean;
+  /** Clinical risk of the selected citizen (from the list; backend-driven). */
+  riskLevel?: string | null;
   enrollments: EnrollmentSummary[];
   enrollmentsLoading: boolean;
   selectedEnrollmentId: string | null;
   onSelectEnrollment: (id: string) => void;
   enrollmentDetail: EnrollmentDetail | null;
   enrollmentDetailLoading: boolean;
-  /** Selected enrollment's workflow activities — drives Care Journey Progress (M37A). */
+  /** Selected enrollment's workflow activities — drives the KPI trio & progress. */
   activities: Activity[];
   activitiesLoading: boolean;
   onAddProgram: () => void;
   onOpenGuidebook: () => void;
   onStartConsultation: () => void;
-  onBack: () => void;
 }
 
 function val(text: string | null | undefined): string {
   return text && String(text).trim() ? String(text) : '—';
 }
 
+const DAY_MS = 86_400_000;
+
+/** Done / pending / overdue tallies for the selected enrollment's activities. */
+function tally(activities: Activity[]) {
+  let done = 0;
+  let overdue = 0;
+  let pending = 0;
+  const now = Date.now();
+  for (const a of activities) {
+    const isDone = ['COMPLETED', 'DONE', 'CLOSED'].includes(a.status.toUpperCase());
+    if (isDone) done += 1;
+    else if (a.dueDate && new Date(a.dueDate).getTime() < now) overdue += 1;
+    else pending += 1;
+  }
+  const total = activities.length;
+  const completion = total ? Math.round((done / total) * 100) : 0;
+  return { done, overdue, pending, total, completion };
+}
+
 export default function CitizenSummary({
   detail,
   loading,
+  riskLevel,
   enrollments,
   enrollmentsLoading,
   selectedEnrollmentId,
@@ -42,19 +63,20 @@ export default function CitizenSummary({
   onAddProgram,
   onOpenGuidebook,
   onStartConsultation,
-  onBack,
 }: CitizenSummaryProps) {
+  const kpi = useMemo(() => tally(activities), [activities]);
+
   if (loading) {
     return (
-      <section className="cz-center">
-        <SkeletonLines lines={7} />
+      <section className="cz-center czx-summary">
+        <SkeletonLines lines={8} />
       </section>
     );
   }
 
   if (!detail) {
     return (
-      <section className="cz-center">
+      <section className="cz-center czx-summary">
         <div className="empty-state cz-center-empty">
           <div className="empty-state-icon" aria-hidden="true"><UserRound size={22} /></div>
           <div className="empty-state-text">Select a citizen to view their workspace.</div>
@@ -63,166 +85,145 @@ export default function CitizenSummary({
     );
   }
 
-  const { citizen, stats } = detail;
+  const { citizen } = detail;
   const activeEnrollments = enrollments.filter((e) => e.status === 'ACTIVE');
   const name = citizen.fullName?.trim() ? citizen.fullName : citizen.uhid;
   const demographics = [
-    citizen.age != null ? `${citizen.age} yrs` : null,
+    citizen.age != null ? `${citizen.age}y` : null,
     citizen.gender,
-    citizen.district,
     citizen.phone,
+    citizen.district,
   ].filter(Boolean);
+
+  const risk = riskLevel?.trim() ? riskLevel.trim() : null;
 
   const infoRows: { label: string; value: string | null }[] = enrollmentDetail
     ? [
-        { label: 'Program', value: enrollmentDetail.program.name },
-        { label: 'Sub Program', value: enrollmentDetail.subProgram?.name ?? null },
         { label: 'CPHC Service', value: enrollmentDetail.cphcService },
         { label: 'Event', value: enrollmentDetail.event },
         { label: 'Condition', value: enrollmentDetail.condition },
         { label: 'Assignee', value: enrollmentDetail.assignee },
         { label: 'Priority', value: enrollmentDetail.priority },
         { label: 'Status', value: enrollmentDetail.status },
-        { label: 'Review Status', value: enrollmentDetail.reviewStatus },
-        { label: 'Enrollment Date', value: formatDate(enrollmentDetail.enrollmentDate) },
-        { label: 'Geographic Unit', value: enrollmentDetail.geographicUnit },
-        { label: 'Remarks', value: enrollmentDetail.remarks },
+        { label: 'Rev. Status', value: enrollmentDetail.reviewStatus },
+        { label: 'Enrolled', value: formatDate(enrollmentDetail.enrollmentDate) },
+        { label: 'Geo Unit', value: enrollmentDetail.geographicUnit },
       ]
     : [];
 
   return (
-    <section className="cz-center">
-      <div className="cz-center-head">
-        <button type="button" className="cz-back" onClick={onBack} title="Back to Worklist">
-          ‹ Back
-        </button>
-        <span className="cz-uhid-badge">{citizen.uhid}</span>
-      </div>
-
-      <div className="cz-identity">
-        <div className="cz-identity-avatar" aria-hidden="true">
+    <section className="cz-center czx-summary">
+      {/* Identity header — UHID anchor + name + risk + programme count */}
+      <div className="czx-identity">
+        <div className="czx-identity-avatar" aria-hidden="true">
           {(name[0] ?? '#').toUpperCase()}
         </div>
-        <div>
-          <div className="cz-identity-name">{name}</div>
-          <div className="cz-identity-meta">
+        <div className="czx-identity-body">
+          <div className="czx-identity-top">
+            <span className="czx-identity-uhid">{citizen.uhid}</span>
+            {risk && <span className={`czx-risk czx-risk-${risk.toLowerCase()}`}>{risk}</span>}
+          </div>
+          <div className="czx-identity-name">{name}</div>
+          <div className="czx-identity-meta">
             {demographics.length ? demographics.join(' · ') : 'No demographics on record'}
           </div>
+          <div className="czx-identity-progs">{activeEnrollments.length} enrolled programme{activeEnrollments.length === 1 ? '' : 's'}</div>
         </div>
       </div>
 
-      {/* Care Journey Progress (M37A) — derived live from the selected
-        * enrollment's workflow activities; nothing is stored. */}
-      <CareJourneyProgress
-        activities={activities}
-        loading={activitiesLoading}
-        hasEnrollment={!!selectedEnrollmentId}
-      />
-
-      {/* Active programs — live enrollments; selecting one updates the panel below. */}
-      <div className="cz-section">
-        <div className="cz-section-head">
-          <span className="cz-section-label">
-            Active Programs
-            <span className="cz-enroll-count">{activeEnrollments.length}</span>
-          </span>
-          <button
-            type="button"
-            className="cz-chip-add"
-            title="Add Program"
-            onClick={onAddProgram}
-          >
-            <Plus size={13} aria-hidden="true" /> Add Program
+      {/* Enrolled programmes — chips select which programme drives the detail below */}
+      <div className="czx-block">
+        <div className="czx-block-head">
+          <span className="czx-block-label">Enrolled Programmes</span>
+          <button type="button" className="czx-chip-add" title="Add programme" onClick={onAddProgram}>
+            <Plus size={12} aria-hidden="true" /> Add
           </button>
         </div>
         {enrollmentsLoading ? (
-          <div className="cz-inline-empty">Loading programs…</div>
+          <div className="cz-inline-empty">Loading programmes…</div>
         ) : activeEnrollments.length > 0 ? (
-          <ul className="cz-prog-list">
+          <div className="czx-chips">
             {activeEnrollments.map((enrollment) => {
-              const label = enrollment.program.name ?? 'Program';
               const selected = enrollment.id === selectedEnrollmentId;
               return (
-                <li key={enrollment.id}>
-                  <button
-                    type="button"
-                    className={`cz-prog-row${selected ? ' selected' : ''}`}
-                    aria-pressed={selected}
-                    onClick={() => onSelectEnrollment(enrollment.id)}
-                  >
-                    <span className="cz-prog-dot" aria-hidden="true" />
-                    <span className="cz-prog-name">{label}</span>
-                    {selected && <span className="cz-prog-current">Currently Selected</span>}
-                  </button>
-                </li>
+                <button
+                  key={enrollment.id}
+                  type="button"
+                  className={`czx-chip${selected ? ' selected' : ''}`}
+                  aria-pressed={selected}
+                  onClick={() => onSelectEnrollment(enrollment.id)}
+                >
+                  {selected && <span className="czx-chip-tick" aria-hidden="true">✓ </span>}
+                  {enrollment.program.name ?? 'Programme'}
+                </button>
               );
             })}
-          </ul>
+          </div>
         ) : (
-          <div className="cz-inline-empty">No active clinical programs.</div>
+          <div className="cz-inline-empty">No active clinical programmes.</div>
         )}
       </div>
 
-      {/* Enrollment information — driven by the selected enrollment. */}
-      <div className="cz-section">
-        <span className="cz-section-label">Enrollment Information</span>
+      {/* Selected enrollment detail */}
+      <div className="czx-block">
         {enrollmentDetailLoading ? (
           <div className="cz-inline-empty">Loading enrollment…</div>
         ) : enrollmentDetail ? (
-          <div className="cz-info-grid">
-            {infoRows.map((row) => (
-              <div key={row.label} className="cz-info-row">
-                <span className="cz-info-label">{row.label}</span>
-                <span className="cz-info-value">{val(row.value)}</span>
+          <>
+            <div className="czx-prog-title">{enrollmentDetail.program.name}</div>
+            <dl className="czx-info">
+              {infoRows.map((row) => (
+                <div key={row.label} className="czx-info-row">
+                  <dt>{row.label}</dt>
+                  <dd>{val(row.value)}</dd>
+                </div>
+              ))}
+            </dl>
+            {enrollmentDetail.remarks?.trim() && (
+              <div className="czx-remarks">
+                <span className="czx-remarks-label">Remarks</span>
+                <p>{enrollmentDetail.remarks}</p>
               </div>
-            ))}
-          </div>
+            )}
+          </>
         ) : (
           <div className="cz-inline-empty">No active enrollment for this citizen.</div>
         )}
       </div>
 
-      {/* Completion statistics */}
-      <div className="cz-section">
-        <span className="cz-section-label">Completion</span>
-        <div className="cz-stats">
-          <div className="cz-stat">
-            <span className="cz-stat-value">{stats.total}</span>
-            <span className="cz-stat-label">Total</span>
-          </div>
-          <div className="cz-stat">
-            <span className="cz-stat-value" style={{ color: 'var(--p)' }}>{stats.completed}</span>
-            <span className="cz-stat-label">Completed</span>
-          </div>
-          <div className="cz-stat">
-            <span className="cz-stat-value" style={{ color: 'var(--warn)' }}>{stats.pending}</span>
-            <span className="cz-stat-label">Pending</span>
-          </div>
+      {/* KPI trio + completion — for the selected programme */}
+      <div className="czx-kpis">
+        <div className="czx-kpi">
+          <span className="czx-kpi-num czx-kpi-done">{activitiesLoading ? '—' : kpi.done}</span>
+          <span className="czx-kpi-label">Done</span>
+        </div>
+        <div className="czx-kpi">
+          <span className="czx-kpi-num czx-kpi-pend">{activitiesLoading ? '—' : kpi.pending}</span>
+          <span className="czx-kpi-label">Pending</span>
+        </div>
+        <div className="czx-kpi">
+          <span className="czx-kpi-num czx-kpi-over">{activitiesLoading ? '—' : kpi.overdue}</span>
+          <span className="czx-kpi-label">Overdue</span>
+        </div>
+      </div>
+      <div className="czx-progress">
+        <div className="czx-progress-head">
+          <span>Completion</span>
+          <span className="czx-progress-pct">{kpi.completion}%</span>
+        </div>
+        <div className="czx-progress-track">
+          <div className="czx-progress-fill" style={{ width: `${kpi.completion}%` }} />
         </div>
       </div>
 
-      {/* Action buttons — every action here is live (M35A Wave 1 removed the
-        * Edit / Close / Remove / FAQs / Manage Activities placeholders; they
-        * return only when their functionality ships). */}
-      <div className="cz-actions">
-        <div className="cz-actions-row">
-          <button
-            type="button"
-            className="wl-btn wl-btn-soft"
-            title="Open the guidebook for this enrollment"
-            onClick={onOpenGuidebook}
-          >
-            Guidebook
-          </button>
-          <button
-            type="button"
-            className="wl-btn wl-btn-soft"
-            title="Start or continue a consultation for this citizen"
-            onClick={onStartConsultation}
-          >
-            Start Consultation
-          </button>
-        </div>
+      {/* Live actions */}
+      <div className="czx-actions">
+        <button type="button" className="czx-btn czx-btn-primary" onClick={onStartConsultation}>
+          <Phone size={13} aria-hidden="true" /> Start Call
+        </button>
+        <button type="button" className="czx-btn czx-btn-soft" onClick={onOpenGuidebook}>
+          <BookOpen size={13} aria-hidden="true" /> Guidebook
+        </button>
       </div>
     </section>
   );

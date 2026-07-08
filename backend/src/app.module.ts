@@ -20,6 +20,7 @@ import { AnalyticsModule } from './analytics/analytics.module';
 import { CdseModule } from './cdse/cdse.module';
 import { CarePlanModule } from './care-plan/care-plan.module';
 import { SystemModule } from './system/system.module';
+import { RbacModule } from './rbac/rbac.module';
 
 @Module({
   imports: [
@@ -44,6 +45,7 @@ import { SystemModule } from './system/system.module';
     CdseModule,
     CarePlanModule,
     SystemModule,
+    RbacModule,
   ],
 })
 export class AppModule {}

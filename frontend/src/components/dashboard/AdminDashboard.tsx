@@ -3,11 +3,9 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import {
-  fetchActiveAlerts,
   fetchAdminDashboard,
   fetchWorklistOverview,
   type AdminDashboardSummary,
-  type AlertWithCitizen,
   type WorklistItem,
 } from '@/lib/api';
 import { getToken } from '@/lib/session';
@@ -35,6 +33,7 @@ import {
   TriangleAlert,
 } from 'lucide-react';
 import TodaysWorklistPanel from './TodaysWorklistPanel';
+import ProgrammeSummaryStrip from './ProgrammeSummaryStrip';
 import DashboardInspector from './DashboardInspector';
 import { SkeletonStats, SkeletonTable } from '@/components/shell/Skeleton';
 
@@ -136,7 +135,6 @@ export default function AdminDashboard() {
   const router = useRouter();
   const [data, setData]               = useState<AdminDashboardSummary | null>(null);
   const [worklist, setWorklist]       = useState<WorklistItem[]>([]);
-  const [alerts, setAlerts]           = useState<AlertWithCitizen[]>([]);
   const [loading, setLoading]         = useState(true);
   const [error, setError]             = useState('');
   const [reportTarget, setReportTarget] = useState<ReportDuplicateTarget | null>(null);
@@ -158,14 +156,10 @@ export default function AdminDashboard() {
     Promise.all([
       fetchAdminDashboard(token),
       fetchWorklistOverview(token),
-      // Active clinical alerts feed Priority Alerts; a failure here must not
-      // break the dashboard, so it resolves to an empty list.
-      fetchActiveAlerts(token).catch(() => [] as AlertWithCitizen[]),
     ])
-      .then(([summary, overview, activeAlerts]) => {
+      .then(([summary, overview]) => {
         setData(summary);
         setWorklist(overview.items);
-        setAlerts(activeAlerts);
         setError('');
         setLoading(false);
       })
@@ -217,6 +211,10 @@ export default function AdminDashboard() {
         aria-label="System health and clinical risk"
       />
 
+      {/* Programme activity at a glance — full-width strip between the KPI
+          ribbon and Today's Worklist (data & colours from PostgreSQL). */}
+      <ProgrammeSummaryStrip programs={data?.programs ?? []} />
+
       {error && <div className="dash-error">{error}</div>}
 
       {/* Purpose-built regions: primary Worklist (~66%) + single Inspector (~34%). */}
@@ -235,7 +233,7 @@ export default function AdminDashboard() {
             setReportTarget({ id: citizenId, uhid, fullName })
           }
         />
-        <DashboardInspector data={data} alerts={alerts} />
+        <DashboardInspector data={data} />
       </WorkspaceGrid>
 
       {reportTarget && (

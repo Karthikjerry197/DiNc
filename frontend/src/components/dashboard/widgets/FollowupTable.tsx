@@ -115,7 +115,7 @@ export default function FollowupTable({
                     aria-label="Guidebook" onClick={() => openGuidebook(item.id)}>
                     <BookOpen size={16} aria-hidden="true" />
                   </button>
-                  <button type="button" className="wl-icon-btn wl-icon-btn--call" title="Start teleconsultation"
+                  <button type="button" className="wl-icon-btn wl-icon-btn--call" title="Start Call"
                     aria-label="Call" onClick={() => onConsult(item.id)}>
                     <Phone size={16} aria-hidden="true" />
                   </button>

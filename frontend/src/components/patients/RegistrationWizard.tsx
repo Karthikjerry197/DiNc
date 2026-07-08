@@ -10,6 +10,7 @@ import {
   type RegistrationResult,
 } from '@/lib/api';
 import { getToken } from '@/lib/session';
+import { calculateAge } from '@/lib/format';
 import { Check, TriangleAlert } from 'lucide-react';
 import { useDialogA11y } from '@/lib/useDialogA11y';
 
@@ -93,15 +94,26 @@ export default function RegistrationWizard({ open, onClose, onRegistered }: Regi
     setForm((f) => ({ ...f, [key]: value }));
   }
 
+  /**
+   * DOB is the source of truth for age (M39). Selecting a date recomputes the
+   * read-only Age field in completed years; clearing DOB clears Age.
+   */
+  function setDob(value: string) {
+    const derived = calculateAge(value);
+    setForm((f) => ({ ...f, dateOfBirth: value, age: derived === null ? '' : String(derived) }));
+  }
+
   function toggleProgram(id: string) {
     setProgramIds((ids) => (ids.includes(id) ? ids.filter((x) => x !== id) : [...ids, id]));
   }
 
   function validateStep1(): string | null {
     if (!form.fullName.trim()) return 'Full name is required.';
-    if (form.age.trim()) {
-      const n = Number(form.age);
-      if (!Number.isFinite(n) || n < 0 || n > 130) return 'Please enter a valid age.';
+    if (form.dateOfBirth) {
+      const birth = new Date(form.dateOfBirth);
+      if (Number.isNaN(birth.getTime())) return 'Please enter a valid date of birth.';
+      if (birth > new Date()) return 'Date of birth cannot be in the future.';
+      if (calculateAge(form.dateOfBirth) === null) return 'Please enter a realistic date of birth.';
     }
     return null;
   }
@@ -214,14 +226,16 @@ export default function RegistrationWizard({ open, onClose, onRegistered }: Regi
               </div>
               <div className="modal-row">
                 <div className="fg">
-                  <label className="fl" htmlFor="rw-age">Age</label>
-                  <input id="rw-age" type="number" min={0} max={130} className="fc" value={form.age}
-                    onChange={(e) => set('age', e.target.value)} />
-                </div>
-                <div className="fg">
                   <label className="fl" htmlFor="rw-dob">Date of Birth</label>
                   <input id="rw-dob" type="date" className="fc" value={form.dateOfBirth}
-                    onChange={(e) => set('dateOfBirth', e.target.value)} />
+                    max={new Date().toISOString().slice(0, 10)}
+                    onChange={(e) => setDob(e.target.value)} />
+                </div>
+                <div className="fg">
+                  <label className="fl" htmlFor="rw-age">Age</label>
+                  <input id="rw-age" type="number" className="fc" value={form.age} readOnly
+                    aria-readonly="true" tabIndex={-1} placeholder="From date of birth"
+                    title="Calculated automatically from date of birth" />
                 </div>
               </div>
               <div className="modal-row">

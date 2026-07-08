@@ -7,14 +7,18 @@ import {
   fetchActiveActivity,
   fetchActivityOptions,
   type ActiveActivity,
+  type ActivityEntry,
   type EnrollmentSummary,
 } from '@/lib/api';
 import { getToken } from '@/lib/session';
+import { formatDate } from '@/lib/format';
 import { useDialogA11y } from '@/lib/useDialogA11y';
 
 interface StartConsultationDialogProps {
   citizenId: string;
   enrollments: EnrollmentSummary[];
+  /** The citizen's activities (worklist-wide) — used to enrich the scheduled-activity summary. */
+  activities?: ActivityEntry[];
   open: boolean;
   onClose: () => void;
 }
@@ -36,6 +40,7 @@ type Step = 'checking' | 'scheduled-found' | 'select-program' | 'creating';
 export default function StartConsultationDialog({
   citizenId,
   enrollments,
+  activities = [],
   open,
   onClose,
 }: StartConsultationDialogProps) {
@@ -133,7 +138,7 @@ export default function StartConsultationDialog({
       });
       navigateToConsultation(activity.id);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Unable to start the consultation.');
+      setError(err instanceof Error ? err.message : 'Unable to start care.');
       setSubmitting(false);
     }
   }
@@ -165,7 +170,7 @@ export default function StartConsultationDialog({
               <span id="sc-dialog-title" className="modal-title">Checking…</span>
             </div>
             <div className="modal-body">
-              <div className="dash-loading">Checking for scheduled consultations&hellip;</div>
+              <div className="dash-loading">Checking for scheduled care&hellip;</div>
             </div>
           </>
         )}
@@ -174,25 +179,36 @@ export default function StartConsultationDialog({
         {step === 'scheduled-found' && activeActivity && (
           <>
             <div className="modal-head">
-              <h2 id="sc-dialog-title" className="modal-title">Scheduled Consultation Found</h2>
+              <h2 id="sc-dialog-title" className="modal-title">Scheduled Care Activity Found</h2>
               <button type="button" className="modal-close" aria-label="Close" onClick={onClose}>×</button>
             </div>
             <div className="modal-body">
               <p style={{ fontSize: 14, color: '#374151', marginBottom: 12 }}>
-                A scheduled consultation already exists for this citizen.
+                A scheduled care activity already exists for this citizen.
               </p>
-              {activeActivity.programName && (
-                <div className="fg" style={{ marginBottom: 4 }}>
-                  <span className="fl">Program</span>
-                  <span style={{ fontSize: 14, fontWeight: 600 }}>{activeActivity.programName}</span>
-                </div>
-              )}
-              {activeActivity.eventName && (
-                <div className="fg">
-                  <span className="fl">Event</span>
-                  <span style={{ fontSize: 14, fontWeight: 600 }}>{activeActivity.eventName}</span>
-                </div>
-              )}
+              {(() => {
+                // Enrich the summary from the citizen's worklist activities
+                // (same worklist id); fall back to the active-activity payload.
+                const match = activities.find((a) => a.id === activeActivity.activityId);
+                const dash = '—';
+                const rows: { label: string; value: string }[] = [
+                  { label: 'Programme', value: activeActivity.programName || match?.program || dash },
+                  { label: 'Activity', value: activeActivity.eventName || match?.activity || dash },
+                  { label: 'Due Date', value: match?.dueDate ? formatDate(match.dueDate) : dash },
+                  { label: 'Priority', value: match?.priority || dash },
+                  { label: 'Status', value: match?.status || dash },
+                ];
+                return (
+                  <dl className="sc-activity-card">
+                    {rows.map((row) => (
+                      <div key={row.label} className="sc-activity-field">
+                        <dt className="sc-activity-label">{row.label}</dt>
+                        <dd className="sc-activity-value">{row.value}</dd>
+                      </div>
+                    ))}
+                  </dl>
+                );
+              })()}
             </div>
             <div className="modal-foot" style={{ flexDirection: 'column', gap: 8, alignItems: 'stretch' }}>
               <button
@@ -200,7 +216,7 @@ export default function StartConsultationDialog({
                 className="btn btn-primary"
                 onClick={() => navigateToConsultation(activeActivity.activityId)}
               >
-                Continue Scheduled Consultation
+                Continue
               </button>
               <button
                 type="button"
@@ -210,7 +226,7 @@ export default function StartConsultationDialog({
                   setSelectedEnrollmentId(activeEnrollments[0]?.id ?? '');
                 }}
               >
-                Start New Consultation
+                Create New Care Activity
               </button>
               <button type="button" className="btn btn-ghost" onClick={onClose}>
                 Cancel
@@ -223,7 +239,7 @@ export default function StartConsultationDialog({
         {step === 'select-program' && (
           <>
             <div className="modal-head">
-              <h2 id="sc-dialog-title" className="modal-title">Start Consultation</h2>
+              <h2 id="sc-dialog-title" className="modal-title">Start Call</h2>
               <button type="button" className="modal-close" aria-label="Close" onClick={onClose} disabled={submitting}>×</button>
             </div>
             <div className="modal-body">
@@ -285,7 +301,7 @@ export default function StartConsultationDialog({
                   disabled={!eventId || submitting}
                   onClick={handleCreateAndNavigate}
                 >
-                  {submitting ? 'Starting…' : 'Start Consultation'}
+                  {submitting ? 'Starting…' : 'Start Call'}
                 </button>
               )}
             </div>

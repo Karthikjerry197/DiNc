@@ -24,7 +24,6 @@ import ActivityWorkspace from '@/components/citizens/ActivityWorkspace';
 import AddProgramDialog from '@/components/citizens/AddProgramDialog';
 import AddActivityDialog from '@/components/citizens/AddActivityDialog';
 import StartConsultationDialog from '@/components/citizens/StartConsultationDialog';
-import PatientTimeline from '@/components/citizens/PatientTimeline';
 import ClinicalJourney from '@/components/citizens/ClinicalJourney';
 import PatientActions from '@/components/patients/PatientActions';
 import ClinicalDecisionPanel from '@/components/consultation/ClinicalDecisionPanel';
@@ -76,10 +75,6 @@ function CitizensWorkspace() {
   const [addOpen, setAddOpen] = useState(false);
   const [addActivityOpen, setAddActivityOpen] = useState(false);
   const [startConsultOpen, setStartConsultOpen] = useState(false);
-  // Consultations happen on a separate route, so returning here remounts the
-  // page and the timeline reloads naturally; the key exists for future in-page
-  // refresh triggers and currently never changes.
-  const [timelineRefresh] = useState(0);
   const [enrollmentsRefresh, setEnrollmentsRefresh] = useState(0);
   const pendingEnrollmentId = useRef<string | null>(null);
   const [activeTab, setActiveTab] = useState<'profile' | 'journey'>('profile');
@@ -312,6 +307,8 @@ function CitizensWorkspace() {
     );
   }
 
+  const selectedCitizen = citizens.find((c) => c.id === selectedId) ?? null;
+
   const citizenListPanel = listLoading ? (
     <aside className="cz-list">
       <SkeletonLines lines={6} />
@@ -323,15 +320,17 @@ function CitizensWorkspace() {
   return (
     <Workspace aria-label="Citizens">
       <WorkspaceHeader
+        className="cz-header"
         title="Citizens"
-        subtitle="Patient registry & workspace"
         actions={
           <PatientActions variant="toolbar" onChanged={reloadCitizens} onToast={flash} />
         }
         tabs={
-          <div className="cz-tab-bar">
+          <div className="cz-tab-bar" role="tablist" aria-label="Citizen views">
             <button
               type="button"
+              role="tab"
+              aria-selected={activeTab === 'profile'}
               className={`cz-tab-btn${activeTab === 'profile' ? ' active' : ''}`}
               onClick={() => setActiveTab('profile')}
             >
@@ -339,6 +338,8 @@ function CitizensWorkspace() {
             </button>
             <button
               type="button"
+              role="tab"
+              aria-selected={activeTab === 'journey'}
               className={`cz-tab-btn${activeTab === 'journey' ? ' active' : ''}`}
               onClick={() => setActiveTab('journey')}
             >
@@ -351,44 +352,38 @@ function CitizensWorkspace() {
       {error && <div className="dash-error">{error}</div>}
 
       {activeTab === 'profile' ? (
-        <>
-          <WorkspaceGrid template="list-primary-inspector">
-            {citizenListPanel}
+        <WorkspaceGrid template="list-inspector-primary">
+          {citizenListPanel}
 
-            <CitizenSummary
-              detail={detail}
-              loading={detailLoading}
-              enrollments={enrollments}
-              enrollmentsLoading={enrollmentsLoading}
-              selectedEnrollmentId={selectedEnrollmentId}
-              onSelectEnrollment={setSelectedEnrollmentId}
-              enrollmentDetail={enrollmentDetail}
-              enrollmentDetailLoading={enrollmentDetailLoading}
-              activities={activities}
-              activitiesLoading={activitiesLoading}
-              onAddProgram={() => detail && setAddOpen(true)}
-              onOpenGuidebook={openGuidebook}
-              onStartConsultation={() => selectedId && setStartConsultOpen(true)}
-              onBack={() => router.push('/worklist')}
-            />
+          <CitizenSummary
+            detail={detail}
+            loading={detailLoading}
+            riskLevel={selectedCitizen?.riskLevel ?? null}
+            enrollments={enrollments}
+            enrollmentsLoading={enrollmentsLoading}
+            selectedEnrollmentId={selectedEnrollmentId}
+            onSelectEnrollment={setSelectedEnrollmentId}
+            enrollmentDetail={enrollmentDetail}
+            enrollmentDetailLoading={enrollmentDetailLoading}
+            activities={activities}
+            activitiesLoading={activitiesLoading}
+            onAddProgram={() => detail && setAddOpen(true)}
+            onOpenGuidebook={openGuidebook}
+            onStartConsultation={() => selectedId && setStartConsultOpen(true)}
+          />
 
-            <ActivityWorkspace
-              activities={activities}
-              loading={activitiesLoading}
-              error={activitiesError}
-              hasEnrollment={!!selectedEnrollmentId}
-              onNewActivity={() => selectedEnrollmentId && setAddActivityOpen(true)}
-              onStartCall={(activityId) => {
-                const returnUrl = encodeURIComponent(`/citizens?c=${selectedId ?? ''}`);
-                router.push(`/worklist/${activityId}/consult?returnUrl=${returnUrl}`);
-              }}
-            />
-          </WorkspaceGrid>
-
-          <div className="cz-timeline-dock">
-            <PatientTimeline citizenId={selectedId} refreshKey={timelineRefresh} />
-          </div>
-        </>
+          <ActivityWorkspace
+            entries={detail?.activities ?? []}
+            loading={detailLoading}
+            error={activitiesError}
+            hasEnrollment={!!selectedEnrollmentId}
+            onNewActivity={() => selectedEnrollmentId && setAddActivityOpen(true)}
+            onStartCall={(activityId) => {
+              const returnUrl = encodeURIComponent(`/citizens?c=${selectedId ?? ''}`);
+              router.push(`/worklist/${activityId}/consult?returnUrl=${returnUrl}`);
+            }}
+          />
+        </WorkspaceGrid>
       ) : (
         <WorkspaceGrid template="list-detail">
           {citizenListPanel}
@@ -437,6 +432,7 @@ function CitizensWorkspace() {
         <StartConsultationDialog
           citizenId={selectedId}
           enrollments={enrollments}
+          activities={detail?.activities ?? []}
           open={startConsultOpen}
           onClose={() => setStartConsultOpen(false)}
         />

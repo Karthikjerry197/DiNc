@@ -96,7 +96,7 @@ const WIDGET_REGISTRY: Record<string, WidgetDefinition> = {
   'worklist': {
     id:           'worklist',
     label:        "Today's Worklist",
-    description:  "Active worklist items, overdue tasks, and today's consultations",
+    description:  "Active worklist items, overdue tasks, and today's care activities",
     icon:         <ClipboardList size={15} />,
     category:     'Operations',
     defaultColSpan: 2,

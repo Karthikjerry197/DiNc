@@ -172,10 +172,10 @@ export default function WorklistPage() {
 
   return (
     <div className="page wl-page">
-      <WorklistToolbar stats={data.stats} />
-      <div className="op-toolbar-bar">
-        <PatientActions variant="toolbar" onChanged={reload} onToast={flash} />
-      </div>
+      <WorklistToolbar
+        stats={data.stats}
+        actions={<PatientActions variant="toolbar" onChanged={reload} onToast={flash} />}
+      />
       <WorklistFilters
         programs={data.programs}
         assignees={data.assignees}

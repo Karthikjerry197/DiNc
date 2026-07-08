@@ -109,7 +109,12 @@
       "Bash(grep -n \"^/\\\\* ── Data table ── \\\\*/\" app/globals.css)",
       "PowerShell(Select-String -Path \"C:\\\\Users\\\\TMDL DiNC Assam\\\\.claude\\\\projects\\\\C--Users-TMDL-DiNC-Assam-Desktop-New-method-DiNC\\\\b1ce1fed-a2ff-4e30-9d4c-67e1d39f5376\\\\tool-results\\\\toolu_01DbUYP7m6ich7GAuCpWrFMv.txt\" -Pattern 'public\\\\.\\(\\\\w+\\)' -AllMatches | ForEach-Object { $_.Matches } | ForEach-Object { $_.Groups[1].Value } | Sort-Object -Unique)",
       "PowerShell(\\(Get-Content \"frontend\\\\src\\\\app\\\\globals.css\" | Measure-Object -Line\\).Lines)",
-      "PowerShell(npm run *)"
+      "PowerShell(npm run *)",
+      "Bash(node -e \"const c=require\\('fs'\\).readFileSync\\('src/app/globals.css','utf8'\\);const o=\\(c.match\\(/{/g\\)||[]\\).length,cl=\\(c.match\\(/}/g\\)||[]\\).length;console.log\\('open',o,'close',cl,o===cl?'BALANCED':'MISMATCH'\\)\")",
+      "Bash(node -e \"const c=require\\('fs'\\).readFileSync\\('src/app/globals.css','utf8'\\);const o=\\(c.match\\(/{/g\\)||[]\\).length,cl=\\(c.match\\(/}/g\\)||[]\\).length;console.log\\('CSS braces:',o===cl?'BALANCED':'MISMATCH '+o+'/'+cl\\)\")",
+      "Bash(node -e \"const c=require\\('fs'\\).readFileSync\\('src/app/globals.css','utf8'\\);const o=\\(c.match\\(/{/g\\)||[]\\).length,cl=\\(c.match\\(/}/g\\)||[]\\).length;console.log\\(o===cl?'BALANCED':'MISMATCH '+o+'/'+cl\\)\")",
+      "Bash(echo \"\\(exit $?\\)\")",
+      "Bash(node -e \"const c=require\\('fs'\\).readFileSync\\('src/app/globals.css','utf8'\\);const o=\\(c.match\\(/{/g\\)||[]\\).length,cl=\\(c.match\\(/}/g\\)||[]\\).length;console.log\\('braces',o===cl?'BALANCED':'MISMATCH '+o+'/'+cl\\)\")"
     ]
   }
 }

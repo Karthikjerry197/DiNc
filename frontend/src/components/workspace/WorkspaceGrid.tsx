@@ -1,12 +1,14 @@
 'use client';
 
 import type { CSSProperties, ReactNode } from 'react';
+import { useOverflowFades } from './useOverflowFades';
 
 export type WorkspaceGridTemplate =
   | 'single' // one panel fills
   | 'list-detail' // [--list-col-w | 1fr]
   | 'primary-inspector' // [1fr | --inspector-w]
   | 'list-primary-inspector' // [--list-col-w | 1fr | --inspector-w]
+  | 'list-inspector-primary' // [--list-col-w | --inspector-w | 1fr]
   | 'ribbon+primary-inspector'; // row: KpiRibbon; then [1fr | --inspector-w]
 
 export interface WorkspaceGridProps {
@@ -25,6 +27,7 @@ const TEMPLATE_CLASS: Record<WorkspaceGridTemplate, string> = {
   'list-detail': 'wsg--list-detail',
   'primary-inspector': 'wsg--primary-inspector',
   'list-primary-inspector': 'wsg--list-primary-inspector',
+  'list-inspector-primary': 'wsg--list-inspector-primary',
   'ribbon+primary-inspector': 'wsg--ribbon-primary-inspector',
 };
 
@@ -46,10 +49,15 @@ export default function WorkspaceGrid({
 }: WorkspaceGridProps) {
   const cls = ['wsg', TEMPLATE_CLASS[template], className].filter(Boolean).join(' ');
   const mergedStyle: CSSProperties = { ...(gap ? { gap } : null), ...style };
+  const scrollRef = useOverflowFades<HTMLDivElement>();
 
+  // The host is a non-scrolling positioning context that carries the edge
+  // fades; the grid itself remains the horizontal scroll container.
   return (
-    <div className={cls} style={mergedStyle}>
-      {children}
+    <div className="wsg-host">
+      <div className={cls} style={mergedStyle} ref={scrollRef}>
+        {children}
+      </div>
     </div>
   );
 }

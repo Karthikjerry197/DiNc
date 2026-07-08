@@ -181,23 +181,38 @@ export class DashboardService {
   }
 
   /**
-   * Active programs with their active-enrollment counts for the Programs Summary
-   * widget. A LEFT JOIN keeps programs with no enrollments visible (count 0).
+   * Active programmes with their active-enrollment counts and presentation
+   * metadata (colour) for the Programme Summary strip. A LEFT JOIN to
+   * `enrollments` keeps programmes with no enrollments visible (count 0); a LEFT
+   * JOIN to `program_display_config` supplies the colour and display order.
+   *
+   * Ordering is admin-configurable: `display_order` wins when set, otherwise the
+   * list falls back to most-active-first (then alphabetical). Colour and order
+   * are presentation configuration held in the separate `program_display_config`
+   * table — never on the programmes master table and never hardcoded in the
+   * frontend (see ProgramMetadataRepository).
    */
   private async programs(): Promise<ProgramSummaryItem[]> {
     try {
-      const result = await this.db.query<{ name: string; active_enrollments: number }>(
+      const result = await this.db.query<{
+        name: string;
+        color: string | null;
+        active_enrollments: number;
+      }>(
         `SELECT p.name AS name,
+                pdc.color AS color,
                 count(e.id) FILTER (WHERE e.status = 'ACTIVE')::int AS active_enrollments
          FROM public.programs p
          LEFT JOIN public.enrollments e ON e.program_id = p.id
+         LEFT JOIN public.program_display_config pdc ON pdc.program_id = p.id
          WHERE p.is_active = true
-         GROUP BY p.id, p.name
-         ORDER BY active_enrollments DESC, p.name
+         GROUP BY p.id, p.name, pdc.color, pdc.display_order
+         ORDER BY pdc.display_order ASC NULLS LAST, active_enrollments DESC, p.name
          LIMIT 12`,
       );
       return result.rows.map((row) => ({
         name: row.name,
+        color: row.color,
         activeEnrollments: row.active_enrollments,
       }));
     } catch (error) {

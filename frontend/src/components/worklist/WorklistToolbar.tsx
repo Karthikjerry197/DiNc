@@ -1,9 +1,12 @@
 'use client';
 
+import type { ReactNode } from 'react';
 import type { WorklistStats } from '@/lib/api';
 
 interface WorklistToolbarProps {
   stats: WorklistStats | null;
+  /** Right-aligned actions rendered on the same row as the title (M38B). */
+  actions?: ReactNode;
 }
 
 interface ChipDef {
@@ -17,11 +20,11 @@ function chipValue(value: number | null): string {
 }
 
 /**
- * Worklist header: page title and live summary chips. Bulk/reminder/export
- * actions were removed in M35A (Wave 1) — they were placeholders with no
- * behaviour; they return here only when their functionality ships.
+ * Worklist header: a single compact row (title + actions) above full-width
+ * summary chips (M38B). The table below is the primary workspace, so the
+ * header spends as little vertical space as possible.
  */
-export default function WorklistToolbar({ stats }: WorklistToolbarProps) {
+export default function WorklistToolbar({ stats, actions }: WorklistToolbarProps) {
   const chips: ChipDef[] = [
     { label: 'Total', value: stats?.total ?? null, accent: 'var(--tp)' },
     { label: 'Pending', value: stats?.pending ?? null, accent: 'var(--warn)' },
@@ -34,10 +37,8 @@ export default function WorklistToolbar({ stats }: WorklistToolbarProps) {
   return (
     <div className="wl-toolbar">
       <div className="wl-toolbar-row">
-        <div>
-          <h1 className="page-title">Worklist</h1>
-          <p className="page-subtitle">Operational task queue · live records</p>
-        </div>
+        <h1 className="page-title">Worklist</h1>
+        {actions}
       </div>
 
       <div className="wl-chips">

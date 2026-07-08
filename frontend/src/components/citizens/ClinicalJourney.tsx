@@ -11,7 +11,7 @@ type FilterKey = 'all' | 'consultations' | 'calls' | 'referrals' | 'outcomes';
 
 const FILTERS: { key: FilterKey; label: string }[] = [
   { key: 'all', label: 'All' },
-  { key: 'consultations', label: 'Consultations' },
+  { key: 'consultations', label: 'Care' },
   { key: 'calls', label: 'Calls' },
   { key: 'referrals', label: 'Referrals' },
   { key: 'outcomes', label: 'Outcomes' },
@@ -40,7 +40,7 @@ function eventIcon(e: ClinicalJourneyEntry): ReactNode {
 
 function eventLabel(e: ClinicalJourneyEntry): string {
   if (e.eventType === 'ENROLLMENT') return 'Enrollment';
-  if (e.eventType === 'CONSULTATION') return 'Consultation';
+  if (e.eventType === 'CONSULTATION') return 'Care';
   return 'Activity';
 }
 

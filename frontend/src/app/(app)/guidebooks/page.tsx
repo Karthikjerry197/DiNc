@@ -193,7 +193,7 @@ export default function GuidebooksPage() {
             className="btn btn-primary gb-consult-banner-btn"
             href={`/worklist/${consultActivityId}/consult`}
           >
-            Start Consultation →
+            Start Call →
           </Link>
         </div>
       )}

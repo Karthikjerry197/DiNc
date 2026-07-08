@@ -74,6 +74,8 @@ export interface ServiceItem {
 
 export interface ProgramSummaryItem {
   name: string;
+  /** Programme colour indicator (hex) from PostgreSQL; null when unset. */
+  color: string | null;
   activeEnrollments: number;
 }
 
@@ -1353,13 +1355,53 @@ export async function resolveDuplicateRequest(
 
 // ── Teleconsultation / Clinical Activity Lifecycle ───────────────────────────
 
-/** A dynamic, program-specific clinical form field (from the event template). */
+/**
+ * A metadata-driven condition, evaluated against the current form values to
+ * drive conditional visibility (`visibleWhen`) or conditional mandatory
+ * (`requiredWhen`). Fully data-driven — the renderer contains no disease logic.
+ */
+export interface FieldCondition {
+  /** Key (or label) of the controlling field whose value is tested. */
+  field: string;
+  /** Match when the controlling value equals this string. */
+  equals?: string;
+  /** Match when the controlling value is one of these strings. */
+  in?: string[];
+  /** Match on truthiness (true → require a value; false → require empty). */
+  truthy?: boolean;
+}
+
+/**
+ * A dynamic, programme-specific outcome field (from the event's outcome
+ * template). Everything the Outcome Renderer needs comes from here — no field
+ * is defined in React. The core five attributes are always present; the richer
+ * attributes (M37J) are optional and backward-compatible with older templates.
+ */
 export interface ClinicalFieldDef {
-  type: 'text' | 'longtext' | 'number' | 'dropdown' | 'radio' | string;
+  type:
+    | 'text' | 'longtext' | 'number' | 'date' | 'datetime'
+    | 'dropdown' | 'select' | 'multiselect'
+    | 'radio' | 'checkbox' | 'boolean' | string;
   label: string;
   options: string[];
   required: boolean;
   sortOrder: number;
+  /** Stable machine key for the value map; falls back to `label` when absent. */
+  key?: string;
+  /** Section title used to group fields; defaults to a single section. */
+  section?: string;
+  /** Order of this field's section relative to others. */
+  sectionOrder?: number;
+  /** Placeholder text for text/number/select inputs. */
+  placeholder?: string;
+  /** Helper text rendered under the control. */
+  helpText?: string;
+  /** Default value applied when the form initialises. */
+  defaultValue?: string | string[] | number | boolean | null;
+  /** Render this field only when the condition holds. */
+  visibleWhen?: FieldCondition;
+  /** Make this field mandatory only when the condition holds. */
+  requiredWhen?: FieldCondition;
 }
 
 export interface ConsultationPatientInfo {
@@ -1498,7 +1540,7 @@ export async function fetchConsultationContext(
   const res = await fetch(`${API_BASE}/api/activities/${activityId}/consultation`, {
     headers: { Authorization: `Bearer ${token}` },
   });
-  if (!res.ok) throw await readError(res, 'Unable to load consultation.');
+  if (!res.ok) throw await readError(res, 'Unable to load care record.');
   return res.json() as Promise<ConsultationContext>;
 }
 
@@ -1525,7 +1567,7 @@ export async function saveConsultation(
     headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
     body: JSON.stringify(payload),
   });
-  if (!res.ok) throw await readError(res, 'Unable to save the consultation.');
+  if (!res.ok) throw await readError(res, 'Unable to save the care record.');
   return res.json() as Promise<SaveConsultationResult>;
 }
 
@@ -1563,7 +1605,7 @@ export async function fetchConsultationNote(
   const res = await fetch(`${API_BASE}/api/activities/${activityId}/consultation-note`, {
     headers: { Authorization: `Bearer ${token}` },
   });
-  if (!res.ok) throw await readError(res, 'Unable to load consultation note.');
+  if (!res.ok) throw await readError(res, 'Unable to load care record.');
   return res.json() as Promise<ConsultationNote | null>;
 }
 
@@ -1592,7 +1634,7 @@ export async function fetchConsultationHistory(
   const res = await fetch(`${API_BASE}/api/citizens/${citizenId}/consultation-history`, {
     headers: { Authorization: `Bearer ${token}` },
   });
-  if (!res.ok) throw await readError(res, 'Unable to load consultation history.');
+  if (!res.ok) throw await readError(res, 'Unable to load care history.');
   return res.json() as Promise<ConsultationHistoryEntry[]>;
 }
 
@@ -1645,7 +1687,7 @@ export async function fetchActiveActivity(
   const res = await fetch(`${API_BASE}/api/citizens/${citizenId}/active-activity`, {
     headers: { Authorization: `Bearer ${token}` },
   });
-  if (!res.ok) throw await readError(res, 'Unable to check for active consultation.');
+  if (!res.ok) throw await readError(res, 'Unable to check for active care.');
   return res.json() as Promise<ActiveActivity | null>;
 }
 
@@ -2375,4 +2417,165 @@ export async function resetUserPassword(
     body: JSON.stringify({ newPassword }),
   });
   if (!res.ok) throw await readError(res, 'Unable to reset the password.');
+}
+
+// ── RBAC engine (Milestone 1 read APIs + Milestone 2 user role assignment) ────
+
+export interface RbacPermission {
+  id: string;
+  key: string;
+  group: string;
+  label: string;
+  description: string | null;
+  sortOrder: number;
+  /** Keys of prerequisite permissions this one depends on (dependency config). */
+  requires: string[];
+}
+
+export interface RbacPermissionGroup {
+  group: string;
+  permissions: RbacPermission[];
+}
+
+export interface RbacRoleSummary {
+  id: string;
+  key: string;
+  name: string;
+  description: string | null;
+  color: string | null;
+  isSystem: boolean;
+  isActive: boolean;
+  permissionCount: number;
+  userCount: number;
+  createdAt: string;
+}
+
+export interface RbacRoleDetail {
+  id: string;
+  key: string;
+  name: string;
+  description: string | null;
+  color: string | null;
+  isSystem: boolean;
+  isActive: boolean;
+  permissionKeys: string[];
+  createdAt: string;
+}
+
+export interface RbacUserRole {
+  id: string;
+  key: string;
+  name: string;
+  color: string | null;
+  isPrimary: boolean;
+}
+
+export interface RbacUserAccess {
+  userId: string;
+  username: string;
+  fullName: string;
+  roles: RbacUserRole[];
+  effectivePermissions: string[];
+}
+
+/** The full permission catalogue, grouped (Navigation, Workflow, …). */
+export async function fetchRbacPermissions(token: string): Promise<RbacPermissionGroup[]> {
+  const res = await fetch(`${API_BASE}/api/rbac/permissions`, {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  if (!res.ok) throw await readError(res, 'Unable to load permissions.');
+  return res.json() as Promise<RbacPermissionGroup[]>;
+}
+
+export async function fetchRbacRoles(token: string): Promise<RbacRoleSummary[]> {
+  const res = await fetch(`${API_BASE}/api/rbac/roles`, {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  if (!res.ok) throw await readError(res, 'Unable to load roles.');
+  return res.json() as Promise<RbacRoleSummary[]>;
+}
+
+export async function fetchRbacRole(token: string, idOrKey: string): Promise<RbacRoleDetail> {
+  const res = await fetch(`${API_BASE}/api/rbac/roles/${encodeURIComponent(idOrKey)}`, {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  if (!res.ok) throw await readError(res, 'Unable to load the role.');
+  return res.json() as Promise<RbacRoleDetail>;
+}
+
+export async function fetchUserAccess(token: string, userId: string): Promise<RbacUserAccess> {
+  const res = await fetch(`${API_BASE}/api/rbac/users/${userId}/access`, {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  if (!res.ok) throw await readError(res, 'Unable to load user access.');
+  return res.json() as Promise<RbacUserAccess>;
+}
+
+/** Assign roles to a user (first key = primary). Returns the refreshed access. */
+export async function setUserRoles(
+  token: string,
+  userId: string,
+  roleKeys: string[],
+): Promise<RbacUserAccess> {
+  const res = await fetch(`${API_BASE}/api/rbac/users/${userId}/roles`, {
+    method: 'PUT',
+    headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ roleKeys }),
+  });
+  if (!res.ok) throw await readError(res, 'Unable to update user roles.');
+  return res.json() as Promise<RbacUserAccess>;
+}
+
+// ── Role Designer writes (Milestone 3) ────────────────────────────────────────
+
+export interface CreateRolePayload {
+  name: string;
+  description?: string;
+  color?: string;
+  permissionKeys?: string[];
+}
+
+export interface UpdateRolePayload {
+  name?: string;
+  description?: string;
+  color?: string;
+  isActive?: boolean;
+}
+
+export async function createRole(token: string, payload: CreateRolePayload): Promise<RbacRoleDetail> {
+  const res = await fetch(`${API_BASE}/api/rbac/roles`, {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+  });
+  if (!res.ok) throw await readError(res, 'Unable to create the role.');
+  return res.json() as Promise<RbacRoleDetail>;
+}
+
+export async function updateRole(
+  token: string,
+  idOrKey: string,
+  payload: UpdateRolePayload,
+): Promise<RbacRoleDetail> {
+  const res = await fetch(`${API_BASE}/api/rbac/roles/${encodeURIComponent(idOrKey)}`, {
+    method: 'PATCH',
+    headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+  });
+  if (!res.ok) throw await readError(res, 'Unable to update the role.');
+  return res.json() as Promise<RbacRoleDetail>;
+}
+
+export async function setRolePermissions(
+  token: string,
+  idOrKey: string,
+  permissionKeys: string[],
+): Promise<RbacRoleDetail> {
+  const res = await fetch(`${API_BASE}/api/rbac/roles/${encodeURIComponent(idOrKey)}/permissions`, {
+    method: 'PUT',
+    headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ permissionKeys }),
+  });
+  if (!res.ok) throw await readError(res, 'Unable to update role permissions.');
+  return res.json() as Promise<RbacRoleDetail>;
 }

@@ -99,8 +99,8 @@ function WorklistTable({
                   <button
                     type="button"
                     className="wl-icon-btn"
-                    title="Start Consultation"
-                    aria-label="Start Consultation"
+                    title="Start Call"
+                    aria-label="Start Call"
                     disabled={!onStartCall}
                     onClick={() => onStartCall?.(item)}
                   >

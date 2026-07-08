@@ -81,7 +81,7 @@ export function generateConsultationNote(input: NoteInput): string {
 
   const parts: string[] = [];
 
-  parts.push('CLINICAL CONSULTATION NOTE');
+  parts.push('CLINICAL RECORD');
   parts.push(SECTION);
   parts.push(line('Date', today));
   parts.push('');

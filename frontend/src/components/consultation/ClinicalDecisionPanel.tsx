@@ -9,7 +9,7 @@ import { Circle, CircleAlert, CircleCheck, TriangleAlert } from 'lucide-react';
 // ── Risk display helpers ──────────────────────────────────────────────────────
 
 const RISK_CONFIG: Record<CdseRiskLevel, { label: string; icon: ReactNode; cls: string }> = {
-  NONE:     { label: 'No Consultation',  icon: <Circle size={12} />, cls: 'none'     },
+  NONE:     { label: 'No Care Yet',      icon: <Circle size={12} />, cls: 'none'     },
   LOW:      { label: 'Low Risk',         icon: <CircleCheck size={12} />, cls: 'low'      },
   MODERATE: { label: 'Moderate Risk',    icon: <CircleAlert size={12} />, cls: 'moderate' },
   SEVERE:   { label: 'Severe Risk',      icon: <TriangleAlert size={12} />, cls: 'severe'   },
@@ -112,7 +112,7 @@ export default function ClinicalDecisionPanel({ citizenId, refreshKey }: Props) 
                 <div className="cdse-empty">
                   <span className="cdse-empty-icon" aria-hidden="true"><Circle size={13} /></span>
                   <span className="cdse-empty-text">
-                    No consultation recorded yet. Risk will be classified after the first consultation.
+                    No care recorded yet. Risk will be classified after the first care record.
                   </span>
                 </div>
               )}

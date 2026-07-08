@@ -1,11 +1,11 @@
 'use client';
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { fetchAssignableRoles, fetchUsers, updateUser, type AdminUser } from '@/lib/api';
+import { useRouter } from 'next/navigation';
+import { fetchRbacRoles, fetchUsers, updateUser, type AdminUser, type RbacRoleSummary } from '@/lib/api';
 import { getToken } from '@/lib/session';
 import { useUser } from '@/lib/UserContext';
 import ComingSoon from '@/components/shell/ComingSoon';
-import UserEditorDialog from '@/components/admin/UserEditorDialog';
 import ResetPasswordDialog from '@/components/admin/ResetPasswordDialog';
 import Workspace from '@/components/workspace/Workspace';
 import WorkspaceHeader from '@/components/workspace/WorkspaceHeader';
@@ -52,18 +52,19 @@ function roleLabel(role: string): string {
  */
 export default function UsersRolesPage() {
   const { can } = useUser();
+  const router = useRouter();
   const isAdmin = can('admin.pages');
   useWorkspaceShell(isAdmin);
 
   const [users, setUsers] = useState<AdminUser[]>([]);
-  const [roles, setRoles] = useState<string[]>([]);
+  // Roles come from the RBAC database (never a hardcoded list) — used for the
+  // filter, the table role names, and the Role Designer entry strip.
+  const [roles, setRoles] = useState<RbacRoleSummary[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [search, setSearch] = useState('');
   const [roleFilter, setRoleFilter] = useState('ALL');
   const [statusFilter, setStatusFilter] = useState<StatusFilter>('ALL');
-  // 'new' = Add User; an AdminUser = Edit User; null = closed.
-  const [editing, setEditing] = useState<AdminUser | 'new' | null>(null);
   const [resetting, setResetting] = useState<AdminUser | null>(null);
   // Row whose enable/disable request is in flight; blocks double submits.
   const [togglingId, setTogglingId] = useState<string | null>(null);
@@ -88,7 +89,7 @@ export default function UsersRolesPage() {
       return;
     }
     setLoading(true);
-    Promise.all([fetchUsers(token), fetchAssignableRoles(token)])
+    Promise.all([fetchUsers(token), fetchRbacRoles(token)])
       .then(([userList, roleList]) => {
         setUsers(userList);
         setRoles(roleList);
@@ -137,6 +138,9 @@ export default function UsersRolesPage() {
     });
   }, [users, search, roleFilter, statusFilter]);
 
+  // Display name for a user's role key, sourced from the RBAC database.
+  const roleName = useMemo(() => new Map(roles.map((r) => [r.key, r.name])), [roles]);
+
   if (!isAdmin) {
     return (
       <ComingSoon
@@ -164,15 +168,45 @@ export default function UsersRolesPage() {
             : `${users.length} accounts · ${activeCount} active`
         }
         actions={
-          <button
-            type="button"
-            className="btn btn-primary btn-sm"
-            onClick={() => setEditing('new')}
-          >
-            <Plus size={14} aria-hidden="true" /> Add User
-          </button>
+          <>
+            <button
+              type="button"
+              className="btn btn-ghost btn-sm"
+              onClick={() => router.push('/administration/roles/new')}
+            >
+              <Plus size={14} aria-hidden="true" /> New Role
+            </button>
+            <button
+              type="button"
+              className="btn btn-primary btn-sm"
+              onClick={() => router.push('/administration/users/new')}
+            >
+              <Plus size={14} aria-hidden="true" /> Add User
+            </button>
+          </>
         }
       />
+
+      {roles.length > 0 && (
+        <div className="rl-strip">
+          <span className="rl-strip-label">Roles</span>
+          <div className="rl-strip-list">
+            {roles.map((r) => (
+              <button
+                key={r.key}
+                type="button"
+                className="rl-chip"
+                onClick={() => router.push(`/administration/roles/${encodeURIComponent(r.key)}`)}
+                title={`Design ${r.name}`}
+              >
+                <span className="rl-chip-dot" style={{ background: r.color ?? '#94a3b8' }} aria-hidden="true" />
+                <span className="rl-chip-name">{r.name}</span>
+                <span className="rl-chip-meta">{r.permissionCount}p · {r.userCount}u</span>
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
 
       <WorkspaceGrid template="single">
         <Panel variant="flush" aria-label="User accounts">
@@ -199,7 +233,7 @@ export default function UsersRolesPage() {
                 >
                   <option value="ALL">All roles</option>
                   {roles.map((r) => (
-                    <option key={r} value={r}>{roleLabel(r)}</option>
+                    <option key={r.key} value={r.key}>{r.name}</option>
                   ))}
                 </select>
                 <select
@@ -256,7 +290,7 @@ export default function UsersRolesPage() {
                     <tr key={u.id}>
                       <td className="usr-name">{u.fullName}</td>
                       <td className="mono">{u.username}</td>
-                      <td>{roleLabel(u.role)}</td>
+                      <td>{roleName.get(u.role) ?? roleLabel(u.role)}</td>
                       <td>
                         <span className={`pill ${u.isActive ? 'pill-active' : 'pill-inactive'}`}>
                           {u.isActive ? 'Active' : 'Disabled'}
@@ -269,7 +303,7 @@ export default function UsersRolesPage() {
                           <button
                             type="button"
                             className="btn btn-ghost btn-sm"
-                            onClick={() => setEditing(u)}
+                            onClick={() => router.push(`/administration/users/${u.id}`)}
                           >
                             Edit
                           </button>
@@ -298,20 +332,6 @@ export default function UsersRolesPage() {
           </PanelContent>
         </Panel>
       </WorkspaceGrid>
-
-      {editing !== null && (
-        <UserEditorDialog
-          user={editing === 'new' ? null : editing}
-          roles={roles}
-          open
-          onClose={() => setEditing(null)}
-          onSaved={(saved, created) => {
-            setEditing(null);
-            flash(created ? `User '${saved.username}' created.` : `User '${saved.username}' updated.`);
-            load();
-          }}
-        />
-      )}
 
       {resetting !== null && (
         <ResetPasswordDialog

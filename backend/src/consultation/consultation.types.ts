@@ -10,13 +10,41 @@
 import type { GuidebookDetail } from '../guidebooks/guidebooks.types';
 import type { ActivityDto } from '../activity/activity.types';
 
-/** A single dynamic clinical field as stored in outcome_templates.fields. */
+/**
+ * A metadata-driven condition for a field's conditional visibility or
+ * conditional mandatory rule. Evaluated on the frontend against the current
+ * form values — the backend simply passes it through from the template config.
+ */
+export interface FieldCondition {
+  field: string;
+  equals?: string;
+  in?: string[];
+  truthy?: boolean;
+}
+
+/**
+ * A single dynamic clinical field as stored in outcome_templates.fields (jsonb).
+ * The core five attributes are always present; the richer attributes are
+ * optional and carried through verbatim from the template config, so new
+ * outcome forms are added by database configuration alone — no code change.
+ */
 export interface ClinicalFieldDef {
-  type: 'text' | 'longtext' | 'number' | 'dropdown' | 'radio' | string;
+  type:
+    | 'text' | 'longtext' | 'number' | 'date' | 'datetime'
+    | 'dropdown' | 'select' | 'multiselect'
+    | 'radio' | 'checkbox' | 'boolean' | string;
   label: string;
   options: string[];
   required: boolean;
   sortOrder: number;
+  key?: string;
+  section?: string;
+  sectionOrder?: number;
+  placeholder?: string;
+  helpText?: string;
+  defaultValue?: unknown;
+  visibleWhen?: FieldCondition;
+  requiredWhen?: FieldCondition;
 }
 
 /** Explicit status of a displayed counselling question (Milestone 25A). */

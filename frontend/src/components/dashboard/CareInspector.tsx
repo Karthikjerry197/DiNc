@@ -122,7 +122,7 @@ export default function CareInspector({ alerts, priorities, topActivityId }: Pro
               className="qa-compact-btn qa-compact-btn--primary"
             >
               <span className="qa-compact-icon" aria-hidden="true"><Phone size={16} /></span>
-              Start Consultation
+              Start Call
             </Link>
             <Link href="/worklist" className="qa-compact-btn">
               <span className="qa-compact-icon" aria-hidden="true"><ClipboardList size={16} /></span>

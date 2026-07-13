@@ -44,25 +44,30 @@ export class CitizensService {
         workers: string[] | null;
         risk_level: string | null;
       }>(
-        `SELECT c.id, c.uhid, c.full_name, c.age, c.gender, c.district,
-                (SELECT array_agg(DISTINCT p.name)
-                 FROM public.enrollments e JOIN public.programs p ON p.id = e.program_id
-                 WHERE e.citizen_id = c.id) AS programs,
-                (SELECT array_agg(DISTINCT d.name)
-                 FROM public.enrollments e JOIN public.diseases d ON d.id = e.disease_id
-                 WHERE e.citizen_id = c.id) AS diseases,
+        `SELECT c.patient_id AS id,
+                c.external_id AS uhid,
+                c.full_name,
+                date_part('year', age(c.birth_date))::int AS age,
+                c.sex AS gender,
+                c.district,
+                (SELECT array_agg(DISTINCT pr.programme_name)
+                 FROM dinc_runtime.programme_enrolment e
+                 JOIN dinc_metadata.programme pr ON pr.programme_id = e.programme_id
+                 WHERE e.patient_id = c.patient_id) AS programs,
+                (SELECT array_agg(DISTINCT pc.condition_code)
+                 FROM dinc_runtime.patient_condition pc
+                 WHERE pc.patient_id = c.patient_id AND pc.cleared_at IS NULL) AS diseases,
                 (SELECT array_agg(DISTINCT e.status)
-                 FROM public.enrollments e WHERE e.citizen_id = c.id) AS statuses,
-                (SELECT array_agg(DISTINCT e.assigned_worker)
-                 FROM public.enrollments e
-                 WHERE e.citizen_id = c.id AND e.assigned_worker IS NOT NULL) AS workers,
+                 FROM dinc_runtime.programme_enrolment e
+                 WHERE e.patient_id = c.patient_id) AS statuses,
+                NULL::text[] AS workers,
                 (SELECT CASE
                           WHEN bool_or(ca.risk_level = 'SEVERE') THEN 'SEVERE'
                           WHEN bool_or(ca.risk_level = 'MODERATE') THEN 'MODERATE'
                         END
-                 FROM public.clinical_alerts ca
-                 WHERE ca.citizen_id = c.id AND ca.status = 'ACTIVE') AS risk_level
-         FROM public.citizens c
+                 FROM dinc_app.clinical_alerts ca
+                 WHERE ca.citizen_id = c.patient_id AND ca.status = 'ACTIVE') AS risk_level
+         FROM dinc_runtime.patient c
          ORDER BY c.created_at DESC
          LIMIT 100`,
       );
@@ -173,9 +178,15 @@ export class CitizensService {
         phone: string | null;
         district: string | null;
       }>(
-        `SELECT id, uhid, full_name, age, gender, phone, district
-         FROM public.citizens
-         WHERE id = $1
+        `SELECT patient_id AS id,
+                external_id AS uhid,
+                full_name,
+                date_part('year', age(birth_date))::int AS age,
+                sex AS gender,
+                phone,
+                district
+         FROM dinc_runtime.patient
+         WHERE patient_id = $1
          LIMIT 1`,
         [id],
       );
@@ -199,11 +210,11 @@ export class CitizensService {
   private async programs(citizenId: string): Promise<ProgramChip[]> {
     try {
       const result = await this.db.query<ProgramChip>(
-        `SELECT DISTINCT p.id, p.name
-         FROM public.enrollments e
-         JOIN public.programs p ON p.id = e.program_id
-         WHERE e.citizen_id = $1
-         ORDER BY p.name`,
+        `SELECT DISTINCT pr.programme_id AS id, pr.programme_name AS name
+         FROM dinc_runtime.programme_enrolment e
+         JOIN dinc_metadata.programme pr ON pr.programme_id = e.programme_id
+         WHERE e.patient_id = $1
+         ORDER BY pr.programme_name`,
         [citizenId],
       );
       return result.rows;
@@ -222,14 +233,27 @@ export class CitizensService {
         assignee: string | null;
         status: string | null;
       }>(
-        `SELECT ev.name AS event,
-                d.name AS condition,
-                e.assigned_worker AS assignee,
+        `SELECT ev.event_name AS event,
+                cond.condition_code AS condition,
+                NULL::text AS assignee,
                 e.status AS status
-         FROM public.enrollments e
-         LEFT JOIN public.diseases d ON d.id = e.disease_id
-         LEFT JOIN public.events ev ON ev.id = e.current_event_id
-         WHERE e.citizen_id = $1
+         FROM dinc_runtime.programme_enrolment e
+         LEFT JOIN LATERAL (
+           SELECT ei.event_id
+           FROM dinc_runtime.event_instance ei
+           WHERE ei.enrolment_id = e.enrolment_id AND ei.completed_at IS NULL
+           ORDER BY ei.due_date ASC NULLS LAST, ei.created_at DESC
+           LIMIT 1
+         ) cur ON true
+         LEFT JOIN dinc_metadata.event ev ON ev.event_id = cur.event_id
+         LEFT JOIN LATERAL (
+           SELECT pc.condition_code
+           FROM dinc_runtime.patient_condition pc
+           WHERE pc.enrolment_id = e.enrolment_id AND pc.cleared_at IS NULL
+           ORDER BY pc.flagged_at DESC
+           LIMIT 1
+         ) cond ON true
+         WHERE e.patient_id = $1
          ORDER BY e.created_at DESC
          LIMIT 1`,
         [citizenId],
@@ -264,18 +288,27 @@ export class CitizensService {
         priority: string;
         due_date: Date | null;
       }>(
-        `SELECT w.id,
-                ev.name AS activity,
-                p.name AS program,
-                w.status AS status,
-                w.priority AS priority,
-                w.due_date AS due_date
-         FROM public.worklist_items w
-         JOIN public.enrollments e ON e.id = w.enrollment_id
-         LEFT JOIN public.events ev ON ev.id = w.event_id
-         LEFT JOIN public.programs p ON p.id = COALESCE(w.program_id, e.program_id)
-         WHERE e.citizen_id = $1
-         ORDER BY w.due_date ASC NULLS LAST, w.created_at DESC
+        `SELECT ei.event_instance_id AS id,
+                COALESCE(act.activity_name, ev.event_name) AS activity,
+                pr.programme_name AS program,
+                CASE ei.status WHEN 'ACTIVE' THEN 'PENDING' ELSE ei.status END AS status,
+                COALESCE(ei.priority, 'NORMAL') AS priority,
+                ei.due_date AS due_date
+         FROM dinc_runtime.event_instance ei
+         JOIN dinc_runtime.programme_enrolment e ON e.enrolment_id = ei.enrolment_id
+         LEFT JOIN dinc_metadata.event ev ON ev.event_id = ei.event_id
+         LEFT JOIN dinc_metadata.programme pr ON pr.programme_id = e.programme_id
+         LEFT JOIN LATERAL (
+           SELECT a.activity_name
+           FROM dinc_runtime.activity_instance ai
+           JOIN dinc_metadata.activity a ON a.activity_id = ai.activity_id
+           WHERE ai.event_instance_id = ei.event_instance_id
+             AND ai.completed_at IS NULL
+           ORDER BY a.display_order
+           LIMIT 1
+         ) act ON true
+         WHERE e.patient_id = $1
+         ORDER BY ei.due_date ASC NULLS LAST, ei.created_at DESC
          LIMIT 50`,
         [citizenId],
       );
@@ -302,11 +335,11 @@ export class CitizensService {
         pending: number;
       }>(
         `SELECT count(*)::int AS total,
-                count(*) FILTER (WHERE w.status = 'COMPLETED')::int AS completed,
-                count(*) FILTER (WHERE w.status = 'PENDING')::int AS pending
-         FROM public.worklist_items w
-         JOIN public.enrollments e ON e.id = w.enrollment_id
-         WHERE e.citizen_id = $1`,
+                count(*) FILTER (WHERE ei.status = 'COMPLETED')::int AS completed,
+                count(*) FILTER (WHERE ei.status = 'ACTIVE')::int AS pending
+         FROM dinc_runtime.event_instance ei
+         JOIN dinc_runtime.programme_enrolment e ON e.enrolment_id = ei.enrolment_id
+         WHERE e.patient_id = $1`,
         [citizenId],
       );
       return result.rows[0] ?? empty;

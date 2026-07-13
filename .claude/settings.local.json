@@ -114,7 +114,28 @@
       "Bash(node -e \"const c=require\\('fs'\\).readFileSync\\('src/app/globals.css','utf8'\\);const o=\\(c.match\\(/{/g\\)||[]\\).length,cl=\\(c.match\\(/}/g\\)||[]\\).length;console.log\\('CSS braces:',o===cl?'BALANCED':'MISMATCH '+o+'/'+cl\\)\")",
       "Bash(node -e \"const c=require\\('fs'\\).readFileSync\\('src/app/globals.css','utf8'\\);const o=\\(c.match\\(/{/g\\)||[]\\).length,cl=\\(c.match\\(/}/g\\)||[]\\).length;console.log\\(o===cl?'BALANCED':'MISMATCH '+o+'/'+cl\\)\")",
       "Bash(echo \"\\(exit $?\\)\")",
-      "Bash(node -e \"const c=require\\('fs'\\).readFileSync\\('src/app/globals.css','utf8'\\);const o=\\(c.match\\(/{/g\\)||[]\\).length,cl=\\(c.match\\(/}/g\\)||[]\\).length;console.log\\('braces',o===cl?'BALANCED':'MISMATCH '+o+'/'+cl\\)\")"
+      "Bash(node -e \"const c=require\\('fs'\\).readFileSync\\('src/app/globals.css','utf8'\\);const o=\\(c.match\\(/{/g\\)||[]\\).length,cl=\\(c.match\\(/}/g\\)||[]\\).length;console.log\\('braces',o===cl?'BALANCED':'MISMATCH '+o+'/'+cl\\)\")",
+      "Bash(xargs wc -l)",
+      "Bash(echo \"EXIT: $?\")",
+      "Bash(ls dist/overall-risk/)",
+      "Bash(node -e \"const p=require\\('./dist/overall-risk/overall-risk.types.js'\\); console.log\\(Object.keys\\(p\\)\\); console.log\\(Array.isArray\\(p.OVERALL_RISK_SEED\\), p.OVERALL_RISK_SEED && p.OVERALL_RISK_SEED.length\\)\")",
+      "Bash(echo \"TEST EXIT: $?\")",
+      "Bash(tasklist)",
+      "Bash(netstat -ano)",
+      "Read(//c/Users/TMDL DiNC Assam/Desktop/DiNC_Deployment_Ready/DiNc/**)",
+      "Bash(wmic process *)",
+      "Read(//c/Users/TMDL DiNC Assam/Desktop/New method/DiNC/**)",
+      "Read(//c/Users/TMDL DiNC Assam/Desktop/DiNC_Deployment_Ready/DiNc/frontend/**)",
+      "PowerShell(foreach \\($pid in 12984,12940,18296\\) { try { Stop-Process -Id $pid -Force -ErrorAction Stop; \"stopped $pid\" } catch { \"already gone $pid\" } }; Start-Sleep -Seconds 2; \"=== port 4000 now ===\"; \\(Get-NetTCPConnection -State Listen -LocalPort 4000 -ErrorAction SilentlyContinue | Measure-Object\\).Count)",
+      "PowerShell(foreach \\($procId in 12984,12940,18296\\) { try { Stop-Process -Id $procId -Force -ErrorAction Stop; \"stopped $procId\" } catch { \"already gone $procId\" } }; Start-Sleep -Seconds 2; \"=== port 4000 listeners ===\"; \\(Get-NetTCPConnection -State Listen -LocalPort 4000 -ErrorAction SilentlyContinue | Measure-Object\\).Count)",
+      "Bash(next dev *)",
+      "Bash(node _dbcheck.js)",
+      "Bash(rm -f _dbcheck.js)",
+      "Bash(node _tok.js)",
+      "Bash(rm -f _tok.js)",
+      "PowerShell(try { Stop-Process -Id 17808 -Force -ErrorAction Stop; \"stopped frontend dev 17808\" } catch { \"already gone\" }; Start-Sleep -Seconds 2; \\(Get-NetTCPConnection -State Listen -LocalPort 3000 -ErrorAction SilentlyContinue | Measure-Object\\).Count)",
+      "Bash(node _t.js)",
+      "Bash(rm -f _t.js)"
     ]
   }
 }

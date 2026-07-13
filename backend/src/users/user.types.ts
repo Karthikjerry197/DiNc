@@ -6,21 +6,10 @@ export interface UserRecord {
   is_active: boolean;
 }
 
-/**
- * Legacy hardcoded role list — BACKWARD-COMPATIBILITY ONLY.
- *
- * TECH DEBT (to be eliminated during the RBAC Readiness Audit / enforcement flip,
- * Milestone 4): this constant, together with the legacy `users.role` column, is
- * the only remaining hardcoded business configuration in the Users module. It
- * merely guards `@IsIn` validation on the legacy `role` field of create/update
- * and backs `GET /api/users/roles`. Roles shown and assigned in the User
- * Workspace already come from the RBAC database (`rbac_roles` → `rbac_user_roles`);
- * this array does NOT drive the workspace. Left unchanged in Milestone 3A on
- * purpose — do not extend or rely on it. It will be replaced by the RBAC roles
- * table as the single source of truth in Milestone 4.
- */
-export const ASSIGNABLE_ROLES = ['ADMIN', 'CLINICIAN', 'ANM', 'CARE_ASSISTANT'] as const;
-export type AssignableRole = (typeof ASSIGNABLE_ROLES)[number];
+// M40 Configuration Convergence: the legacy hardcoded `ASSIGNABLE_ROLES` array
+// was retired. `rbac_roles` is now the single source of truth for roles — the
+// `GET /api/users/roles` endpoint and create/update role validation both resolve
+// against it via RbacRepository (see UsersService).
 
 /** One user as listed on Administration → Users & Roles. Never includes the hash. */
 export interface AdminUserDto {

@@ -32,8 +32,8 @@ export class SchedulerRepository implements OnModuleInit {
   async onModuleInit(): Promise<void> {
     try {
       await this.db.query(
-        `CREATE TABLE IF NOT EXISTS public.scheduler_runs (
-           id uuid DEFAULT public.uuid_generate_v4() NOT NULL PRIMARY KEY,
+        `CREATE TABLE IF NOT EXISTS dinc_app.scheduler_runs (
+           id uuid DEFAULT gen_random_uuid() NOT NULL PRIMARY KEY,
            started_at timestamp with time zone DEFAULT now() NOT NULL,
            finished_at timestamp with time zone,
            trigger character varying(10) DEFAULT 'AUTO' NOT NULL,
@@ -48,7 +48,7 @@ export class SchedulerRepository implements OnModuleInit {
       );
       await this.db.query(
         `CREATE INDEX IF NOT EXISTS idx_scheduler_runs_started
-           ON public.scheduler_runs (started_at DESC)`,
+           ON dinc_app.scheduler_runs (started_at DESC)`,
       );
     } catch (error) {
       this.logger.error(`scheduler_runs ensure failed: ${(error as Error).message}`);
@@ -100,7 +100,7 @@ export class SchedulerRepository implements OnModuleInit {
   /** Persists a completed run and returns it. */
   async insertRun(run: Omit<SchedulerRunDto, 'id'>): Promise<SchedulerRunDto> {
     const result = await this.db.query<RunRow>(
-      `INSERT INTO public.scheduler_runs
+      `INSERT INTO dinc_app.scheduler_runs
          (started_at, finished_at, trigger, due_found, rules_processed,
           activities_created, retries, escalations, failures, error)
        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)
@@ -123,7 +123,7 @@ export class SchedulerRepository implements OnModuleInit {
 
   async recentRuns(limit: number): Promise<SchedulerRunDto[]> {
     const result = await this.db.query<RunRow>(
-      `SELECT * FROM public.scheduler_runs ORDER BY started_at DESC LIMIT $1`,
+      `SELECT * FROM dinc_app.scheduler_runs ORDER BY started_at DESC LIMIT $1`,
       [limit],
     );
     return result.rows.map(SchedulerRepository.toDto);
@@ -148,7 +148,7 @@ export class SchedulerRepository implements OnModuleInit {
               COALESCE(sum(retries),0)::int AS retries,
               COALESCE(sum(escalations),0)::int AS escalations,
               COALESCE(sum(failures),0)::int AS failures
-       FROM public.scheduler_runs`,
+       FROM dinc_app.scheduler_runs`,
     );
     const row = result.rows[0];
     return {

@@ -1,4 +1,4 @@
-import { ConflictException, Injectable, Logger, OnModuleInit } from '@nestjs/common';
+import { ConflictException, Injectable, Logger } from '@nestjs/common';
 import { DatabaseService, TxClient } from '../database/database.service';
 import {
   DuplicateMatch,
@@ -11,57 +11,56 @@ import {
 } from './registration.types';
 
 /**
- * Data-access layer for integrated patient registration. The ONLY place holding
- * registration SQL. The write path runs inside a single transaction
- * (DatabaseService.withTransaction) so registration is atomic — citizen,
- * enrollments and initial activities all commit together or not at all.
+ * Data-access layer for integrated patient registration — the first
+ * METADATA-DRIVEN write path of the DiNc migration (Step 5).
  *
- * It reuses the existing data model and insert shapes (citizens, enrollments,
- * worklist_items) rather than duplicating business logic; resolution/validation
- * lives in the service.
+ * The atomic write (DatabaseService.withTransaction) now creates:
+ *   1. dinc_runtime.patient            (uhid→external_id, gender→sex,
+ *                                       birth_date from DOB or derived from age)
+ *   2. dinc_runtime.programme_enrolment (one per selected programme)
+ *   3. dinc_runtime.event_instance      — ONLY the initially-active events:
+ *      effective schedule rules (v_schedule_rule_effective, default context)
+ *      that are ONE_TIME, anchored on PROGRAMME_REGISTRATION, with no
+ *      dependency_event_code and no existence_condition. Due date =
+ *      registration_date + offset_days. No future/recurring/BIRTH_DATE-anchored
+ *      events are created here — that is the scheduler's job (Step 6).
+ *   4. dinc_runtime.activity_instance   — one PENDING row per metadata activity
+ *      of each instantiated event.
+ *
+ * dinc_metadata is read-only. All statements are parameterised.
  */
 @Injectable()
-export class RegistrationRepository implements OnModuleInit {
+export class RegistrationRepository {
   private readonly logger = new Logger(RegistrationRepository.name);
 
   constructor(private readonly db: DatabaseService) {}
-
-  /** Adds the optional demographic columns the wizard captures (idempotent). */
-  async onModuleInit(): Promise<void> {
-    try {
-      await this.db.query(
-        `ALTER TABLE public.citizens
-           ADD COLUMN IF NOT EXISTS aadhaar character varying(20),
-           ADD COLUMN IF NOT EXISTS village character varying(120),
-           ADD COLUMN IF NOT EXISTS address text,
-           ADD COLUMN IF NOT EXISTS date_of_birth date`,
-      );
-    } catch (error) {
-      this.logger.error(`Citizen demographic columns ensure failed: ${(error as Error).message}`);
-    }
-  }
 
   // ── Reads (wizard options, resolution, duplicate detection) ────────────────
 
   async activePrograms(): Promise<ProgramOption[]> {
     const result = await this.db.query<ProgramOption>(
-      `SELECT id, code, name FROM public.programs WHERE is_active = true ORDER BY name`,
+      `SELECT programme_id AS id, programme_code AS code, programme_name AS name
+       FROM dinc_metadata.programme
+       ORDER BY display_order, programme_name`,
     );
     return result.rows;
   }
 
   async activeWorkers(): Promise<WorkerOption[]> {
     const result = await this.db.query<{ username: string; full_name: string; role: string }>(
-      `SELECT username, full_name, role FROM public.users WHERE is_active = true
+      `SELECT username, full_name, role
+       FROM dinc_security.app_user
+       WHERE is_active = true
        ORDER BY role, full_name`,
     );
     return result.rows.map((r) => ({ username: r.username, fullName: r.full_name, role: r.role }));
   }
 
   /**
-   * Resolves each selected program to its default disease + initial event (the
-   * lowest-sequence active event). Programs that cannot be resolved are returned
-   * with null ids so the service can skip them.
+   * Resolves each selected programme against the metadata. The Step-2 shim
+   * applies: diseaseId mirrors the programme id. eventId reports the first
+   * initially-active event (or null when the programme has none — enrolment
+   * still proceeds; its events will come from the scheduler in Step 6).
    */
   async resolveTargets(
     programIds: string[],
@@ -73,18 +72,25 @@ export class RegistrationRepository implements OnModuleInit {
       disease_id: string | null;
       event_id: string | null;
     }>(
-      `SELECT p.id AS program_id, p.name AS program_name, t.disease_id, t.event_id
-       FROM public.programs p
+      `SELECT p.programme_id AS program_id,
+              p.programme_name AS program_name,
+              p.programme_id AS disease_id,
+              t.event_id
+       FROM dinc_metadata.programme p
        LEFT JOIN LATERAL (
-         SELECT d.id AS disease_id, ev.id AS event_id
-         FROM public.sub_programs sp
-         JOIN public.diseases d ON d.sub_program_id = sp.id AND d.is_active = true
-         JOIN public.events ev ON ev.disease_id = d.id AND ev.is_active = true
-         WHERE sp.program_id = p.id
-         ORDER BY d.created_at, ev.sequence
+         SELECT v.event_id
+         FROM dinc_metadata.v_schedule_rule_effective v
+         JOIN dinc_metadata.event e ON e.event_id = v.event_id
+         WHERE e.programme_id = p.programme_id
+           AND v.schedule_type = 'ONE_TIME'
+           AND v.anchor_type = 'PROGRAMME_REGISTRATION'
+           AND v.dependency_event_code IS NULL
+           AND v.existence_condition IS NULL
+           AND v.condition_context IS NULL
+         ORDER BY e.display_order
          LIMIT 1
        ) t ON true
-       WHERE p.id = ANY($1::uuid[]) AND p.is_active = true`,
+       WHERE p.programme_id = ANY($1::uuid[])`,
       [programIds],
     );
     return result.rows.map((r) => ({
@@ -110,12 +116,12 @@ export class RegistrationRepository implements OnModuleInit {
       m_phone: boolean;
       m_aadhaar: boolean;
     }>(
-      `SELECT id, uhid, full_name, phone,
-              (COALESCE($1,'') <> '' AND uhid = $1) AS m_uhid,
+      `SELECT patient_id AS id, external_id AS uhid, full_name, phone,
+              (COALESCE($1,'') <> '' AND external_id = $1) AS m_uhid,
               (COALESCE($2,'') <> '' AND phone = $2) AS m_phone,
               (COALESCE($3,'') <> '' AND aadhaar = $3) AS m_aadhaar
-       FROM public.citizens
-       WHERE (COALESCE($1,'') <> '' AND uhid = $1)
+       FROM dinc_runtime.patient
+       WHERE (COALESCE($1,'') <> '' AND external_id = $1)
           OR (COALESCE($2,'') <> '' AND phone = $2)
           OR (COALESCE($3,'') <> '' AND aadhaar = $3)
        LIMIT 20`,
@@ -133,9 +139,11 @@ export class RegistrationRepository implements OnModuleInit {
   // ── Atomic write ───────────────────────────────────────────────────────────
 
   /**
-   * Atomically registers a patient: inserts the citizen (generating a UHID when
-   * none supplied), then for each resolved program inserts an enrollment and its
-   * initial activity (worklist item). Rolls back entirely on any failure.
+   * Atomically registers a patient: inserts the patient (generating an
+   * external id when none supplied), then for each programme inserts a
+   * programme_enrolment, the initially-active event_instance rows derived from
+   * the schedule-rule metadata, and their activity_instance rows.
+   * Rolls back entirely on any failure.
    */
   async register(
     details: PatientDetailsInput,
@@ -143,69 +151,120 @@ export class RegistrationRepository implements OnModuleInit {
     assignedTo: string | null,
     enrolledBy: string | null,
   ): Promise<RegistrationResultDto> {
+    void enrolledBy; // no enrolled_by column on programme_enrolment (see analysis §3d)
     return this.db.withTransaction(async (tx) => {
       const uhid = details.uhid?.trim() || (await RegistrationRepository.nextUhid(tx));
 
-      const citizen = await tx.query<{ id: string }>(
-        `INSERT INTO public.citizens
-           (uhid, full_name, age, gender, phone, district, aadhaar, village, address, date_of_birth)
-         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)
-         ON CONFLICT (uhid) DO NOTHING
-         RETURNING id`,
+      // gender → sex (NOT NULL, CHECK FEMALE|MALE|OTHER). Unknown → OTHER.
+      const sex = RegistrationRepository.toSex(details.gender);
+      // birth_date: explicit DOB wins; otherwise derived from age so the
+      // derived-age reads (Step 3) stay correct. Null when neither is known.
+      const birthDateExpr = details.dateOfBirth
+        ? { sql: `$4::date`, param: details.dateOfBirth as string | number | null }
+        : details.age !== null
+          ? { sql: `(CURRENT_DATE - make_interval(years => $4::int))::date`, param: details.age as string | number | null }
+          : { sql: `NULLIF($4, '')::date`, param: '' as string | number | null };
+
+      const patient = await tx.query<{ id: string }>(
+        `INSERT INTO dinc_runtime.patient
+           (external_id, full_name, sex, birth_date, phone, address, district, village, aadhaar, is_active)
+         VALUES ($1, $2, $3, ${birthDateExpr.sql}, $5, $6, $7, $8, $9, true)
+         ON CONFLICT (external_id) DO NOTHING
+         RETURNING patient_id AS id`,
         [
           uhid,
           details.fullName,
-          details.age,
-          details.gender,
+          sex,
+          birthDateExpr.param,
           details.phone,
-          details.district,
-          details.aadhaar,
-          details.village,
           details.address,
-          details.dateOfBirth,
+          details.district,
+          details.village,
+          details.aadhaar,
         ],
       );
-      const citizenId = citizen.rows[0]?.id;
-      if (!citizenId) {
+      const patientId = patient.rows[0]?.id;
+      if (!patientId) {
         throw new ConflictException(`A patient with UHID ${uhid} already exists.`);
       }
 
-      const today = new Date().toISOString().slice(0, 10);
+      // Resolve the assigned worker's user id once (assignment lives on the
+      // event_instance — the Step 0 additive column — not on the enrolment).
+      const workerId = assignedTo
+        ? ((
+            await tx.query<{ user_id: string }>(
+              `SELECT user_id FROM dinc_security.app_user
+               WHERE username = $1 AND is_active = true LIMIT 1`,
+              [assignedTo],
+            )
+          ).rows[0]?.user_id ?? null)
+        : null;
+
       const enrollments: EnrollmentResultItem[] = [];
 
       for (const target of targets) {
         const enr = await tx.query<{ id: string }>(
-          `INSERT INTO public.enrollments
-             (citizen_id, program_id, disease_id, current_event_id, start_date, status, assigned_worker, enrolled_by)
-           VALUES ($1,$2,$3,$4,$5,'ACTIVE',$6,$7)
-           RETURNING id`,
-          [citizenId, target.programId, target.diseaseId, target.eventId, today, assignedTo, enrolledBy],
+          `INSERT INTO dinc_runtime.programme_enrolment
+             (patient_id, programme_id, registration_date, status)
+           VALUES ($1, $2, CURRENT_DATE, 'ACTIVE')
+           RETURNING enrolment_id AS id`,
+          [patientId, target.programId],
         );
         const enrollmentId = enr.rows[0].id;
 
-        // Initial activity for the program's first event (same shape as
-        // ActivityService.insertActivity) — created inside the same transaction.
-        // assigned_role mirrors the M31 resolver: the assigned worker's own role.
-        const act = await tx.query<{ id: string }>(
-          `INSERT INTO public.worklist_items
-             (enrollment_id, event_id, program_id, disease_id, assigned_to, assigned_role, due_date, priority, status, version)
-           VALUES ($1,$2,$3,$4,$5,
-                   (SELECT u.role FROM public.users u WHERE u.username = $5 AND u.is_active = true),
-                   $6,'NORMAL','PENDING',1)
-           RETURNING id`,
-          [enrollmentId, target.eventId, target.programId, target.diseaseId, assignedTo, today],
+        // METADATA-DRIVEN INSTANTIATION: initially-active events only —
+        // ONE_TIME rules anchored on PROGRAMME_REGISTRATION with no dependency
+        // and no existence condition, in the default (unconditional) context.
+        const created = await tx.query<{ id: string }>(
+          `INSERT INTO dinc_runtime.event_instance
+             (enrolment_id, event_id, occurrence_number, status, due_date,
+              activated_at, assigned_to, priority, metadata_release_id)
+           SELECT $1,
+                  v.event_id,
+                  1,
+                  'ACTIVE',
+                  CURRENT_DATE + COALESCE(v.offset_days, 0),
+                  now(),
+                  $3,
+                  'NORMAL',
+                  (SELECT release_version FROM dinc_metadata.metadata_release
+                   ORDER BY loaded_at DESC LIMIT 1)
+           FROM dinc_metadata.v_schedule_rule_effective v
+           JOIN dinc_metadata.event e ON e.event_id = v.event_id
+           WHERE e.programme_id = $2
+             AND v.schedule_type = 'ONE_TIME'
+             AND v.anchor_type = 'PROGRAMME_REGISTRATION'
+             AND v.dependency_event_code IS NULL
+             AND v.existence_condition IS NULL
+             AND v.condition_context IS NULL
+           ORDER BY e.display_order
+           RETURNING event_instance_id AS id`,
+          [enrollmentId, target.programId, workerId],
         );
+
+        // One PENDING activity_instance per metadata activity of each event.
+        if (created.rows.length > 0) {
+          await tx.query(
+            `INSERT INTO dinc_runtime.activity_instance
+               (event_instance_id, activity_id, status)
+             SELECT ei.event_instance_id, a.activity_id, 'PENDING'
+             FROM dinc_runtime.event_instance ei
+             JOIN dinc_metadata.activity a ON a.event_id = ei.event_id
+             WHERE ei.event_instance_id = ANY($1::uuid[])`,
+            [created.rows.map((r) => r.id)],
+          );
+        }
 
         enrollments.push({
           programId: target.programId,
           programName: target.programName,
           enrollmentId,
-          activityId: act.rows[0]?.id ?? null,
+          activityId: created.rows[0]?.id ?? null,
         });
       }
 
       return {
-        citizenId,
+        citizenId: patientId,
         uhid,
         fullName: details.fullName,
         enrollments,
@@ -214,12 +273,20 @@ export class RegistrationRepository implements OnModuleInit {
     });
   }
 
-  /** Computes the next sequential UHID (ASSAM-<year>-<5 digits>) inside the tx. */
+  /** Maps free-text gender input onto the patient.sex CHECK vocabulary. */
+  private static toSex(gender: string | null): 'FEMALE' | 'MALE' | 'OTHER' {
+    const g = (gender ?? '').trim().toUpperCase();
+    if (g.startsWith('F')) return 'FEMALE';
+    if (g.startsWith('M')) return 'MALE';
+    return 'OTHER';
+  }
+
+  /** Computes the next sequential external id (ASSAM-<year>-<5 digits>) inside the tx. */
   private static async nextUhid(tx: TxClient): Promise<string> {
     const year = new Date().getFullYear();
     const prefix = `ASSAM-${year}-`;
     const res = await tx.query<{ mx: string | null }>(
-      `SELECT max(uhid) AS mx FROM public.citizens WHERE uhid LIKE $1`,
+      `SELECT max(external_id) AS mx FROM dinc_runtime.patient WHERE external_id LIKE $1`,
       [`${prefix}%`],
     );
     const max = res.rows[0]?.mx ?? null;

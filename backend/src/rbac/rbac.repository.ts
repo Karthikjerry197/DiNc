@@ -65,7 +65,7 @@ export class RbacRepository implements OnModuleInit {
 
   private async migrate(): Promise<void> {
     await this.db.query(`
-      CREATE TABLE IF NOT EXISTS public.rbac_roles (
+      CREATE TABLE IF NOT EXISTS dinc_app.rbac_roles (
         id          UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
         key         TEXT        NOT NULL UNIQUE,
         name        TEXT        NOT NULL,
@@ -79,7 +79,7 @@ export class RbacRepository implements OnModuleInit {
     `);
 
     await this.db.query(`
-      CREATE TABLE IF NOT EXISTS public.rbac_permissions (
+      CREATE TABLE IF NOT EXISTS dinc_app.rbac_permissions (
         id               UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
         key              TEXT        NOT NULL UNIQUE,
         permission_group TEXT        NOT NULL,
@@ -91,18 +91,18 @@ export class RbacRepository implements OnModuleInit {
     `);
 
     await this.db.query(`
-      CREATE TABLE IF NOT EXISTS public.rbac_role_permissions (
-        role_id       UUID NOT NULL REFERENCES public.rbac_roles(id) ON DELETE CASCADE,
-        permission_id UUID NOT NULL REFERENCES public.rbac_permissions(id) ON DELETE CASCADE,
+      CREATE TABLE IF NOT EXISTS dinc_app.rbac_role_permissions (
+        role_id       UUID NOT NULL REFERENCES dinc_app.rbac_roles(id) ON DELETE CASCADE,
+        permission_id UUID NOT NULL REFERENCES dinc_app.rbac_permissions(id) ON DELETE CASCADE,
         created_at    TIMESTAMPTZ NOT NULL DEFAULT NOW(),
         PRIMARY KEY (role_id, permission_id)
       )
     `);
 
     await this.db.query(`
-      CREATE TABLE IF NOT EXISTS public.rbac_user_roles (
-        user_id     UUID NOT NULL REFERENCES public.users(id) ON DELETE CASCADE,
-        role_id     UUID NOT NULL REFERENCES public.rbac_roles(id) ON DELETE CASCADE,
+      CREATE TABLE IF NOT EXISTS dinc_app.rbac_user_roles (
+        user_id     UUID NOT NULL REFERENCES dinc_security.app_user(user_id) ON DELETE CASCADE,
+        role_id     UUID NOT NULL REFERENCES dinc_app.rbac_roles(id) ON DELETE CASCADE,
         is_primary  BOOLEAN     NOT NULL DEFAULT true,
         assigned_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
         PRIMARY KEY (user_id, role_id)
@@ -110,9 +110,9 @@ export class RbacRepository implements OnModuleInit {
     `);
 
     await this.db.query(`
-      CREATE TABLE IF NOT EXISTS public.rbac_permission_dependencies (
-        permission_id          UUID NOT NULL REFERENCES public.rbac_permissions(id) ON DELETE CASCADE,
-        requires_permission_id UUID NOT NULL REFERENCES public.rbac_permissions(id) ON DELETE CASCADE,
+      CREATE TABLE IF NOT EXISTS dinc_app.rbac_permission_dependencies (
+        permission_id          UUID NOT NULL REFERENCES dinc_app.rbac_permissions(id) ON DELETE CASCADE,
+        requires_permission_id UUID NOT NULL REFERENCES dinc_app.rbac_permissions(id) ON DELETE CASCADE,
         created_at             TIMESTAMPTZ NOT NULL DEFAULT NOW(),
         PRIMARY KEY (permission_id, requires_permission_id),
         CHECK (permission_id <> requires_permission_id)
@@ -123,12 +123,12 @@ export class RbacRepository implements OnModuleInit {
     // NOT touch rbac_roles / rbac_permissions / rbac_role_permissions. `is_grant`
     // avoids the reserved SQL keyword `grant` (the API exposes it as `grant`).
     await this.db.query(`
-      CREATE TABLE IF NOT EXISTS public.rbac_user_permission_overrides (
+      CREATE TABLE IF NOT EXISTS dinc_app.rbac_user_permission_overrides (
         id             UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
-        user_id        UUID        NOT NULL REFERENCES public.users(id) ON DELETE CASCADE,
+        user_id        UUID        NOT NULL REFERENCES dinc_security.app_user(user_id) ON DELETE CASCADE,
         permission_key TEXT        NOT NULL,
         is_grant       BOOLEAN     NOT NULL,
-        created_by     UUID        REFERENCES public.users(id) ON DELETE SET NULL,
+        created_by     UUID        REFERENCES dinc_security.app_user(user_id) ON DELETE SET NULL,
         created_at     TIMESTAMPTZ NOT NULL DEFAULT NOW(),
         updated_at     TIMESTAMPTZ NOT NULL DEFAULT NOW(),
         UNIQUE (user_id, permission_key)
@@ -137,15 +137,15 @@ export class RbacRepository implements OnModuleInit {
 
     await this.db.query(`
       CREATE INDEX IF NOT EXISTS idx_rbac_permissions_group
-        ON public.rbac_permissions (permission_group, sort_order)
+        ON dinc_app.rbac_permissions (permission_group, sort_order)
     `);
     await this.db.query(`
       CREATE INDEX IF NOT EXISTS idx_rbac_user_roles_user
-        ON public.rbac_user_roles (user_id)
+        ON dinc_app.rbac_user_roles (user_id)
     `);
     await this.db.query(`
       CREATE INDEX IF NOT EXISTS idx_rbac_user_overrides_user
-        ON public.rbac_user_permission_overrides (user_id)
+        ON dinc_app.rbac_user_permission_overrides (user_id)
     `);
   }
 
@@ -153,7 +153,7 @@ export class RbacRepository implements OnModuleInit {
 
   private async seed(): Promise<void> {
     const before = await this.db.query<{ count: string }>(
-      `SELECT count(*) AS count FROM public.rbac_roles`,
+      `SELECT count(*) AS count FROM dinc_app.rbac_roles`,
     );
     const bootstrap = Number(before.rows[0]?.count ?? 0) === 0;
 
@@ -161,7 +161,7 @@ export class RbacRepository implements OnModuleInit {
     for (let i = 0; i < RBAC_SEED_PERMISSIONS.length; i += 1) {
       const p = RBAC_SEED_PERMISSIONS[i];
       await this.db.query(
-        `INSERT INTO public.rbac_permissions (key, permission_group, label, description, sort_order)
+        `INSERT INTO dinc_app.rbac_permissions (key, permission_group, label, description, sort_order)
          VALUES ($1, $2, $3, $4, $5)
          ON CONFLICT (key) DO NOTHING`,
         [p.key, p.group, p.label, p.description, i],
@@ -169,7 +169,7 @@ export class RbacRepository implements OnModuleInit {
     }
     for (const r of RBAC_SEED_ROLES) {
       await this.db.query(
-        `INSERT INTO public.rbac_roles (key, name, description, color, is_system, is_active)
+        `INSERT INTO dinc_app.rbac_roles (key, name, description, color, is_system, is_active)
          VALUES ($1, $2, $3, $4, true, true)
          ON CONFLICT (key) DO NOTHING`,
         [r.key, r.name, r.description, r.color],
@@ -178,9 +178,9 @@ export class RbacRepository implements OnModuleInit {
     // Permission dependencies are definitional catalogue data — always upserted.
     for (const d of RBAC_SEED_DEPENDENCIES) {
       await this.db.query(
-        `INSERT INTO public.rbac_permission_dependencies (permission_id, requires_permission_id)
+        `INSERT INTO dinc_app.rbac_permission_dependencies (permission_id, requires_permission_id)
          SELECT p.id, req.id
-         FROM public.rbac_permissions p, public.rbac_permissions req
+         FROM dinc_app.rbac_permissions p, dinc_app.rbac_permissions req
          WHERE p.key = $1 AND req.key = $2
          ON CONFLICT DO NOTHING`,
         [d.key, d.requires],
@@ -194,9 +194,9 @@ export class RbacRepository implements OnModuleInit {
     for (const r of RBAC_SEED_ROLES) {
       for (const permKey of r.permissions) {
         await this.db.query(
-          `INSERT INTO public.rbac_role_permissions (role_id, permission_id)
+          `INSERT INTO dinc_app.rbac_role_permissions (role_id, permission_id)
            SELECT ro.id, pe.id
-           FROM public.rbac_roles ro, public.rbac_permissions pe
+           FROM dinc_app.rbac_roles ro, dinc_app.rbac_permissions pe
            WHERE ro.key = $1 AND pe.key = $2
            ON CONFLICT DO NOTHING`,
           [r.key, permKey],
@@ -204,10 +204,10 @@ export class RbacRepository implements OnModuleInit {
       }
     }
     await this.db.query(
-      `INSERT INTO public.rbac_user_roles (user_id, role_id, is_primary)
-       SELECT u.id, ro.id, true
-       FROM public.users u
-       JOIN public.rbac_roles ro ON ro.key = upper(u.role)
+      `INSERT INTO dinc_app.rbac_user_roles (user_id, role_id, is_primary)
+       SELECT u.user_id, ro.id, true
+       FROM dinc_security.app_user u
+       JOIN dinc_app.rbac_roles ro ON ro.key = upper(u.role)
        ON CONFLICT DO NOTHING`,
     );
     this.logger.log('RBAC bootstrap seed complete (roles, grants, user assignments).');
@@ -218,14 +218,14 @@ export class RbacRepository implements OnModuleInit {
   async listPermissions(): Promise<RbacPermissionDto[]> {
     const result = await this.db.query<PermissionRow>(
       `SELECT id, key, permission_group, label, description, sort_order
-       FROM public.rbac_permissions
+       FROM dinc_app.rbac_permissions
        ORDER BY sort_order, key`,
     );
     const deps = await this.db.query<{ key: string; requires: string }>(
       `SELECT p.key AS key, req.key AS requires
-       FROM public.rbac_permission_dependencies d
-       JOIN public.rbac_permissions p   ON p.id = d.permission_id
-       JOIN public.rbac_permissions req ON req.id = d.requires_permission_id`,
+       FROM dinc_app.rbac_permission_dependencies d
+       JOIN dinc_app.rbac_permissions p   ON p.id = d.permission_id
+       JOIN dinc_app.rbac_permissions req ON req.id = d.requires_permission_id`,
     );
     const requiresByKey = new Map<string, string[]>();
     for (const row of deps.rows) {
@@ -244,9 +244,9 @@ export class RbacRepository implements OnModuleInit {
       `SELECT ${ROLE_COLUMNS.split(', ').map((c) => `r.${c}`).join(', ')},
               count(DISTINCT rp.permission_id) AS permission_count,
               count(DISTINCT ur.user_id)       AS user_count
-       FROM public.rbac_roles r
-       LEFT JOIN public.rbac_role_permissions rp ON rp.role_id = r.id
-       LEFT JOIN public.rbac_user_roles ur       ON ur.role_id = r.id
+       FROM dinc_app.rbac_roles r
+       LEFT JOIN dinc_app.rbac_role_permissions rp ON rp.role_id = r.id
+       LEFT JOIN dinc_app.rbac_user_roles ur       ON ur.role_id = r.id
        GROUP BY r.id
        ORDER BY r.is_system DESC, r.name`,
     );
@@ -260,7 +260,7 @@ export class RbacRepository implements OnModuleInit {
   /** Resolve a role by its UUID id or its key (e.g. 'ADMIN'). */
   async findRole(idOrKey: string): Promise<RbacRoleDetailDto | null> {
     const result = await this.db.query<RoleRow>(
-      `SELECT ${ROLE_COLUMNS} FROM public.rbac_roles
+      `SELECT ${ROLE_COLUMNS} FROM dinc_app.rbac_roles
        WHERE id::text = $1 OR key = upper($1)
        LIMIT 1`,
       [idOrKey],
@@ -269,8 +269,8 @@ export class RbacRepository implements OnModuleInit {
     if (!row) return null;
     const perms = await this.db.query<{ key: string }>(
       `SELECT p.key
-       FROM public.rbac_role_permissions rp
-       JOIN public.rbac_permissions p ON p.id = rp.permission_id
+       FROM dinc_app.rbac_role_permissions rp
+       JOIN dinc_app.rbac_permissions p ON p.id = rp.permission_id
        WHERE rp.role_id = $1
        ORDER BY p.sort_order, p.key`,
       [row.id],
@@ -284,7 +284,7 @@ export class RbacRepository implements OnModuleInit {
   /** A user's roles + the union of their effective permission keys. */
   async findUserAccess(userId: string): Promise<RbacUserAccessDto | null> {
     const userRes = await this.db.query<{ id: string; username: string; full_name: string }>(
-      `SELECT id, username, full_name FROM public.users WHERE id = $1 LIMIT 1`,
+      `SELECT user_id AS id, username, full_name FROM dinc_security.app_user WHERE user_id = $1 LIMIT 1`,
       [userId],
     );
     const user = userRes.rows[0];
@@ -298,17 +298,17 @@ export class RbacRepository implements OnModuleInit {
       is_primary: boolean;
     }>(
       `SELECT r.id, r.key, r.name, r.color, ur.is_primary
-       FROM public.rbac_user_roles ur
-       JOIN public.rbac_roles r ON r.id = ur.role_id
+       FROM dinc_app.rbac_user_roles ur
+       JOIN dinc_app.rbac_roles r ON r.id = ur.role_id
        WHERE ur.user_id = $1
        ORDER BY ur.is_primary DESC, r.name`,
       [userId],
     );
     const permsRes = await this.db.query<{ key: string }>(
       `SELECT DISTINCT p.key
-       FROM public.rbac_user_roles ur
-       JOIN public.rbac_role_permissions rp ON rp.role_id = ur.role_id
-       JOIN public.rbac_permissions p       ON p.id = rp.permission_id
+       FROM dinc_app.rbac_user_roles ur
+       JOIN dinc_app.rbac_role_permissions rp ON rp.role_id = ur.role_id
+       JOIN dinc_app.rbac_permissions p       ON p.id = rp.permission_id
        WHERE ur.user_id = $1
        ORDER BY p.key`,
       [userId],
@@ -316,7 +316,7 @@ export class RbacRepository implements OnModuleInit {
 
     const overridesRes = await this.db.query<{ permission_key: string; is_grant: boolean }>(
       `SELECT permission_key, is_grant
-       FROM public.rbac_user_permission_overrides
+       FROM dinc_app.rbac_user_permission_overrides
        WHERE user_id = $1
        ORDER BY permission_key`,
       [userId],
@@ -353,6 +353,52 @@ export class RbacRepository implements OnModuleInit {
     };
   }
 
+  /**
+   * Effective permission keys for a user identified by USERNAME (the JWT subject),
+   * computed live: role grants ∪ user grants \ user denies. Returns `null` when the
+   * user has NO RBAC role assignment at all, signalling the caller to apply the
+   * legacy fallback; returns an array (possibly empty) when the user IS mapped, in
+   * which case the database is authoritative. This is the hot path for every
+   * guarded request, so it is a single small set of indexed lookups.
+   */
+  async findEffectivePermissionKeysByUsername(username: string): Promise<string[] | null> {
+    const userRes = await this.db.query<{ id: string }>(
+      `SELECT user_id AS id FROM dinc_security.app_user WHERE username = $1 LIMIT 1`,
+      [username],
+    );
+    const user = userRes.rows[0];
+    if (!user) return null;
+
+    const roleCount = await this.db.query<{ n: string }>(
+      `SELECT count(*) AS n FROM dinc_app.rbac_user_roles WHERE user_id = $1`,
+      [user.id],
+    );
+    // No RBAC mapping → let the service fall back to the legacy registry.
+    if (Number(roleCount.rows[0]?.n ?? 0) === 0) return null;
+
+    const permsRes = await this.db.query<{ key: string }>(
+      `SELECT DISTINCT p.key
+       FROM dinc_app.rbac_user_roles ur
+       JOIN dinc_app.rbac_role_permissions rp ON rp.role_id = ur.role_id
+       JOIN dinc_app.rbac_permissions p       ON p.id = rp.permission_id
+       WHERE ur.user_id = $1`,
+      [user.id],
+    );
+    const overridesRes = await this.db.query<{ permission_key: string; is_grant: boolean }>(
+      `SELECT permission_key, is_grant
+       FROM dinc_app.rbac_user_permission_overrides
+       WHERE user_id = $1`,
+      [user.id],
+    );
+
+    const effective = new Set(permsRes.rows.map((r) => r.key));
+    for (const o of overridesRes.rows) {
+      if (o.is_grant) effective.add(o.permission_key);
+      else effective.delete(o.permission_key);
+    }
+    return [...effective];
+  }
+
   // ── User permission overrides (enterprise RBAC enhancement) ──────────────────
 
   /**
@@ -369,7 +415,7 @@ export class RbacRepository implements OnModuleInit {
     actorUsername?: string | null,
   ): Promise<boolean> {
     const userRes = await this.db.query<{ id: string }>(
-      `SELECT id FROM public.users WHERE id = $1 LIMIT 1`,
+      `SELECT user_id AS id FROM dinc_security.app_user WHERE user_id = $1 LIMIT 1`,
       [userId],
     );
     if (!userRes.rows[0]) return false;
@@ -380,7 +426,7 @@ export class RbacRepository implements OnModuleInit {
     const keys = [...byKey.keys()];
     if (keys.length > 0) {
       const found = await this.db.query<{ key: string }>(
-        `SELECT key FROM public.rbac_permissions WHERE key = ANY($1::text[])`,
+        `SELECT key FROM dinc_app.rbac_permissions WHERE key = ANY($1::text[])`,
         [keys],
       );
       const known = new Set(found.rows.map((r) => r.key));
@@ -389,13 +435,13 @@ export class RbacRepository implements OnModuleInit {
     }
 
     await this.db.query(
-      `DELETE FROM public.rbac_user_permission_overrides WHERE user_id = $1`,
+      `DELETE FROM dinc_app.rbac_user_permission_overrides WHERE user_id = $1`,
       [userId],
     );
     for (const [permissionKey, grant] of byKey) {
       await this.db.query(
-        `INSERT INTO public.rbac_user_permission_overrides (user_id, permission_key, is_grant, created_by)
-         VALUES ($1, $2, $3, (SELECT id FROM public.users WHERE username = $4))`,
+        `INSERT INTO dinc_app.rbac_user_permission_overrides (user_id, permission_key, is_grant, created_by)
+         VALUES ($1, $2, $3, (SELECT user_id FROM dinc_security.app_user WHERE username = $4))`,
         [userId, permissionKey, grant, actorUsername ?? null],
       );
     }
@@ -414,13 +460,13 @@ export class RbacRepository implements OnModuleInit {
     const key = input.name.trim().toUpperCase().replace(/[^A-Z0-9]+/g, '_').replace(/^_+|_+$/g, '');
     if (!key) throw new Error('Role name must contain letters or numbers.');
     const exists = await this.db.query<{ exists: boolean }>(
-      `SELECT EXISTS (SELECT 1 FROM public.rbac_roles WHERE key = $1) AS exists`,
+      `SELECT EXISTS (SELECT 1 FROM dinc_app.rbac_roles WHERE key = $1) AS exists`,
       [key],
     );
     if (exists.rows[0]?.exists) throw new Error(`A role named '${input.name.trim()}' already exists.`);
 
     const inserted = await this.db.query<{ id: string }>(
-      `INSERT INTO public.rbac_roles (key, name, description, color, is_system, is_active)
+      `INSERT INTO dinc_app.rbac_roles (key, name, description, color, is_system, is_active)
        VALUES ($1, $2, $3, $4, false, true)
        RETURNING id`,
       [key, input.name.trim(), input.description, input.color],
@@ -448,7 +494,7 @@ export class RbacRepository implements OnModuleInit {
     if (patch.isActive !== undefined) add('is_active', patch.isActive);
     if (sets.length > 0) {
       await this.db.query(
-        `UPDATE public.rbac_roles SET ${sets.join(', ')}, updated_at = now() WHERE id = $1`,
+        `UPDATE dinc_app.rbac_roles SET ${sets.join(', ')}, updated_at = now() WHERE id = $1`,
         vals,
       );
     }
@@ -470,7 +516,7 @@ export class RbacRepository implements OnModuleInit {
   private async replacePermissions(roleId: string, roleKey: string, permissionKeys: string[]): Promise<void> {
     const keys = Array.from(new Set(permissionKeys));
     const rows = await this.db.query<{ id: string; key: string }>(
-      `SELECT id, key FROM public.rbac_permissions WHERE key = ANY($1::text[])`,
+      `SELECT id, key FROM dinc_app.rbac_permissions WHERE key = ANY($1::text[])`,
       [keys],
     );
     const idByKey = new Map(rows.rows.map((r) => [r.key, r.id]));
@@ -481,9 +527,9 @@ export class RbacRepository implements OnModuleInit {
     // be granted (defence-in-depth — the UI already enforces this).
     const deps = await this.db.query<{ key: string; requires: string }>(
       `SELECT p.key AS key, req.key AS requires
-       FROM public.rbac_permission_dependencies d
-       JOIN public.rbac_permissions p   ON p.id = d.permission_id
-       JOIN public.rbac_permissions req ON req.id = d.requires_permission_id
+       FROM dinc_app.rbac_permission_dependencies d
+       JOIN dinc_app.rbac_permissions p   ON p.id = d.permission_id
+       JOIN dinc_app.rbac_permissions req ON req.id = d.requires_permission_id
        WHERE p.key = ANY($1::text[])`,
       [keys],
     );
@@ -494,10 +540,10 @@ export class RbacRepository implements OnModuleInit {
       }
     }
 
-    await this.db.query(`DELETE FROM public.rbac_role_permissions WHERE role_id = $1`, [roleId]);
+    await this.db.query(`DELETE FROM dinc_app.rbac_role_permissions WHERE role_id = $1`, [roleId]);
     for (const key of keys) {
       await this.db.query(
-        `INSERT INTO public.rbac_role_permissions (role_id, permission_id)
+        `INSERT INTO dinc_app.rbac_role_permissions (role_id, permission_id)
          VALUES ($1, $2) ON CONFLICT DO NOTHING`,
         [roleId, idByKey.get(key)],
       );
@@ -507,7 +553,7 @@ export class RbacRepository implements OnModuleInit {
   /** Resolve a role's id/key/is_system by UUID id or key. */
   private async resolveRole(idOrKey: string): Promise<{ id: string; key: string; isSystem: boolean } | null> {
     const res = await this.db.query<{ id: string; key: string; is_system: boolean }>(
-      `SELECT id, key, is_system FROM public.rbac_roles
+      `SELECT id, key, is_system FROM dinc_app.rbac_roles
        WHERE id::text = $1 OR key = upper($1) LIMIT 1`,
       [idOrKey],
     );
@@ -525,14 +571,14 @@ export class RbacRepository implements OnModuleInit {
    */
   async setUserRoles(userId: string, roleKeys: string[]): Promise<boolean> {
     const userRes = await this.db.query<{ id: string }>(
-      `SELECT id FROM public.users WHERE id = $1 LIMIT 1`,
+      `SELECT user_id AS id FROM dinc_security.app_user WHERE user_id = $1 LIMIT 1`,
       [userId],
     );
     if (!userRes.rows[0]) return false;
 
     // Resolve keys → ids, preserving the requested order (index 0 = primary).
     const rolesRes = await this.db.query<{ id: string; key: string }>(
-      `SELECT id, key FROM public.rbac_roles WHERE key = ANY($1::text[])`,
+      `SELECT id, key FROM dinc_app.rbac_roles WHERE key = ANY($1::text[])`,
       [roleKeys],
     );
     const byKey = new Map(rolesRes.rows.map((r) => [r.key, r.id]));
@@ -542,10 +588,10 @@ export class RbacRepository implements OnModuleInit {
       throw new Error(`Unknown role(s): ${missing.join(', ')}`);
     }
 
-    await this.db.query(`DELETE FROM public.rbac_user_roles WHERE user_id = $1`, [userId]);
+    await this.db.query(`DELETE FROM dinc_app.rbac_user_roles WHERE user_id = $1`, [userId]);
     for (let i = 0; i < ordered.length; i += 1) {
       await this.db.query(
-        `INSERT INTO public.rbac_user_roles (user_id, role_id, is_primary)
+        `INSERT INTO dinc_app.rbac_user_roles (user_id, role_id, is_primary)
          VALUES ($1, $2, $3)
          ON CONFLICT (user_id, role_id) DO UPDATE SET is_primary = EXCLUDED.is_primary`,
         [userId, ordered[i].id, i === 0],
@@ -553,7 +599,7 @@ export class RbacRepository implements OnModuleInit {
     }
     // Mirror the primary role to users.role for back-compatible enforcement.
     await this.db.query(
-      `UPDATE public.users SET role = $2, updated_at = now() WHERE id = $1`,
+      `UPDATE dinc_security.app_user SET role = $2 WHERE user_id = $1`,
       [userId, roleKeys[0]],
     );
     return true;

@@ -74,7 +74,8 @@ export class RegisterPatientDto {
 
   @IsArray()
   @ArrayMaxSize(20)
-  @IsUUID('4', { each: true, message: 'A valid program must be selected.' })
+  // 'all': DiNc metadata programme ids are deterministic UUIDv5 (Step 5).
+  @IsUUID('all', { each: true, message: 'A valid program must be selected.' })
   programIds!: string[];
 
   @IsOptional()

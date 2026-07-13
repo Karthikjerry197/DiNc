@@ -9,7 +9,7 @@ import {
 import { Request } from 'express';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { JwtPayload } from '../auth/types/jwt-payload.type';
-import { GuidebookRef } from '../guidebooks/guidebooks.types';
+import { GuidebookResolution } from '../guidebooks/guidebooks.types';
 import { WorklistService } from './worklist.service';
 import { WorklistOverview } from './worklist.types';
 
@@ -39,7 +39,7 @@ export class WorklistController {
   @Get('items/:itemId/guidebook')
   getItemGuidebook(
     @Param('itemId') itemId: string,
-  ): Promise<{ guidebook: GuidebookRef | null }> {
+  ): Promise<GuidebookResolution> {
     if (!UUID_RE.test(itemId)) {
       throw new NotFoundException('Worklist item not found');
     }

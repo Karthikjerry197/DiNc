@@ -1,5 +1,4 @@
-import { IsBoolean, IsEmail, IsIn, IsNotEmpty, IsOptional, IsString, MaxLength } from 'class-validator';
-import { ASSIGNABLE_ROLES } from '../user.types';
+import { IsBoolean, IsEmail, IsNotEmpty, IsOptional, IsString, MaxLength } from 'class-validator';
 
 /** Partial update: Edit User, Assign Role and Enable/Disable all use this shape. */
 export class UpdateUserDto {
@@ -34,10 +33,10 @@ export class UpdateUserDto {
   @MaxLength(160)
   facility?: string | null;
 
+  // Validated against the rbac_roles source of truth in UsersService (M40).
   @IsOptional()
-  @IsIn(ASSIGNABLE_ROLES as readonly string[], {
-    message: `Role must be one of: ${ASSIGNABLE_ROLES.join(', ')}.`,
-  })
+  @IsString()
+  @IsNotEmpty()
   role?: string;
 
   @IsOptional()

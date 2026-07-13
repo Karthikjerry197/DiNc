@@ -1,7 +1,6 @@
 import {
   Body,
   Controller,
-  ForbiddenException,
   Get,
   Put,
   Query,
@@ -11,6 +10,9 @@ import {
 import { Request } from 'express';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { JwtPayload } from '../auth/types/jwt-payload.type';
+import { PermissionsGuard } from '../rbac/permissions.guard';
+import { RequirePermissions } from '../rbac/require-permissions.decorator';
+import { PermissionsService } from '../rbac/permissions.service';
 import { DashboardService } from './dashboard.service';
 import { DashboardLayoutRepository } from './dashboard-layout.repository';
 import { SaveLayoutDto } from './dto/save-layout.dto';
@@ -19,20 +21,23 @@ import { AdminDashboardSummary, DashboardLayoutDto } from './dashboard.types';
 type AuthedRequest = Request & { user: JwtPayload };
 
 /**
- * Dashboard API.
+ * Dashboard API. JWT-guarded, with authorization by the database-driven
+ * {@link PermissionsGuard} (Milestone 4).
  *
  * Routes:
- *   GET  /dashboard/admin/summary  — aggregated KPIs for the admin dashboard widget
+ *   GET  /dashboard/admin/summary  — aggregated KPIs; scoped per `dashboard.view.all`
  *   GET  /dashboard/layout          — the layout for the caller's role
- *                                    (admins may pass ?role=X to preview another role)
- *   PUT  /dashboard/layout          — upsert a role's layout (admin-only)
+ *                                    (holders of `dashboard.edit` may pass ?role=X
+ *                                    to preview another role's layout)
+ *   PUT  /dashboard/layout          — upsert a role's layout (requires `dashboard.edit`)
  */
 @Controller('dashboard')
-@UseGuards(JwtAuthGuard)
+@UseGuards(JwtAuthGuard, PermissionsGuard)
 export class DashboardController {
   constructor(
     private readonly dashboard: DashboardService,
     private readonly layouts: DashboardLayoutRepository,
+    private readonly permissions: PermissionsService,
   ) {}
 
   /** Permission-scoped summary: viewers without `dashboard.view.all` see only their own activities. */
@@ -45,8 +50,8 @@ export class DashboardController {
   }
 
   /**
-   * Returns the stored layout for the caller's role.
-   * Administrators may pass `?role=CLINICIAN` to fetch another role's layout
+   * Returns the stored layout for the caller's role. Callers holding
+   * `dashboard.edit` may pass `?role=CLINICIAN` to fetch another role's layout
    * for editing without switching their own session.
    */
   @Get('layout')
@@ -55,9 +60,10 @@ export class DashboardController {
     @Query('role') queryRole?: string,
   ): Promise<DashboardLayoutDto> {
     const user = req.user;
-    // Non-admins always get their own role's layout.
-    const targetRole =
-      queryRole && user.role === 'ADMIN' ? queryRole : user.role;
+    // Non-editors always get their own role's layout; layout editors may preview
+    // another role's layout via ?role= (effective permission, resolved from DB).
+    const canEdit = await this.permissions.has(user, 'dashboard.edit');
+    const targetRole = queryRole && canEdit ? queryRole : user.role;
 
     const stored = await this.layouts.findByRole(targetRole);
     if (stored) return stored;
@@ -67,17 +73,13 @@ export class DashboardController {
     return { role: targetRole, layout: [], updatedBy: null, updatedAt: null };
   }
 
-  /** Saves a role's widget layout. Restricted to ADMIN users. */
+  /** Saves a role's widget layout. Requires the `dashboard.edit` permission. */
   @Put('layout')
+  @RequirePermissions('dashboard.edit')
   async saveLayout(
     @Req() req: AuthedRequest,
     @Body() body: SaveLayoutDto,
   ): Promise<{ success: boolean }> {
-    if (req.user.role !== 'ADMIN') {
-      throw new ForbiddenException(
-        'Only administrators can update dashboard layouts.',
-      );
-    }
     await this.layouts.upsert(body.role, body.layout, req.user.sub);
     return { success: true };
   }

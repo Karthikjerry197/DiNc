@@ -3,9 +3,10 @@
 import { memo } from 'react';
 import Link from 'next/link';
 import { Bell, BookOpen, Eye, Flag, Inbox, Phone } from 'lucide-react';
-import type { WorklistItem } from '@/lib/api';
+import type { OverallRiskResolution, WorklistItem } from '@/lib/api';
 import type { PatientIntelligence } from '@/lib/ai';
 import { RiskScoreBadge, DefaultProbBadge } from '@/components/intelligence/badges';
+import OverallRiskBadge from '@/components/intelligence/OverallRiskBadge';
 import { displayValue as value, formatDate } from '@/lib/format';
 
 interface WorklistTableProps {
@@ -18,6 +19,8 @@ interface WorklistTableProps {
   onStartCall?: (item: WorklistItem) => void;
   /** AI-assisted intelligence per citizen (spec §5.3). Enables the AI column + row emphasis. */
   intelById?: Map<string, PatientIntelligence>;
+  /** Overall Risk per citizen (batch-resolved). Rendered as the primary risk. */
+  overallById?: Map<string, OverallRiskResolution>;
 }
 
 /** A row is emphasised when it is high AI risk, a severe alert, or an escalation. */
@@ -40,6 +43,7 @@ function WorklistTable({
   onReportDuplicate,
   onStartCall,
   intelById,
+  overallById,
 }: WorklistTableProps) {
   const showAi = !!intelById;
   if (items.length === 0) {
@@ -66,7 +70,7 @@ function WorklistTable({
             <th>Due Date</th>
             <th>Reminder</th>
             <th>Priority</th>
-            <th>Risk</th>
+            <th>Overall Risk</th>
             {showAi && <th>AI Insight</th>}
             <th>Status</th>
             <th className="wl-col-actions">Actions</th>
@@ -92,11 +96,13 @@ function WorklistTable({
                 <span className={`pill pill-${item.priority.toLowerCase()}`}>{item.priority}</span>
               </td>
               <td>
-                {item.isEscalation ? (
-                  <span className="pill pill-overdue">Escalation</span>
-                ) : (
-                  <span className="pill pill-low">Routine</span>
-                )}
+                {/* PRIMARY — Overall Risk; escalation kept as a supporting flag. */}
+                <div className="wl-risk-cell">
+                  <OverallRiskBadge
+                    resolution={item.citizenId ? overallById?.get(item.citizenId) ?? null : null}
+                  />
+                  {item.isEscalation && <span className="pill pill-overdue wl-risk-escal">Escalation</span>}
+                </div>
               </td>
               {showAi && (
                 <td>

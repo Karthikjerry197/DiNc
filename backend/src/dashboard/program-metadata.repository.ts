@@ -62,9 +62,9 @@ export class ProgramMetadataRepository implements OnModuleInit {
       // Separate presentation-config table — keyed to the programme, cascades if
       // the programme is ever removed. Never extends the programmes master table.
       await this.db.query(`
-        CREATE TABLE IF NOT EXISTS public.program_display_config (
+        CREATE TABLE IF NOT EXISTS dinc_app.program_display_config (
           program_id    UUID PRIMARY KEY
-                        REFERENCES public.programs(id) ON DELETE CASCADE,
+                        /* TODO(Step 2+): restore FK to migrated dinc_runtime/dinc_metadata table */,
           color         VARCHAR(9),
           display_order INTEGER,
           created_at    TIMESTAMPTZ NOT NULL DEFAULT now(),
@@ -82,10 +82,11 @@ export class ProgramMetadataRepository implements OnModuleInit {
            FROM unnest($1::text[]) WITH ORDINALITY AS p(hex, ord)
          ),
          ranked AS (
-           SELECT id, (row_number() OVER (ORDER BY name) - 1) AS rn
-           FROM public.programs
+           SELECT programme_id AS id,
+                  (row_number() OVER (ORDER BY programme_name) - 1) AS rn
+           FROM dinc_metadata.programme
          )
-         INSERT INTO public.program_display_config (program_id, color)
+         INSERT INTO dinc_app.program_display_config (program_id, color)
          SELECT r.id, pl.hex
            FROM ranked r
            JOIN palette pl ON pl.idx = (r.rn % $2::int)

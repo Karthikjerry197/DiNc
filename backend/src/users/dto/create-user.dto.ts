@@ -1,5 +1,4 @@
-import { IsEmail, IsIn, IsNotEmpty, IsOptional, IsString, Matches, MaxLength, MinLength } from 'class-validator';
-import { ASSIGNABLE_ROLES } from '../user.types';
+import { IsEmail, IsNotEmpty, IsOptional, IsString, Matches, MaxLength, MinLength } from 'class-validator';
 
 export class CreateUserDto {
   @IsString()
@@ -40,9 +39,9 @@ export class CreateUserDto {
   @MaxLength(160)
   facility?: string;
 
-  @IsIn(ASSIGNABLE_ROLES as readonly string[], {
-    message: `Role must be one of: ${ASSIGNABLE_ROLES.join(', ')}.`,
-  })
+  // Validated against the rbac_roles source of truth in UsersService (M40).
+  @IsString()
+  @IsNotEmpty({ message: 'A role is required.' })
   role!: string;
 
   @IsString()

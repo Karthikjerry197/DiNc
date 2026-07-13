@@ -1,4 +1,15 @@
-const API_BASE = process.env.NEXT_PUBLIC_API_BASE_URL ?? 'http://localhost:4000';
+// Base URL of the backend API.
+// 1. Preferred: set NEXT_PUBLIC_API_BASE_URL in frontend/.env.local
+//    (e.g. http://192.168.31.44:4000) so LAN clients reach the server host.
+// 2. If unset, fall back to the host the browser loaded the app from — this
+//    keeps LAN access working (a client at http://192.168.31.44:3000 will call
+//    http://192.168.31.44:4000) instead of pointing 'localhost' at the client.
+// 3. On the server (SSR/build) where there is no window, use localhost.
+const API_BASE =
+  process.env.NEXT_PUBLIC_API_BASE_URL ??
+  (typeof window !== 'undefined'
+    ? `${window.location.protocol}//${window.location.hostname}:4000`
+    : 'http://localhost:4000');
 
 export interface AuthUser {
   username: string;
@@ -885,10 +896,34 @@ export interface GuidebookRef {
   title: string;
 }
 
+/**
+ * Result of resolving the guidebook(s) for a clinical context. `guidebook` is
+ * the highest-priority match to open automatically; `related` lists the other
+ * applicable guidebooks; `message` is a display-ready explanation when nothing
+ * is mapped (`matched === false`).
+ */
+export interface GuidebookResolution {
+  guidebook: GuidebookRef | null;
+  related: GuidebookRef[];
+  matched: boolean;
+  message: string | null;
+}
+
+/** Normalises any resolver response (tolerates older `{ guidebook }`-only bodies). */
+function toGuidebookResolution(body: Partial<GuidebookResolution>): GuidebookResolution {
+  const guidebook = body.guidebook ?? null;
+  return {
+    guidebook,
+    related: Array.isArray(body.related) ? body.related : [],
+    matched: body.matched ?? guidebook !== null,
+    message: body.message ?? null,
+  };
+}
+
 export async function fetchEnrollmentGuidebook(
   token: string,
   enrollmentId: string,
-): Promise<GuidebookRef | null> {
+): Promise<GuidebookResolution> {
   const res = await fetch(`${API_BASE}/api/enrollments/${enrollmentId}/guidebook`, {
     headers: { Authorization: `Bearer ${token}` },
   });
@@ -896,14 +931,13 @@ export async function fetchEnrollmentGuidebook(
   if (!res.ok) {
     throw new Error('Unable to resolve guidebook');
   }
-  const body = (await res.json()) as { guidebook: GuidebookRef | null };
-  return body.guidebook;
+  return toGuidebookResolution((await res.json()) as Partial<GuidebookResolution>);
 }
 
 export async function fetchWorklistItemGuidebook(
   token: string,
   itemId: string,
-): Promise<GuidebookRef | null> {
+): Promise<GuidebookResolution> {
   const res = await fetch(`${API_BASE}/api/worklist/items/${itemId}/guidebook`, {
     headers: { Authorization: `Bearer ${token}` },
   });
@@ -911,8 +945,26 @@ export async function fetchWorklistItemGuidebook(
   if (!res.ok) {
     throw new Error('Unable to resolve guidebook');
   }
-  const body = (await res.json()) as { guidebook: GuidebookRef | null };
-  return body.guidebook;
+  return toGuidebookResolution((await res.json()) as Partial<GuidebookResolution>);
+}
+
+/**
+ * Builds the `/guidebooks` deep-link for a resolution: preselects the primary
+ * guidebook and passes related ids so the page can show a "Related Guidebooks"
+ * section. `activity` (a worklist item id) enables the Start-Call shortcut.
+ */
+export function guidebookHref(
+  resolution: GuidebookResolution,
+  activityId?: string | null,
+): string {
+  const params = new URLSearchParams();
+  if (resolution.guidebook) params.set('g', resolution.guidebook.id);
+  if (activityId) params.set('activity', activityId);
+  const related = resolution.related.map((r) => r.id).filter(Boolean);
+  if (related.length > 0) params.set('related', related.join(','));
+  if (!resolution.matched) params.set('unmapped', '1');
+  const qs = params.toString();
+  return qs ? `/guidebooks?${qs}` : '/guidebooks';
 }
 
 // ── Programs & Enrollments (read layer) ──────────────────────────────────────
@@ -1203,9 +1255,17 @@ export async function createEnrollment(
 
 export type DuplicateRequestStatus =
   | 'PENDING'
-  | 'APPROVED'
   | 'REJECTED'
+  | 'CLOSED'
+  | 'CONFIRMED_DUPLICATE'
+  | 'APPROVED'
   | 'RESOLVED';
+
+/** The three Administrator Review decisions. */
+export type DuplicateDecision =
+  | 'REJECTED'
+  | 'MULTIPLE_ENROLMENT'
+  | 'CONFIRMED_DUPLICATE';
 
 export type DuplicateResolution = 'MERGED' | 'DELETED';
 
@@ -1223,34 +1283,100 @@ export interface DuplicateRequest {
   reason: string;
   comments: string | null;
   status: DuplicateRequestStatus;
+  decision: DuplicateDecision | null;
   resolution: DuplicateResolution | null;
   submittedBy: string;
   submittedAt: string;
   reviewedBy: string | null;
   reviewedAt: string | null;
+  reviewComments: string | null;
   remarks: string | null;
+  updatedAt: string;
 }
 
 export interface EnrollmentComparisonEntry extends EnrollmentSummary {
   guidebook: GuidebookRef | null;
 }
 
+/** Extended demographics for the side-by-side comparison. */
+export interface PatientDemographics {
+  uhid: string | null;
+  abha: string | null;
+  aadhaar: string | null;
+  fullName: string | null;
+  dateOfBirth: string | null;
+  age: number | null;
+  gender: string | null;
+  mobile: string | null;
+  address: string | null;
+  village: string | null;
+  district: string | null;
+}
+
+/** An active clinical alert shown under Clinical Information. */
+export interface AlertEntry {
+  id: string;
+  disease: string | null;
+  riskLevel: string | null;
+  status: string;
+  triggeredAt: string | null;
+}
+
 export interface PatientComparisonSide {
   citizen: CitizenDetail['citizen'];
+  demographics: PatientDemographics;
   programs: ProgramChip[];
   enrollments: EnrollmentComparisonEntry[];
   activities: ActivityEntry[];
+  alerts: AlertEntry[];
   guidebooks: GuidebookRef[];
+}
+
+/** One entry in a request's append-only status timeline. */
+export interface StatusHistoryEntry {
+  id: string;
+  fromStatus: DuplicateRequestStatus | null;
+  toStatus: DuplicateRequestStatus;
+  decision: DuplicateDecision | null;
+  comments: string | null;
+  actor: string | null;
+  createdAt: string;
 }
 
 export interface DuplicateComparison {
   request: DuplicateRequest;
   current: PatientComparisonSide;
   duplicate: PatientComparisonSide;
+  statusHistory: StatusHistoryEntry[];
 }
 
-/** Reason codes accepted by the backend, with friendly labels for the UI. */
-export const DUPLICATE_REASONS: { value: string; label: string }[] = [
+/** Human labels for each status chip. */
+export const DUPLICATE_STATUS_LABEL: Record<string, string> = {
+  PENDING: 'Pending Admin Review',
+  REJECTED: 'Rejected',
+  CLOSED: 'Closed · Multiple Enrolment',
+  CONFIRMED_DUPLICATE: 'Confirmed Duplicate',
+  APPROVED: 'Approved',
+  RESOLVED: 'Resolved',
+};
+
+/** Human labels for each review decision. */
+export const DUPLICATE_DECISION_LABEL: Record<DuplicateDecision, string> = {
+  REJECTED: 'Not a Duplicate',
+  MULTIPLE_ENROLMENT: 'Valid Multiple Programme Enrolment',
+  CONFIRMED_DUPLICATE: 'Confirmed Duplicate',
+};
+
+/**
+ * OFFLINE FALLBACK ONLY for the duplicate-reason vocabulary (M40).
+ *
+ * The single source of truth is the `duplicate_reason` Reference Data category:
+ * the Report Duplicate dialog reads it via `ReferenceSelect`, and the backend
+ * validates against it. This list is used only if that API is momentarily
+ * unavailable, and to label a stored reason code in tables. It is NOT
+ * authoritative — do not add options here without adding them to Reference Data.
+ */
+export const DUPLICATE_REASON_FALLBACK: { value: string; label: string }[] = [
   { value: 'DUPLICATE_REGISTRATION', label: 'Duplicate registration' },
   { value: 'SAME_PERSON_DIFFERENT_UHID', label: 'Same person, different UHID' },
   { value: 'DATA_ENTRY_ERROR', label: 'Data entry error' },
@@ -1258,9 +1384,9 @@ export const DUPLICATE_REASONS: { value: string; label: string }[] = [
   { value: 'OTHER', label: 'Other' },
 ];
 
-/** Maps a stored reason code to its friendly label (falls back to the code). */
+/** Maps a stored reason code to a friendly label (falls back to the code). */
 export function duplicateReasonLabel(value: string): string {
-  return DUPLICATE_REASONS.find((r) => r.value === value)?.label ?? value;
+  return DUPLICATE_REASON_FALLBACK.find((r) => r.value === value)?.label ?? value;
 }
 
 /** Surfaces a backend validation message (string | string[]) as one Error. */
@@ -1351,6 +1477,179 @@ export async function resolveDuplicateRequest(
   );
   if (!res.ok) throw await readError(res, 'Unable to resolve this request.');
   return res.json() as Promise<DuplicateRequest>;
+}
+
+/**
+ * Records an Administrator Review decision (Duplicate Review Workspace). Comments
+ * are mandatory. A CONFIRMED_DUPLICATE only marks intent — nothing is merged,
+ * archived or deleted (that is a future milestone).
+ */
+export async function decideDuplicateRequest(
+  token: string,
+  id: string,
+  decision: DuplicateDecision,
+  comments: string,
+): Promise<DuplicateRequest> {
+  const res = await fetch(
+    `${API_BASE}/api/data-quality/duplicate-requests/${id}/decision`,
+    {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ decision, comments }),
+    },
+  );
+  if (!res.ok) throw await readError(res, 'Unable to record this decision.');
+  return res.json() as Promise<DuplicateRequest>;
+}
+
+// ── Reference Data (generic business vocabularies) ───────────────────────────
+
+export interface ReferenceCategory {
+  id: string;
+  key: string;
+  name: string;
+  description: string | null;
+  isActive: boolean;
+  isSystem: boolean;
+  displayOrder: number;
+  valueCount: number;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface ReferenceValue {
+  id: string;
+  categoryId: string;
+  categoryKey: string;
+  code: string;
+  displayName: string;
+  description: string | null;
+  colour: string | null;
+  icon: string | null;
+  sortOrder: number;
+  isActive: boolean;
+  isSystem: boolean;
+  metadata: Record<string, unknown>;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export async function fetchReferenceCategories(
+  token: string,
+  activeOnly = false,
+): Promise<ReferenceCategory[]> {
+  const res = await fetch(
+    `${API_BASE}/api/reference-data/categories?activeOnly=${activeOnly}`,
+    { headers: { Authorization: `Bearer ${token}` } },
+  );
+  if (!res.ok) throw await readError(res, 'Unable to load reference categories.');
+  return res.json() as Promise<ReferenceCategory[]>;
+}
+
+export async function fetchReferenceValues(
+  token: string,
+  category: string,
+  activeOnly = true,
+): Promise<ReferenceValue[]> {
+  const res = await fetch(
+    `${API_BASE}/api/reference-data/${encodeURIComponent(category)}?activeOnly=${activeOnly}`,
+    { headers: { Authorization: `Bearer ${token}` } },
+  );
+  if (!res.ok) throw await readError(res, 'Unable to load reference values.');
+  return res.json() as Promise<ReferenceValue[]>;
+}
+
+export async function createReferenceCategory(
+  token: string,
+  body: { key: string; name: string; description?: string },
+): Promise<ReferenceCategory> {
+  const res = await fetch(`${API_BASE}/api/reference-data/categories`, {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  });
+  if (!res.ok) throw await readError(res, 'Unable to create category.');
+  return res.json() as Promise<ReferenceCategory>;
+}
+
+export async function updateReferenceCategory(
+  token: string,
+  idOrKey: string,
+  body: { name?: string; description?: string; isActive?: boolean },
+): Promise<ReferenceCategory> {
+  const res = await fetch(`${API_BASE}/api/reference-data/categories/${encodeURIComponent(idOrKey)}`, {
+    method: 'PUT',
+    headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  });
+  if (!res.ok) throw await readError(res, 'Unable to update category.');
+  return res.json() as Promise<ReferenceCategory>;
+}
+
+export async function createReferenceValue(
+  token: string,
+  category: string,
+  body: {
+    code: string;
+    displayName: string;
+    description?: string;
+    colour?: string;
+    icon?: string;
+    metadata?: Record<string, unknown>;
+  },
+): Promise<ReferenceValue> {
+  const res = await fetch(`${API_BASE}/api/reference-data/${encodeURIComponent(category)}/values`, {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  });
+  if (!res.ok) throw await readError(res, 'Unable to create value.');
+  return res.json() as Promise<ReferenceValue>;
+}
+
+export async function updateReferenceValue(
+  token: string,
+  id: string,
+  body: {
+    displayName?: string;
+    description?: string;
+    colour?: string;
+    icon?: string;
+    isActive?: boolean;
+    metadata?: Record<string, unknown>;
+  },
+): Promise<ReferenceValue> {
+  const res = await fetch(`${API_BASE}/api/reference-data/values/${encodeURIComponent(id)}`, {
+    method: 'PUT',
+    headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  });
+  if (!res.ok) throw await readError(res, 'Unable to update value.');
+  return res.json() as Promise<ReferenceValue>;
+}
+
+/** Soft delete (deactivate) a reference value. */
+export async function deactivateReferenceValue(token: string, id: string): Promise<ReferenceValue> {
+  const res = await fetch(`${API_BASE}/api/reference-data/values/${encodeURIComponent(id)}`, {
+    method: 'DELETE',
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  if (!res.ok) throw await readError(res, 'Unable to deactivate value.');
+  return res.json() as Promise<ReferenceValue>;
+}
+
+export async function reorderReferenceValues(
+  token: string,
+  category: string,
+  orderedIds: string[],
+): Promise<ReferenceValue[]> {
+  const res = await fetch(`${API_BASE}/api/reference-data/${encodeURIComponent(category)}/reorder`, {
+    method: 'PUT',
+    headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ orderedIds }),
+  });
+  if (!res.ok) throw await readError(res, 'Unable to reorder values.');
+  return res.json() as Promise<ReferenceValue[]>;
 }
 
 // ── Teleconsultation / Clinical Activity Lifecycle ───────────────────────────
@@ -2081,6 +2380,92 @@ export async function markAlertRead(token: string, alertId: string): Promise<voi
     headers: { Authorization: `Bearer ${token}` },
   });
   if (!res.ok) throw new Error('Failed to mark the alert as read');
+}
+
+// ── Overall Risk Engine (matrix-driven; decision lives in PostgreSQL) ──────────
+
+export type ClinicalSeverity = 'LOW' | 'MODERATE' | 'SEVERE';
+export type FollowupRiskLevel = 'LOW' | 'MODERATE' | 'HIGH';
+export type OverallRiskLevel = 'LOW' | 'MODERATE' | 'HIGH';
+
+export interface OverallRiskResolution {
+  clinicalSeverity: ClinicalSeverity;
+  followupRisk: FollowupRiskLevel;
+  overallRisk: OverallRiskLevel;
+  explanation: string;
+  matched: boolean;
+  source: 'matrix';
+}
+
+export interface OverallRiskMatrixEntry {
+  id: string;
+  clinicalSeverity: ClinicalSeverity;
+  followupRisk: FollowupRiskLevel;
+  overallRisk: OverallRiskLevel;
+  isActive: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
+
+/**
+ * Resolves a citizen's Overall Risk by looking up the (Clinical Severity ×
+ * AI Follow-up Risk) pair in the server-side decision matrix. `clinicalSeverity`
+ * accepts the CDSE category (NONE|LOW|MODERATE|SEVERE); `followupRisk` accepts
+ * the classified band or the engine's display band (Low|Medium|High) — the
+ * backend normalises both before the lookup.
+ */
+export async function resolveOverallRisk(
+  token: string,
+  clinicalSeverity: string,
+  followupRisk: string,
+): Promise<OverallRiskResolution> {
+  const res = await fetch(
+    `${API_BASE}/api/overall-risk/resolve?clinicalSeverity=${encodeURIComponent(clinicalSeverity)}&followupRisk=${encodeURIComponent(followupRisk)}`,
+    { headers: { Authorization: `Bearer ${token}` } },
+  );
+  if (!res.ok) throw await readError(res, 'Failed to resolve overall risk.');
+  return res.json() as Promise<OverallRiskResolution>;
+}
+
+/** The full Overall Risk decision matrix (for inspection / config surfaces). */
+export async function fetchOverallRiskMatrix(token: string): Promise<OverallRiskMatrixEntry[]> {
+  const res = await fetch(`${API_BASE}/api/overall-risk/matrix`, {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  if (!res.ok) throw await readError(res, 'Failed to load overall risk matrix.');
+  return res.json() as Promise<OverallRiskMatrixEntry[]>;
+}
+
+/** One item for the batch resolver: an id plus the two engine inputs. */
+export interface OverallRiskBatchInput {
+  id: string;
+  clinicalSeverity: string;
+  followupRisk: string;
+}
+
+/** A batch result — the single-resolve shape plus the caller's `id`. */
+export interface OverallRiskBatchResult extends OverallRiskResolution {
+  id: string;
+}
+
+/**
+ * Resolves Overall Risk for many citizens in a SINGLE request (Dashboard,
+ * Worklist). One DB round-trip server-side regardless of list size. Each result
+ * is identical to {@link resolveOverallRisk} plus its `id`; ids absent from the
+ * response could not be resolved and should render as "Pending Assessment".
+ */
+export async function resolveOverallRiskBatch(
+  token: string,
+  items: OverallRiskBatchInput[],
+): Promise<OverallRiskBatchResult[]> {
+  if (items.length === 0) return [];
+  const res = await fetch(`${API_BASE}/api/overall-risk/resolve-batch`, {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ items }),
+  });
+  if (!res.ok) throw await readError(res, 'Failed to resolve overall risk (batch).');
+  return res.json() as Promise<OverallRiskBatchResult[]>;
 }
 
 // ── Backward-compat types — used by Care Plan panel ───────────────────────────

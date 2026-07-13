@@ -6,17 +6,28 @@ import { CircleAlert, CircleCheck, TriangleAlert } from 'lucide-react';
 import { fetchActiveAlerts, markAlertRead, type AlertWithCitizen } from '@/lib/api';
 import { getToken } from '@/lib/session';
 import { SkeletonLines } from '@/components/shell/Skeleton';
+import ReferenceBadge from '@/components/reference/ReferenceBadge';
+import type { ReferenceOption } from '@/lib/useReferenceData';
 
 /**
  * Action Centre (M32/M33.1): the alert feed is SEVERE-only server-side —
  * moderate patients surface through the Dashboard's Clinical Risk analytics
  * instead. Every card navigates straight to the citizen workspace (patient
  * details, timeline and current activity — consultation one click away).
+ *
+ * M40 Configuration Convergence: the risk-level label + colour come from the
+ * `risk_level` Reference Data category (single source of truth) via ReferenceBadge.
+ * Only the decorative icon (presentation) and the card tone class are keyed here.
  */
-const RISK_CONFIG: Record<'MODERATE' | 'SEVERE', { label: string; icon: ReactNode; cls: string }> = {
-  MODERATE: { label: 'Moderate Risk', icon: <CircleAlert size={18} />, cls: 'moderate' },
-  SEVERE:   { label: 'Severe Risk',   icon: <TriangleAlert size={18} />, cls: 'severe'   },
+const RISK_ICON: Record<'MODERATE' | 'SEVERE', ReactNode> = {
+  MODERATE: <CircleAlert size={18} />,
+  SEVERE: <TriangleAlert size={18} />,
 };
+
+const RISK_LEVEL_FALLBACK: ReferenceOption[] = [
+  { code: 'MODERATE', displayName: 'Moderate', colour: '#b45309' },
+  { code: 'SEVERE', displayName: 'Severe', colour: '#b91c1c' },
+];
 
 /**
  * Lifecycle views: Severe = unresolved alerts (unread listed first, read
@@ -28,27 +39,25 @@ const VIEWS = [
 ];
 
 function AlertCard({ alert, onOpen }: { alert: AlertWithCitizen; onOpen: () => void }) {
-  const cfg = RISK_CONFIG[alert.riskLevel];
+  const tone = alert.riskLevel.toLowerCase();
   // Read alerts stay in the feed but render muted; only ACTIVE alerts carry
   // the distinction (resolved history is inherently "handled").
   const read = alert.status === 'ACTIVE' && alert.isRead;
   return (
     <button
       type="button"
-      className={`notif-alert-card notif-alert-card--${cfg.cls} notif-alert-card--link${read ? ' notif-alert-card--read' : ''}`}
+      className={`notif-alert-card notif-alert-card--${tone} notif-alert-card--link${read ? ' notif-alert-card--read' : ''}`}
       onClick={onOpen}
       title="Open the citizen workspace"
     >
-      <div className="notif-alert-icon" aria-hidden="true">{cfg.icon}</div>
+      <div className="notif-alert-icon" aria-hidden="true">{RISK_ICON[alert.riskLevel]}</div>
       <div className="notif-alert-body">
         <div className="notif-alert-citizen">
           {alert.citizenName ?? 'Unknown Patient'}
           {alert.uhid && <span className="notif-alert-uhid"> · {alert.uhid}</span>}
         </div>
         <div className="notif-alert-risk">
-          <span className={`cdse-risk-badge cdse-risk-badge--${cfg.cls}`}>
-            {cfg.label}
-          </span>
+          <ReferenceBadge category="risk_level" code={alert.riskLevel} fallback={RISK_LEVEL_FALLBACK} />
           {alert.disease && <span className="notif-alert-disease">{alert.disease}</span>}
         </div>
         <div className="notif-alert-time">

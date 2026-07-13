@@ -150,7 +150,10 @@ export class RegistrationService {
     const targets: ResolvedProgramTarget[] = [];
     const skipped: string[] = [];
     for (const r of resolved) {
-      if (r.diseaseId && r.eventId) {
+      // Step 5: enrolment proceeds for every resolvable programme; the
+      // repository instantiates all initially-active events from metadata
+      // (eventId may be null when a programme is fully scheduler-driven).
+      if (r.diseaseId) {
         targets.push({
           programId: r.programId,
           programName: r.programName,

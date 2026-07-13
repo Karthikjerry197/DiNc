@@ -1,5 +1,6 @@
 import { Module } from '@nestjs/common';
 import { AuthModule } from '../auth/auth.module';
+import { ReferenceDataModule } from '../reference-data/reference-data.module';
 import { ActivityController } from './activity.controller';
 import { ActivityRepository } from './activity.repository';
 import { ActivityService } from './activity.service';
@@ -10,7 +11,7 @@ import { ActivityService } from './activity.service';
  * DatabaseService and the existing JwtAuthGuard via AuthModule.
  */
 @Module({
-  imports: [AuthModule],
+  imports: [AuthModule, ReferenceDataModule],
   controllers: [ActivityController],
   providers: [ActivityService, ActivityRepository],
   // Exported so EnrollmentModule can auto-create the initial activity on

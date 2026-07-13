@@ -2,6 +2,7 @@ import { Injectable } from '@nestjs/common';
 import { DatabaseService } from '../database/database.service';
 import {
   CreateEnrollmentInput,
+  EventActivityDto,
   DiseaseDto,
   EnrollmentDetailRow,
   EnrollmentSummaryRow,
@@ -19,13 +20,19 @@ import {
 export class EnrollmentRepository {
   constructor(private readonly db: DatabaseService) {}
 
-  /** All active programs, alphabetically. */
+  /**
+   * All programmes from the frozen DiNc metadata (Step 2 migration).
+   * dinc_metadata.programme has no is_active/description columns — every row in
+   * the deployed metadata release is live; description surfaces as NULL.
+   */
   async findActivePrograms(): Promise<ProgramRow[]> {
     const result = await this.db.query<ProgramRow>(
-      `SELECT id, code, name, description
-       FROM public.programs
-       WHERE is_active = true
-       ORDER BY name`,
+      `SELECT programme_id AS id,
+              programme_code AS code,
+              programme_name AS name,
+              NULL::text AS description
+       FROM dinc_metadata.programme
+       ORDER BY display_order, programme_name`,
     );
     return result.rows;
   }
@@ -33,26 +40,24 @@ export class EnrollmentRepository {
   /** Enrollment summaries for one citizen (for program chips + the chip list). */
   async findEnrollmentsByCitizen(citizenId: string): Promise<EnrollmentSummaryRow[]> {
     const result = await this.db.query<EnrollmentSummaryRow>(
-      `SELECT e.id,
-              e.start_date,
+      `SELECT e.enrolment_id AS id,
+              e.registration_date AS start_date,
               e.status,
-              p.id   AS program_id,
-              p.name AS program_name,
-              sp.id   AS sub_program_id,
-              sp.name AS sub_program_name,
+              pr.programme_id AS program_id,
+              pr.programme_name AS program_name,
+              NULL::uuid AS sub_program_id,
+              NULL::text AS sub_program_name,
               (
-                SELECT w.priority
-                FROM public.worklist_items w
-                WHERE w.enrollment_id = e.id
-                ORDER BY w.due_date ASC NULLS LAST, w.created_at DESC
+                SELECT ei.priority
+                FROM dinc_runtime.event_instance ei
+                WHERE ei.enrolment_id = e.enrolment_id
+                ORDER BY ei.due_date ASC NULLS LAST, ei.created_at DESC
                 LIMIT 1
               ) AS priority
-       FROM public.enrollments e
-       LEFT JOIN public.programs p ON p.id = e.program_id
-       LEFT JOIN public.diseases d ON d.id = e.disease_id
-       LEFT JOIN public.sub_programs sp ON sp.id = d.sub_program_id
-       WHERE e.citizen_id = $1
-       ORDER BY e.start_date DESC NULLS LAST, e.created_at DESC`,
+       FROM dinc_runtime.programme_enrolment e
+       LEFT JOIN dinc_metadata.programme pr ON pr.programme_id = e.programme_id
+       WHERE e.patient_id = $1
+       ORDER BY e.registration_date DESC NULLS LAST, e.created_at DESC`,
       [citizenId],
     );
     return result.rows;
@@ -61,35 +66,47 @@ export class EnrollmentRepository {
   /** Complete detail for a single enrollment, or null when not found. */
   async findEnrollmentById(id: string): Promise<EnrollmentDetailRow | null> {
     const result = await this.db.query<EnrollmentDetailRow>(
-      `SELECT e.id,
-              e.start_date,
+      `SELECT e.enrolment_id AS id,
+              e.registration_date AS start_date,
               e.status,
-              e.assigned_worker,
-              e.geographic_unit,
-              e.enrolled_by,
-              c.id   AS citizen_id,
-              c.uhid AS uhid,
-              p.id   AS program_id,
-              p.name AS program_name,
-              sp.id   AS sub_program_id,
-              sp.name AS sub_program_name,
-              d.name AS disease_name,
-              ev.name AS event_name,
-              (e.metadata ->> 'remarks') AS remarks,
+              NULL::text AS assigned_worker,
+              NULL::text AS geographic_unit,
+              NULL::text AS enrolled_by,
+              c.patient_id AS citizen_id,
+              c.external_id AS uhid,
+              pr.programme_id AS program_id,
+              pr.programme_name AS program_name,
+              NULL::uuid AS sub_program_id,
+              NULL::text AS sub_program_name,
+              cond.condition_code AS disease_name,
+              ev.event_name AS event_name,
+              NULL::text AS remarks,
               (
-                SELECT w.priority
-                FROM public.worklist_items w
-                WHERE w.enrollment_id = e.id
-                ORDER BY w.due_date ASC NULLS LAST, w.created_at DESC
+                SELECT ei.priority
+                FROM dinc_runtime.event_instance ei
+                WHERE ei.enrolment_id = e.enrolment_id
+                ORDER BY ei.due_date ASC NULLS LAST, ei.created_at DESC
                 LIMIT 1
               ) AS priority
-       FROM public.enrollments e
-       LEFT JOIN public.citizens c ON c.id = e.citizen_id
-       LEFT JOIN public.programs p ON p.id = e.program_id
-       LEFT JOIN public.diseases d ON d.id = e.disease_id
-       LEFT JOIN public.sub_programs sp ON sp.id = d.sub_program_id
-       LEFT JOIN public.events ev ON ev.id = e.current_event_id
-       WHERE e.id = $1
+       FROM dinc_runtime.programme_enrolment e
+       LEFT JOIN dinc_runtime.patient c ON c.patient_id = e.patient_id
+       LEFT JOIN dinc_metadata.programme pr ON pr.programme_id = e.programme_id
+       LEFT JOIN LATERAL (
+         SELECT ei.event_id
+         FROM dinc_runtime.event_instance ei
+         WHERE ei.enrolment_id = e.enrolment_id AND ei.completed_at IS NULL
+         ORDER BY ei.due_date ASC NULLS LAST, ei.created_at DESC
+         LIMIT 1
+       ) cur ON true
+       LEFT JOIN dinc_metadata.event ev ON ev.event_id = cur.event_id
+       LEFT JOIN LATERAL (
+         SELECT pc.condition_code
+         FROM dinc_runtime.patient_condition pc
+         WHERE pc.enrolment_id = e.enrolment_id AND pc.cleared_at IS NULL
+         ORDER BY pc.flagged_at DESC
+         LIMIT 1
+       ) cond ON true
+       WHERE e.enrolment_id = $1
        LIMIT 1`,
       [id],
     );
@@ -97,13 +114,18 @@ export class EnrollmentRepository {
   }
 
   // ── Cascade reads (populate the Add Program dialog) ──────────────────────
+  //
+  // Step 2 migration: the old 4-level hierarchy (program → sub_program →
+  // disease → event) collapses to DiNc's 3-level metadata hierarchy
+  // (programme → event → activity). The two removed levels are shimmed by
+  // mirroring the programme itself, so the existing cascade API/UI keeps
+  // working: a "sub-programme" id and a "disease" id ARE the programme id.
 
   async findSubProgramsByProgram(programId: string): Promise<SubProgramDto[]> {
     const result = await this.db.query<SubProgramDto>(
-      `SELECT id, name
-       FROM public.sub_programs
-       WHERE program_id = $1 AND is_active = true
-       ORDER BY name`,
+      `SELECT programme_id AS id, programme_name AS name
+       FROM dinc_metadata.programme
+       WHERE programme_id = $1`,
       [programId],
     );
     return result.rows;
@@ -111,22 +133,34 @@ export class EnrollmentRepository {
 
   async findDiseasesBySubProgram(subProgramId: string): Promise<DiseaseDto[]> {
     const result = await this.db.query<DiseaseDto>(
-      `SELECT id, name
-       FROM public.diseases
-       WHERE sub_program_id = $1 AND is_active = true
-       ORDER BY name`,
+      `SELECT programme_id AS id, programme_name AS name
+       FROM dinc_metadata.programme
+       WHERE programme_id = $1`,
       [subProgramId],
     );
     return result.rows;
   }
 
+  /** Events for a programme (the incoming "disease" id is the programme id). */
   async findEventsByDisease(diseaseId: string): Promise<EventDto[]> {
     const result = await this.db.query<EventDto>(
-      `SELECT id, name
-       FROM public.events
-       WHERE disease_id = $1 AND is_active = true
-       ORDER BY sequence, name`,
+      `SELECT event_id AS id, event_name AS name
+       FROM dinc_metadata.event
+       WHERE programme_id = $1
+       ORDER BY display_order, event_name`,
       [diseaseId],
+    );
+    return result.rows;
+  }
+
+  /** Activities for an event — third level of the DiNc metadata hierarchy. */
+  async findActivitiesByEvent(eventId: string): Promise<EventActivityDto[]> {
+    const result = await this.db.query<EventActivityDto>(
+      `SELECT activity_id AS id, activity_code AS code, activity_name AS name
+       FROM dinc_metadata.activity
+       WHERE event_id = $1
+       ORDER BY display_order, activity_name`,
+      [eventId],
     );
     return result.rows;
   }
@@ -135,7 +169,7 @@ export class EnrollmentRepository {
 
   async citizenExists(citizenId: string): Promise<boolean> {
     const result = await this.db.query<{ exists: boolean }>(
-      `SELECT EXISTS(SELECT 1 FROM public.citizens WHERE id = $1) AS exists`,
+      `SELECT EXISTS(SELECT 1 FROM dinc_runtime.patient WHERE patient_id = $1) AS exists`,
       [citizenId],
     );
     return result.rows[0]?.exists ?? false;
@@ -144,61 +178,99 @@ export class EnrollmentRepository {
   async isProgramActive(programId: string): Promise<boolean> {
     const result = await this.db.query<{ exists: boolean }>(
       `SELECT EXISTS(
-         SELECT 1 FROM public.programs WHERE id = $1 AND is_active = true
+         SELECT 1 FROM dinc_metadata.programme WHERE programme_id = $1
        ) AS exists`,
       [programId],
     );
     return result.rows[0]?.exists ?? false;
   }
 
-  /** Returns the program a disease belongs to (via its sub-program), or null. */
+  /**
+   * Step 2 shim: a "disease"/condition id IS the programme id in the collapsed
+   * hierarchy, so this validates existence and returns the same id.
+   */
   async findProgramIdForDisease(diseaseId: string): Promise<string | null> {
     const result = await this.db.query<{ program_id: string }>(
-      `SELECT sp.program_id
-       FROM public.diseases d
-       JOIN public.sub_programs sp ON sp.id = d.sub_program_id
-       WHERE d.id = $1
+      `SELECT programme_id AS program_id
+       FROM dinc_metadata.programme
+       WHERE programme_id = $1
        LIMIT 1`,
       [diseaseId],
     );
     return result.rows[0]?.program_id ?? null;
   }
 
-  /** Returns the disease an event belongs to, or null when the event is unknown. */
+  /**
+   * Returns the programme an event belongs to (acts as the shimmed "disease"
+   * id in the collapsed hierarchy), or null when the event is unknown.
+   */
   async findDiseaseIdForEvent(eventId: string): Promise<string | null> {
     const result = await this.db.query<{ disease_id: string }>(
-      `SELECT disease_id FROM public.events WHERE id = $1 LIMIT 1`,
+      `SELECT programme_id AS disease_id
+       FROM dinc_metadata.event
+       WHERE event_id = $1
+       LIMIT 1`,
       [eventId],
     );
     return result.rows[0]?.disease_id ?? null;
   }
 
   /**
-   * Builds the clinical-context text for an enrollment (program + disease +
-   * current event, names and codes) used to resolve the matching guidebook.
+   * Resolves an enrollment's clinical context — the programme, disease and
+   * current-event ids plus a name/code text blob — used to look up the matching
+   * guidebook (structured guidebook_mappings first, text rules as a fallback).
    * Returns null when the enrollment does not exist.
    */
-  async findEnrollmentHaystack(enrollmentId: string): Promise<string | null> {
-    const result = await this.db.query<{ haystack: string }>(
-      `SELECT COALESCE(p.name, '') || ' ' || COALESCE(p.code, '') || ' ' ||
-              COALESCE(d.name, '') || ' ' || COALESCE(d.code, '') || ' ' ||
-              COALESCE(ev.name, '') AS haystack
-       FROM public.enrollments e
-       LEFT JOIN public.programs p ON p.id = e.program_id
-       LEFT JOIN public.diseases d ON d.id = e.disease_id
-       LEFT JOIN public.events ev ON ev.id = e.current_event_id
-       WHERE e.id = $1
+  async findEnrollmentContext(enrollmentId: string): Promise<{
+    programId: string | null;
+    diseaseId: string | null;
+    eventId: string | null;
+    haystack: string;
+  } | null> {
+    const result = await this.db.query<{
+      program_id: string | null;
+      disease_id: string | null;
+      event_id: string | null;
+      haystack: string;
+    }>(
+      `SELECT e.programme_id AS program_id,
+              e.programme_id AS disease_id,
+              cur.event_id AS event_id,
+              COALESCE(pr.programme_name, '') || ' ' || COALESCE(pr.programme_code, '') || ' ' ||
+              COALESCE(ev.event_name, '') || ' ' ||
+              COALESCE((SELECT string_agg(pc.condition_code, ' ')
+                        FROM dinc_runtime.patient_condition pc
+                        WHERE pc.enrolment_id = e.enrolment_id
+                          AND pc.cleared_at IS NULL), '') AS haystack
+       FROM dinc_runtime.programme_enrolment e
+       LEFT JOIN dinc_metadata.programme pr ON pr.programme_id = e.programme_id
+       LEFT JOIN LATERAL (
+         SELECT ei.event_id
+         FROM dinc_runtime.event_instance ei
+         WHERE ei.enrolment_id = e.enrolment_id AND ei.completed_at IS NULL
+         ORDER BY ei.due_date ASC NULLS LAST, ei.created_at DESC
+         LIMIT 1
+       ) cur ON true
+       LEFT JOIN dinc_metadata.event ev ON ev.event_id = cur.event_id
+       WHERE e.enrolment_id = $1
        LIMIT 1`,
       [enrollmentId],
     );
-    return result.rows[0]?.haystack ?? null;
+    const row = result.rows[0];
+    if (!row) return null;
+    return {
+      programId: row.program_id,
+      diseaseId: row.disease_id,
+      eventId: row.event_id,
+      haystack: row.haystack,
+    };
   }
 
   async hasActiveEnrollment(citizenId: string, programId: string): Promise<boolean> {
     const result = await this.db.query<{ exists: boolean }>(
       `SELECT EXISTS(
-         SELECT 1 FROM public.enrollments
-         WHERE citizen_id = $1 AND program_id = $2 AND status = 'ACTIVE'
+         SELECT 1 FROM dinc_runtime.programme_enrolment
+         WHERE patient_id = $1 AND programme_id = $2 AND status = 'ACTIVE'
        ) AS exists`,
       [citizenId, programId],
     );

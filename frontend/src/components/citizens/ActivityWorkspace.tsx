@@ -1,7 +1,7 @@
 'use client';
 
 import { useMemo, useState } from 'react';
-import { BookOpen, Inbox, Phone, Plus } from 'lucide-react';
+import { BookOpen, ChevronDown, ChevronUp, Inbox, Phone, Plus } from 'lucide-react';
 import type { ActivityEntry } from '@/lib/api';
 import { formatDate } from '@/lib/format';
 import { SkeletonLines } from '@/components/shell/Skeleton';
@@ -16,6 +16,13 @@ interface ActivityWorkspaceProps {
   onNewActivity: () => void;
   /** Opens the consultation workspace for a worklist activity. */
   onStartCall?: (activityId: string) => void;
+  /**
+   * Contextual guidebook navigation for an activity — resolves the activity's
+   * programme/disease/event to a guidebook and opens it, exactly like the
+   * Guidebook icon on the Worklist and Dashboard. When omitted, the guidebook
+   * icon is not shown.
+   */
+  onOpenGuidebook?: (activityId: string) => void;
 }
 
 const DAY_MS = 86_400_000;
@@ -49,6 +56,7 @@ export default function ActivityWorkspace({
   hasEnrollment,
   onNewActivity,
   onStartCall,
+  onOpenGuidebook,
 }: ActivityWorkspaceProps) {
   const [openId, setOpenId] = useState<string | null>(null);
 
@@ -141,14 +149,28 @@ export default function ActivityWorkspace({
                       <Phone size={13} aria-hidden="true" /> Call
                     </button>
                   )}
+                  {onOpenGuidebook && (
+                    <button
+                      type="button"
+                      className="czx-act-icon"
+                      title="Open guidebook"
+                      aria-label="Open guidebook"
+                      onClick={() => onOpenGuidebook(entry.id)}
+                    >
+                      <BookOpen size={13} aria-hidden="true" />
+                    </button>
+                  )}
                   <button
                     type="button"
                     className="czx-act-icon"
                     title={open ? 'Hide details' : 'View details'}
+                    aria-label={open ? 'Hide details' : 'View details'}
                     aria-expanded={open}
                     onClick={() => setOpenId(open ? null : entry.id)}
                   >
-                    <BookOpen size={13} aria-hidden="true" />
+                    {open
+                      ? <ChevronUp size={13} aria-hidden="true" />
+                      : <ChevronDown size={13} aria-hidden="true" />}
                   </button>
                 </div>
               </article>

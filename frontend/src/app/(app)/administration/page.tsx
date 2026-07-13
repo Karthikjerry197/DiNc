@@ -4,7 +4,7 @@ import Link from 'next/link';
 import { useUser } from '@/lib/UserContext';
 import ComingSoon from '@/components/shell/ComingSoon';
 import type { ReactNode } from 'react';
-import { Settings, ShieldCheck, Timer, UserRound, UsersRound, Workflow } from 'lucide-react';
+import { Database, Settings, ShieldCheck, Timer, UserRound, UsersRound, Workflow } from 'lucide-react';
 
 interface AdminTile {
   label: string;
@@ -25,6 +25,12 @@ const TILES: AdminTile[] = [
     description: 'Configure what happens after each care outcome — no code changes.',
     href: '/administration/workflow-rules',
     icon: <Workflow size={20} />,
+  },
+  {
+    label: 'Reference Data',
+    description: 'Manage business vocabularies — genders, priorities, reasons and more — without code.',
+    href: '/administration/reference-data',
+    icon: <Database size={20} />,
   },
   {
     label: 'Scheduler',

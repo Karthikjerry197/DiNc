@@ -4,12 +4,17 @@ import { useEffect, useMemo, useState } from 'react';
 import {
   createDuplicateRequest,
   fetchCitizensList,
-  DUPLICATE_REASONS,
+  DUPLICATE_REASON_FALLBACK,
   type CitizenListItem,
   type DuplicateRequest,
 } from '@/lib/api';
 import { getToken } from '@/lib/session';
 import { useDialogA11y } from '@/lib/useDialogA11y';
+import ReferenceSelect from '@/components/reference/ReferenceSelect';
+
+// Offline fallback only — the authoritative source is the `duplicate_reason`
+// Reference Data category consumed by ReferenceSelect below (M40).
+const REASON_FALLBACK = DUPLICATE_REASON_FALLBACK.map((r) => ({ code: r.value, displayName: r.label }));
 
 export interface ReportDuplicateTarget {
   id: string;
@@ -45,7 +50,7 @@ export default function ReportDuplicateDialog({
   const [citizensLoading, setCitizensLoading] = useState(false);
   const [search, setSearch] = useState('');
   const [duplicateId, setDuplicateId] = useState('');
-  const [reason, setReason] = useState(DUPLICATE_REASONS[0].value);
+  const [reason, setReason] = useState(DUPLICATE_REASON_FALLBACK[0].value);
   const [comments, setComments] = useState('');
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
@@ -55,7 +60,7 @@ export default function ReportDuplicateDialog({
     if (!open) return;
     setSearch('');
     setDuplicateId('');
-    setReason(DUPLICATE_REASONS[0].value);
+    setReason(DUPLICATE_REASON_FALLBACK[0].value);
     setComments('');
     setError('');
 
@@ -208,17 +213,14 @@ export default function ReportDuplicateDialog({
 
           <div className="fg">
             <label className="fl" htmlFor="rd-reason">Reason *</label>
-            <select
+            <ReferenceSelect
               id="rd-reason"
-              className="fc"
+              category="duplicate_reason"
               value={reason}
               disabled={saving}
-              onChange={(e) => setReason(e.target.value)}
-            >
-              {DUPLICATE_REASONS.map((r) => (
-                <option key={r.value} value={r.value}>{r.label}</option>
-              ))}
-            </select>
+              onChange={setReason}
+              fallback={REASON_FALLBACK}
+            />
           </div>
 
           <div className="fg">

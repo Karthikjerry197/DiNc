@@ -1,17 +1,15 @@
 import {
   Body,
   Controller,
-  ForbiddenException,
   Get,
   NotFoundException,
   Param,
   Post,
-  Req,
   UseGuards,
 } from '@nestjs/common';
-import { Request } from 'express';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
-import { JwtPayload } from '../auth/types/jwt-payload.type';
+import { PermissionsGuard } from '../rbac/permissions.guard';
+import { RequirePermissions } from '../rbac/require-permissions.decorator';
 import { WorkflowService } from './workflow.service';
 import { UpdateRuleDto } from './dto/update-rule.dto';
 import { WorkflowRuleDto, WorkflowRulesOverviewDto } from './workflow.types';
@@ -20,19 +18,20 @@ const UUID_RE =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 /**
- * Administration API for the Workflow Rules Engine. Protected by the existing JWT
- * guard and restricted to administrators — workflow configuration is an admin
- * concern. The engine itself is invoked internally by the Consultation module,
- * not over HTTP, so no execution endpoint is exposed.
+ * Administration API for the Workflow Rules Engine. JWT-guarded and — since the
+ * Milestone 4 enforcement flip — authorized by the database-driven
+ * {@link PermissionsGuard} against the `admin.workflow` permission (Workflow
+ * Configuration). The engine itself is invoked internally by the Consultation
+ * module, not over HTTP, so no execution endpoint is exposed.
  */
 @Controller('workflow')
-@UseGuards(JwtAuthGuard)
+@UseGuards(JwtAuthGuard, PermissionsGuard)
+@RequirePermissions('admin.workflow')
 export class WorkflowController {
   constructor(private readonly workflow: WorkflowService) {}
 
   @Get('rules')
-  getOverview(@Req() req: Request): Promise<WorkflowRulesOverviewDto> {
-    WorkflowController.requireAdmin(req);
+  getOverview(): Promise<WorkflowRulesOverviewDto> {
     return this.workflow.getOverview();
   }
 
@@ -40,19 +39,10 @@ export class WorkflowController {
   updateRule(
     @Param('id') id: string,
     @Body() body: UpdateRuleDto,
-    @Req() req: Request,
   ): Promise<WorkflowRuleDto> {
-    WorkflowController.requireAdmin(req);
     if (!UUID_RE.test(id)) {
       throw new NotFoundException('Workflow rule not found.');
     }
     return this.workflow.updateRule(id, body);
-  }
-
-  private static requireAdmin(req: Request): void {
-    const user = (req as Request & { user?: JwtPayload }).user;
-    if ((user?.role ?? '').toUpperCase() !== 'ADMIN') {
-      throw new ForbiddenException('Administrator access is required.');
-    }
   }
 }

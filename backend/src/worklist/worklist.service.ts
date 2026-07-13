@@ -1,8 +1,8 @@
 import { Injectable, Logger, NotFoundException } from '@nestjs/common';
-import { hasPermission } from '../auth/permissions';
 import { DatabaseService } from '../database/database.service';
+import { PermissionsService } from '../rbac/permissions.service';
 import { GuidebooksService } from '../guidebooks/guidebooks.service';
-import { GuidebookRef } from '../guidebooks/guidebooks.types';
+import { GuidebookResolution } from '../guidebooks/guidebooks.types';
 import {
   AssigneeOption,
   MonitoringEntry,
@@ -16,45 +16,53 @@ import { CdseRepository } from '../cdse/cdse.repository';
 /**
  * Read-only data source for the Worklist page.
  *
- * Issues only SELECT statements against existing tables. Each section is
- * resolved independently and defensively so a single failing query degrades to
- * an empty state rather than failing the whole page. Only a bounded number of
- * rows is fetched (LIMIT) — no large dataset is preloaded.
+ * DiNc migration Step 4: the worklist is now derived from the runtime model —
+ * event_instance (the schedulable unit) → activity_instance (its checklist,
+ * whose first incomplete row is the "current activity") → followup_task
+ * (call-outcome follow-ups, surfaced as FOLLOW_UP items). Status derivation:
+ * event_instance ACTIVE → PENDING (overdue when due_date < today), COMPLETED
+ * stays COMPLETED, LOCKED stays LOCKED (scheduled but not yet actionable);
+ * followup_task OPEN → PENDING, DONE → COMPLETED. Escalation is derived from
+ * priority = 'URGENT'. Assignees are app_user ids resolved to usernames.
+ *
+ * Issues only SELECT statements. Each section is resolved independently and
+ * defensively so a single failing query degrades to an empty state rather than
+ * failing the whole page. Only a bounded number of rows is fetched (LIMIT).
  */
 @Injectable()
 export class WorklistService {
   private readonly logger = new Logger(WorklistService.name);
   private static readonly ITEM_LIMIT = 50;
 
-  /**
-   * Data-integrity guard: only count/show worklist items still linked to an
-   * existing enrollment, so orphaned items never appear with missing context.
-   */
-  private static readonly LINKED_ENROLLMENT =
-    'EXISTS (SELECT 1 FROM public.enrollments en WHERE en.id = w.enrollment_id)';
-
   constructor(
     private readonly db: DatabaseService,
     private readonly guidebooks: GuidebooksService,
     private readonly cdseRepo: CdseRepository,
+    private readonly permissions: PermissionsService,
   ) {}
 
   /**
-   * Resolves the guidebook for a single worklist item using its own
-   * program/disease/event (falling back to the item's enrollment). Returns the
-   * matched guidebook or null; throws 404 when the item does not exist.
+   * Resolves the guidebook(s) for a single worklist item (an event_instance)
+   * from its enrolment's programme and its event. Returns the primary guidebook
+   * plus any related ones; throws 404 when the item does not exist.
    */
-  async getGuidebookForItem(itemId: string): Promise<{ guidebook: GuidebookRef | null }> {
-    const result = await this.db.query<{ haystack: string }>(
-      `SELECT COALESCE(p.name, '') || ' ' || COALESCE(p.code, '') || ' ' ||
-              COALESCE(d.name, '') || ' ' || COALESCE(d.code, '') || ' ' ||
-              COALESCE(ev.name, '') AS haystack
-       FROM public.worklist_items w
-       LEFT JOIN public.enrollments e ON e.id = w.enrollment_id
-       LEFT JOIN public.programs p ON p.id = COALESCE(w.program_id, e.program_id)
-       LEFT JOIN public.diseases d ON d.id = COALESCE(w.disease_id, e.disease_id)
-       LEFT JOIN public.events ev ON ev.id = w.event_id
-       WHERE w.id = $1
+  async getGuidebookForItem(itemId: string): Promise<GuidebookResolution> {
+    const result = await this.db.query<{
+      program_id: string | null;
+      disease_id: string | null;
+      event_id: string | null;
+      haystack: string;
+    }>(
+      `SELECT e.programme_id AS program_id,
+              e.programme_id AS disease_id,
+              ei.event_id AS event_id,
+              COALESCE(pr.programme_name, '') || ' ' || COALESCE(pr.programme_code, '') || ' ' ||
+              COALESCE(ev.event_name, '') AS haystack
+       FROM dinc_runtime.event_instance ei
+       JOIN dinc_runtime.programme_enrolment e ON e.enrolment_id = ei.enrolment_id
+       LEFT JOIN dinc_metadata.programme pr ON pr.programme_id = e.programme_id
+       LEFT JOIN dinc_metadata.event ev ON ev.event_id = ei.event_id
+       WHERE ei.event_instance_id = $1
        LIMIT 1`,
       [itemId],
     );
@@ -62,8 +70,12 @@ export class WorklistService {
     if (!row) {
       throw new NotFoundException('Worklist item not found.');
     }
-    const guidebook = await this.guidebooks.matchByText(row.haystack);
-    return { guidebook };
+    return this.guidebooks.resolveForContext({
+      programId: row.program_id,
+      diseaseId: row.disease_id,
+      eventId: row.event_id,
+      haystack: row.haystack,
+    });
   }
 
   /**
@@ -76,7 +88,10 @@ export class WorklistService {
     username: string;
     role: string;
   }): Promise<WorklistOverview> {
-    const scopeTo = hasPermission(viewer.role, 'worklist.view.all')
+    const scopeTo = (await this.permissions.has(
+      { username: viewer.username, role: viewer.role },
+      'worklist.view.all',
+    ))
       ? null
       : viewer.username;
     const [stats, items, programs, assignees, monitoring] = await Promise.all([
@@ -117,15 +132,33 @@ export class WorklistService {
         completed: number;
         escalations: number;
       }>(
-        `SELECT count(*)::int AS total,
-                count(*) FILTER (WHERE status = 'PENDING')::int AS pending,
-                count(*) FILTER (WHERE status = 'PENDING' AND due_date < CURRENT_DATE)::int AS overdue,
-                count(*) FILTER (WHERE due_date = CURRENT_DATE)::int AS due_today,
-                count(*) FILTER (WHERE status = 'COMPLETED')::int AS completed,
-                count(*) FILTER (WHERE is_escalation = true)::int AS escalations
-         FROM public.worklist_items w
-         WHERE ${WorklistService.LINKED_ENROLLMENT}
-           AND ($1::varchar IS NULL OR w.assigned_to = $1)`,
+        `SELECT (a.total + b.total)::int AS total,
+                (a.pending + b.pending)::int AS pending,
+                (a.overdue + b.overdue)::int AS overdue,
+                (a.due_today + b.due_today)::int AS due_today,
+                (a.completed + b.completed)::int AS completed,
+                (a.escalations + b.escalations)::int AS escalations
+         FROM (
+           SELECT count(*) AS total,
+                  count(*) FILTER (WHERE ei.status = 'ACTIVE') AS pending,
+                  count(*) FILTER (WHERE ei.status = 'ACTIVE' AND ei.due_date < CURRENT_DATE) AS overdue,
+                  count(*) FILTER (WHERE ei.due_date = CURRENT_DATE) AS due_today,
+                  count(*) FILTER (WHERE ei.status = 'COMPLETED') AS completed,
+                  count(*) FILTER (WHERE ei.priority = 'URGENT' AND ei.status = 'ACTIVE') AS escalations
+           FROM dinc_runtime.event_instance ei
+           LEFT JOIN dinc_security.app_user au ON au.user_id = ei.assigned_to
+           WHERE ($1::varchar IS NULL OR au.username = $1)
+         ) a, (
+           SELECT count(*) AS total,
+                  count(*) FILTER (WHERE ft.status = 'OPEN') AS pending,
+                  count(*) FILTER (WHERE ft.status = 'OPEN' AND ft.due_date < CURRENT_DATE) AS overdue,
+                  count(*) FILTER (WHERE ft.due_date = CURRENT_DATE) AS due_today,
+                  count(*) FILTER (WHERE ft.status = 'DONE') AS completed,
+                  count(*) FILTER (WHERE ft.priority = 'URGENT' AND ft.status = 'OPEN') AS escalations
+           FROM dinc_runtime.followup_task ft
+           LEFT JOIN dinc_security.app_user au2 ON au2.user_id = ft.assigned_to
+           WHERE ($1::varchar IS NULL OR au2.username = $1)
+         ) b`,
         [assignedTo],
       );
       const row = result.rows[0];
@@ -163,29 +196,72 @@ export class WorklistService {
         status: string;
         assigned_to: string | null;
       }>(
-        `SELECT w.id,
-                c.id AS citizen_id,
-                c.uhid AS uhid,
-                c.full_name AS citizen,
-                p.name AS program,
-                sp.name AS sub_program,
-                ev.name AS activity,
-                d.name AS type,
-                w.due_date AS due_date,
-                w.retry_count AS retry_count,
-                w.priority AS priority,
-                w.is_escalation AS is_escalation,
-                w.status AS status,
-                w.assigned_to AS assigned_to
-         FROM public.worklist_items w
-         JOIN public.enrollments e ON e.id = w.enrollment_id
-         LEFT JOIN public.citizens c ON c.id = e.citizen_id
-         LEFT JOIN public.programs p ON p.id = COALESCE(w.program_id, e.program_id)
-         LEFT JOIN public.diseases d ON d.id = w.disease_id
-         LEFT JOIN public.sub_programs sp ON sp.id = d.sub_program_id
-         LEFT JOIN public.events ev ON ev.id = w.event_id
-         WHERE ($1::varchar IS NULL OR w.assigned_to = $1)
-         ORDER BY w.due_date ASC NULLS LAST, w.created_at DESC
+        `SELECT t.* FROM (
+           SELECT ei.event_instance_id AS id,
+                  c.patient_id AS citizen_id,
+                  c.external_id AS uhid,
+                  c.full_name AS citizen,
+                  pr.programme_name AS program,
+                  NULL::text AS sub_program,
+                  COALESCE(act.activity_name, ev.event_name) AS activity,
+                  cond.condition_code AS type,
+                  ei.due_date AS due_date,
+                  0 AS retry_count,
+                  COALESCE(ei.priority, 'NORMAL') AS priority,
+                  (ei.priority = 'URGENT' AND ei.status = 'ACTIVE') AS is_escalation,
+                  CASE ei.status WHEN 'ACTIVE' THEN 'PENDING' ELSE ei.status END AS status,
+                  au.username AS assigned_to,
+                  ei.created_at AS created_at
+           FROM dinc_runtime.event_instance ei
+           JOIN dinc_runtime.programme_enrolment e ON e.enrolment_id = ei.enrolment_id
+           LEFT JOIN dinc_runtime.patient c ON c.patient_id = e.patient_id
+           LEFT JOIN dinc_metadata.programme pr ON pr.programme_id = e.programme_id
+           LEFT JOIN dinc_metadata.event ev ON ev.event_id = ei.event_id
+           LEFT JOIN dinc_security.app_user au ON au.user_id = ei.assigned_to
+           LEFT JOIN LATERAL (
+             SELECT a.activity_name
+             FROM dinc_runtime.activity_instance ai
+             JOIN dinc_metadata.activity a ON a.activity_id = ai.activity_id
+             WHERE ai.event_instance_id = ei.event_instance_id
+               AND ai.completed_at IS NULL
+             ORDER BY a.display_order
+             LIMIT 1
+           ) act ON true
+           LEFT JOIN LATERAL (
+             SELECT pc.condition_code
+             FROM dinc_runtime.patient_condition pc
+             WHERE pc.enrolment_id = e.enrolment_id AND pc.cleared_at IS NULL
+             ORDER BY pc.flagged_at DESC
+             LIMIT 1
+           ) cond ON true
+
+           UNION ALL
+
+           SELECT ft.followup_task_id AS id,
+                  c.patient_id,
+                  c.external_id,
+                  c.full_name,
+                  pr.programme_name,
+                  NULL::text,
+                  'Follow-up call',
+                  'FOLLOW_UP',
+                  ft.due_date,
+                  0,
+                  COALESCE(ft.priority, 'NORMAL'),
+                  (ft.priority = 'URGENT' AND ft.status = 'OPEN'),
+                  CASE ft.status WHEN 'OPEN' THEN 'PENDING'
+                                 WHEN 'DONE' THEN 'COMPLETED'
+                                 ELSE ft.status END,
+                  au.username,
+                  ft.created_at
+           FROM dinc_runtime.followup_task ft
+           JOIN dinc_runtime.programme_enrolment e ON e.enrolment_id = ft.enrolment_id
+           LEFT JOIN dinc_runtime.patient c ON c.patient_id = e.patient_id
+           LEFT JOIN dinc_metadata.programme pr ON pr.programme_id = e.programme_id
+           LEFT JOIN dinc_security.app_user au ON au.user_id = ft.assigned_to
+         ) t
+         WHERE ($1::varchar IS NULL OR t.assigned_to = $1)
+         ORDER BY t.due_date ASC NULLS LAST, t.created_at DESC
          LIMIT ${WorklistService.ITEM_LIMIT}`,
         [assignedTo],
       );
@@ -215,10 +291,9 @@ export class WorklistService {
   private async programs(): Promise<ProgramOption[]> {
     try {
       const result = await this.db.query<ProgramOption>(
-        `SELECT id, name
-         FROM public.programs
-         WHERE is_active = true
-         ORDER BY name
+        `SELECT programme_id AS id, programme_name AS name
+         FROM dinc_metadata.programme
+         ORDER BY display_order, programme_name
          LIMIT 100`,
       );
       return result.rows;
@@ -232,7 +307,7 @@ export class WorklistService {
     try {
       const result = await this.db.query<{ username: string; full_name: string }>(
         `SELECT username, full_name
-         FROM public.users
+         FROM dinc_security.app_user
          WHERE is_active = true
          ORDER BY full_name
          LIMIT 200`,
@@ -255,14 +330,20 @@ export class WorklistService {
         `SELECT u.username,
                 u.full_name,
                 u.role,
-                COALESCE(cnt.pending, 0)::int AS pending
-         FROM public.users u
+                (COALESCE(ei.pending, 0) + COALESCE(ft.pending, 0))::int AS pending
+         FROM dinc_security.app_user u
          LEFT JOIN (
-           SELECT w.assigned_to, count(*) FILTER (WHERE w.status = 'PENDING')::int AS pending
-           FROM public.worklist_items w
-           WHERE ${WorklistService.LINKED_ENROLLMENT}
-           GROUP BY w.assigned_to
-         ) cnt ON cnt.assigned_to = u.username
+           SELECT assigned_to, count(*)::int AS pending
+           FROM dinc_runtime.event_instance
+           WHERE status = 'ACTIVE'
+           GROUP BY assigned_to
+         ) ei ON ei.assigned_to = u.user_id
+         LEFT JOIN (
+           SELECT assigned_to, count(*)::int AS pending
+           FROM dinc_runtime.followup_task
+           WHERE status = 'OPEN'
+           GROUP BY assigned_to
+         ) ft ON ft.assigned_to = u.user_id
          WHERE u.is_active = true
          ORDER BY u.full_name
          LIMIT 50`,

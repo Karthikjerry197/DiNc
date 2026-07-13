@@ -1,12 +1,21 @@
 'use client';
 
-import { useMemo } from 'react';
-import { BookOpen, Phone, Plus, UserRound } from 'lucide-react';
-import type { Activity, CitizenDetail, EnrollmentDetail, EnrollmentSummary } from '@/lib/api';
+import { useEffect, useMemo, useState } from 'react';
+import { BookOpen, Flag, Phone, Plus, UserRound } from 'lucide-react';
+import {
+  resolveOverallRisk,
+  type Activity,
+  type CitizenDetail,
+  type EnrollmentDetail,
+  type EnrollmentSummary,
+  type OverallRiskResolution,
+} from '@/lib/api';
+import { getToken } from '@/lib/session';
 import { formatDate } from '@/lib/format';
 import { SkeletonLines } from '@/components/shell/Skeleton';
 import { predictFollowupDefault } from '@/lib/ai';
 import { DefaultProbBadge } from '@/components/intelligence/badges';
+import OverallRiskBadge from '@/components/intelligence/OverallRiskBadge';
 
 interface CitizenSummaryProps {
   detail: CitizenDetail | null;
@@ -25,6 +34,8 @@ interface CitizenSummaryProps {
   onAddProgram: () => void;
   onOpenGuidebook: () => void;
   onStartConsultation: () => void;
+  /** Opens the shared Report Duplicate workflow for this citizen (same dialog as Worklist/Dashboard). */
+  onReportDuplicate: () => void;
 }
 
 function val(text: string | null | undefined): string {
@@ -65,6 +76,7 @@ export default function CitizenSummary({
   onAddProgram,
   onOpenGuidebook,
   onStartConsultation,
+  onReportDuplicate,
 }: CitizenSummaryProps) {
   const kpi = useMemo(() => tally(activities), [activities]);
 
@@ -86,6 +98,21 @@ export default function CitizenSummary({
       }),
     [kpi, detail?.citizen.age],
   );
+
+  // Overall Risk — the PRIMARY patient risk, resolved by the shared Overall Risk
+  // Service (Clinical Severity × Follow-up Risk). This component never combines
+  // the inputs itself; it only renders the service's answer.
+  const [overall, setOverall] = useState<OverallRiskResolution | null>(null);
+  const followupBand = followup.band;
+  useEffect(() => {
+    const token = getToken();
+    if (!token || !detail) { setOverall(null); return; }
+    let alive = true;
+    resolveOverallRisk(token, riskLevel ?? 'NONE', followupBand)
+      .then((r) => { if (alive) setOverall(r); })
+      .catch(() => { if (alive) setOverall(null); });
+    return () => { alive = false; };
+  }, [detail, riskLevel, followupBand]);
 
   if (loading) {
     return (
@@ -142,6 +169,9 @@ export default function CitizenSummary({
         <div className="czx-identity-body">
           <div className="czx-identity-top">
             <span className="czx-identity-uhid">{citizen.uhid}</span>
+            {/* PRIMARY — Overall Risk (matrix-driven, shared service) */}
+            {overall && <OverallRiskBadge resolution={overall} />}
+            {/* Supporting — Clinical Severity and Follow-up Default Probability */}
             {risk && <span className={`czx-risk czx-risk-${risk.toLowerCase()}`}>{risk}</span>}
             {activities.length > 0 && (
               <DefaultProbBadge probability={followup.probability} band={followup.band} />
@@ -247,6 +277,15 @@ export default function CitizenSummary({
         </button>
         <button type="button" className="czx-btn czx-btn-soft" onClick={onOpenGuidebook}>
           <BookOpen size={13} aria-hidden="true" /> Guidebook
+        </button>
+        <button
+          type="button"
+          className="czx-btn czx-btn-soft"
+          title="Report Duplicate"
+          aria-label="Report Duplicate"
+          onClick={onReportDuplicate}
+        >
+          <Flag size={13} aria-hidden="true" /> Report Duplicate
         </button>
       </div>
     </section>

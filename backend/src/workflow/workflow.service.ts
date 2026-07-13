@@ -1,13 +1,17 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
-import { ASSIGNABLE_ROLES } from '../users/user.types';
+import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
 import { WorkflowRepository } from './workflow.repository';
-import { UpdateRuleDto, RULE_PRIORITIES } from './dto/update-rule.dto';
+import { RbacRepository } from '../rbac/rbac.repository';
+import { ReferenceDataService } from '../reference-data/reference-data.service';
+import { UpdateRuleDto } from './dto/update-rule.dto';
 import {
   RuleConditions,
   WORKFLOW_ACTIONS,
   WorkflowRuleDto,
   WorkflowRulesOverviewDto,
 } from './workflow.types';
+
+/** The Reference Data category that owns the priority vocabulary (M40). */
+const PRIORITY_CATEGORY = 'priority';
 
 /**
  * Administration-facing service for the Workflow Rules Engine. Provides the
@@ -18,28 +22,34 @@ import {
  */
 @Injectable()
 export class WorkflowService {
-  /**
-   * Roles offered in the rule editor (escalation/notification recipients and
-   * M31 assignment). Reuses the Users & Roles module's single role vocabulary.
-   */
-  private static readonly ROLES: string[] = [...ASSIGNABLE_ROLES];
+  // Named retry policies are an engine capability (application logic), not a
+  // business vocabulary — the concrete numbers live in the retry_config table.
   private static readonly RETRY_POLICIES = ['STANDARD', 'URGENT', 'NONE'];
 
-  constructor(private readonly repo: WorkflowRepository) {}
+  // RbacRepository is provided by the @Global RbacModule (no import needed).
+  constructor(
+    private readonly repo: WorkflowRepository,
+    private readonly rbacRepo: RbacRepository,
+    private readonly refData: ReferenceDataService,
+  ) {}
 
   /** Everything the Workflow Rules admin page needs in one payload. */
   async getOverview(): Promise<WorkflowRulesOverviewDto> {
-    const [rules, events, retryConfigs] = await Promise.all([
+    const [rules, events, retryConfigs, roles, priorities] = await Promise.all([
       this.repo.listRules(),
       this.repo.listEvents(),
       this.repo.listRetryConfigs(),
+      this.rbacRepo.listRoles(),
+      this.refData.activeCodes(PRIORITY_CATEGORY),
     ]);
     return {
       rules,
       options: {
         actions: WORKFLOW_ACTIONS,
-        priorities: [...RULE_PRIORITIES],
-        roles: WorkflowService.ROLES,
+        // Single sources of truth (M40): priorities ← Reference Data,
+        // roles ← rbac_roles.
+        priorities,
+        roles: roles.map((r) => r.key),
         events,
         retryPolicies: WorkflowService.RETRY_POLICIES,
       },
@@ -52,6 +62,11 @@ export class WorkflowService {
     const existing = await this.repo.findRuleById(id);
     if (!existing) {
       throw new NotFoundException('Workflow rule not found.');
+    }
+
+    // Validate priority against the Reference Data source of truth (M40).
+    if (dto.priority !== undefined && !(await this.refData.isActiveValue(PRIORITY_CATEGORY, dto.priority))) {
+      throw new BadRequestException('Invalid priority.');
     }
 
     // Preserve-on-omit. The action-aware Rule Editor submits ONLY the fields the

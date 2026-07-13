@@ -5,22 +5,35 @@ import { fetchCitizenRisk, type CitizenRiskSummary, type CdseRiskLevel } from '@
 import { getToken } from '@/lib/session';
 import type { ReactNode } from 'react';
 import { Circle, CircleAlert, CircleCheck, TriangleAlert } from 'lucide-react';
+import ReferenceBadge from '@/components/reference/ReferenceBadge';
+import type { ReferenceOption } from '@/lib/useReferenceData';
 
 // ── Risk display helpers ──────────────────────────────────────────────────────
+//
+// M40 Configuration Convergence: the risk-level LABEL + COLOUR now come from the
+// `risk_level` Reference Data category (the single canonical definition), rendered
+// via ReferenceBadge. Only the decorative icon — a presentation choice, not a
+// business vocabulary — is keyed in code. The fallback is used offline only.
 
-const RISK_CONFIG: Record<CdseRiskLevel, { label: string; icon: ReactNode; cls: string }> = {
-  NONE:     { label: 'No Care Yet',      icon: <Circle size={12} />, cls: 'none'     },
-  LOW:      { label: 'Low Risk',         icon: <CircleCheck size={12} />, cls: 'low'      },
-  MODERATE: { label: 'Moderate Risk',    icon: <CircleAlert size={12} />, cls: 'moderate' },
-  SEVERE:   { label: 'Severe Risk',      icon: <TriangleAlert size={12} />, cls: 'severe'   },
+const RISK_LEVEL_FALLBACK: ReferenceOption[] = [
+  { code: 'NONE', displayName: 'None', colour: '#4b5563' },
+  { code: 'LOW', displayName: 'Low', colour: '#15803d' },
+  { code: 'MODERATE', displayName: 'Moderate', colour: '#b45309' },
+  { code: 'SEVERE', displayName: 'Severe', colour: '#b91c1c' },
+];
+
+const RISK_ICON: Record<CdseRiskLevel, ReactNode> = {
+  NONE: <Circle size={12} />,
+  LOW: <CircleCheck size={12} />,
+  MODERATE: <CircleAlert size={12} />,
+  SEVERE: <TriangleAlert size={12} />,
 };
 
 function RiskBadge({ level }: { level: CdseRiskLevel }) {
-  const cfg = RISK_CONFIG[level];
   return (
-    <span className={`cdse-risk-badge cdse-risk-badge--${cfg.cls}`}>
-      <span aria-hidden="true">{cfg.icon}</span>
-      {cfg.label}
+    <span className={`cdse-risk-badge-wrap cdse-risk-badge-wrap--${level.toLowerCase()}`}>
+      <span aria-hidden="true">{RISK_ICON[level]}</span>
+      <ReferenceBadge category="risk_level" code={level} fallback={RISK_LEVEL_FALLBACK} />
     </span>
   );
 }

@@ -22,12 +22,16 @@ export interface PatientDetailsInput {
   aadhaar: string | null;
 }
 
-/** A program selected for enrollment, resolved to its initial clinical context. */
+/**
+ * A programme selected for enrolment. Step 5: diseaseId mirrors the programme
+ * id (Step-2 hierarchy shim); eventId is the first initially-active event, or
+ * null when the programme's events are all scheduler-driven (Step 6).
+ */
 export interface ResolvedProgramTarget {
   programId: string;
   programName: string;
-  diseaseId: string;
-  eventId: string;
+  diseaseId: string | null;
+  eventId: string | null;
 }
 
 /** One option for the wizard's program picker. */

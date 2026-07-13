@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation';
 import {
   fetchWorklistItemGuidebook,
   fetchWorklistOverview,
+  guidebookHref,
   type WorklistItem,
   type WorklistOverview,
 } from '@/lib/api';
@@ -16,6 +17,8 @@ import {
   computePatientIntelligence,
   type PatientIntelligence,
 } from '@/lib/ai';
+import { useOverallRiskBatch } from '@/lib/useOverallRiskBatch';
+import type { OverallRiskBatchInput } from '@/lib/api';
 import { Sparkles } from 'lucide-react';
 import ComingSoon from '@/components/shell/ComingSoon';
 import WorklistToolbar from '@/components/worklist/WorklistToolbar';
@@ -98,6 +101,17 @@ export default function WorklistPage() {
     [intelById],
   );
 
+  // Overall Risk for every loaded citizen, resolved in ONE batch request via the
+  // shared OverallRiskService (no per-row calls, no local combination logic).
+  const overallInputs = useMemo<OverallRiskBatchInput[]>(() => {
+    const arr: OverallRiskBatchInput[] = [];
+    for (const [id, intel] of intelById) {
+      arr.push({ id, clinicalSeverity: intel.risk.dincLevel ?? 'NONE', followupRisk: intel.followup.band });
+    }
+    return arr;
+  }, [intelById]);
+  const overallById = useOverallRiskBatch(overallInputs);
+
   // Apply the AI preset filter, then the chosen ordering. Stable + non-mutating.
   const displayItems = useMemo(() => {
     let rows = filteredItems;
@@ -162,7 +176,10 @@ export default function WorklistPage() {
       .catch(() => setError('Unable to load worklist data.'));
   }, []);
 
-  // Context-aware: resolve the item's guidebook and open it preselected.
+  // Context-aware: resolve the item's guidebook (worklist item → programme →
+  // disease → mapping) and open the highest-priority match automatically,
+  // passing any related guidebooks. When nothing is mapped, show the friendly
+  // message in place rather than navigating.
   const openGuidebook = useCallback(
     async (itemId: string) => {
       const token = getToken();
@@ -171,19 +188,20 @@ export default function WorklistPage() {
         return;
       }
       try {
-        const guidebook = await fetchWorklistItemGuidebook(token, itemId);
+        const resolution = await fetchWorklistItemGuidebook(token, itemId);
+        if (!resolution.matched || !resolution.guidebook) {
+          flash(resolution.message ?? 'No guidebook is currently mapped for this programme.');
+          return;
+        }
         // `activity` lets the Guidebooks page offer a direct path into the
-        // consultation workspace for this item (M33.1 navigation).
-        router.push(
-          guidebook
-            ? `/guidebooks?g=${guidebook.id}&activity=${itemId}`
-            : `/guidebooks?activity=${itemId}`,
-        );
+        // consultation workspace for this item (M33.1 navigation); `related`
+        // drives the Related Guidebooks section.
+        router.push(guidebookHref(resolution, itemId));
       } catch {
         router.push('/guidebooks');
       }
     },
-    [router],
+    [router, flash],
   );
 
   useEffect(() => {
@@ -282,6 +300,7 @@ export default function WorklistPage() {
             onReportDuplicate={reportDuplicate}
             onStartCall={startCall}
             intelById={intelById}
+            overallById={overallById}
           />
           <div className="wl-footer">
             <span>

@@ -1,5 +1,6 @@
 import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
 import { RbacRepository } from './rbac.repository';
+import { PermissionsService } from './permissions.service';
 import type {
   RbacPermissionGroupDto,
   RbacRoleDetailDto,
@@ -14,7 +15,10 @@ import type {
  */
 @Injectable()
 export class RbacService {
-  constructor(private readonly repo: RbacRepository) {}
+  constructor(
+    private readonly repo: RbacRepository,
+    private readonly permissions: PermissionsService,
+  ) {}
 
   /** The full permission catalogue, bucketed by group in catalogue order. */
   async getPermissionCatalogue(): Promise<RbacPermissionGroupDto[]> {
@@ -91,6 +95,8 @@ export class RbacService {
       throw new BadRequestException((error as Error).message);
     }
     if (!role) throw new NotFoundException('Role not found.');
+    // A role's grants changed → every holder's effective set may change.
+    this.permissions.invalidate();
     return role;
   }
 
@@ -103,6 +109,7 @@ export class RbacService {
       throw new BadRequestException((error as Error).message);
     }
     if (!ok) throw new NotFoundException('User not found.');
+    this.permissions.invalidate();
     return this.getUserAccess(userId);
   }
 
@@ -126,6 +133,7 @@ export class RbacService {
       throw new BadRequestException((error as Error).message);
     }
     if (!ok) throw new NotFoundException('User not found.');
+    this.permissions.invalidate();
     return this.getUserAccess(userId);
   }
 }

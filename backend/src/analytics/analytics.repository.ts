@@ -141,7 +141,7 @@ export class AnalyticsRepository {
       'duplicateRequests',
       async () => {
         const r = await this.db.query<{ c: number }>(
-          `SELECT count(*)::int AS c FROM public.duplicate_requests
+          `SELECT count(*)::int AS c FROM dinc_app.duplicate_requests
            WHERE ($1::date IS NULL OR submitted_at::date >= $1::date)
              AND ($2::date IS NULL OR submitted_at::date <= $2::date)`,
           [f.from, f.to],
@@ -157,7 +157,7 @@ export class AnalyticsRepository {
       'schedulerRunsToday',
       async () => {
         const r = await this.db.query<{ c: number }>(
-          `SELECT count(*)::int AS c FROM public.scheduler_runs WHERE started_at::date = CURRENT_DATE`,
+          `SELECT count(*)::int AS c FROM dinc_app.scheduler_runs WHERE started_at::date = CURRENT_DATE`,
         );
         return r.rows[0]?.c ?? 0;
       },
@@ -360,7 +360,7 @@ export class AnalyticsRepository {
           [f.from, f.to],
         );
         const dup = await this.db.query<{ c: number }>(
-          `SELECT count(*)::int AS c FROM public.duplicate_requests`,
+          `SELECT count(*)::int AS c FROM dinc_app.duplicate_requests`,
         );
         const t = totals.rows[0];
         return {
@@ -398,7 +398,7 @@ export class AnalyticsRepository {
                   round(avg(EXTRACT(epoch FROM (finished_at - started_at))*1000)
                         FILTER (WHERE finished_at IS NOT NULL)::numeric,0)::text AS avg_ms,
                   count(*) FILTER (WHERE started_at::date = CURRENT_DATE)::int AS runs_today
-           FROM public.scheduler_runs`,
+           FROM dinc_app.scheduler_runs`,
         );
         const row = r.rows[0];
         const runs = row?.runs ?? 0;
@@ -675,7 +675,7 @@ export class AnalyticsRepository {
         }>(
           `WITH scoped AS (
              SELECT ca.citizen_id, ca.risk_level, ca.status
-             FROM public.clinical_alerts ca
+             FROM dinc_app.clinical_alerts ca
              WHERE ${AnalyticsRepository.ALERT_WHERE}
            ),
            severest AS (
@@ -698,7 +698,7 @@ export class AnalyticsRepository {
            JOIN public.enrollments e ON e.id = w.enrollment_id
            LEFT JOIN public.citizens c ON c.id = e.citizen_id
            WHERE NOT EXISTS (
-               SELECT 1 FROM public.clinical_alerts ca
+               SELECT 1 FROM dinc_app.clinical_alerts ca
                WHERE ca.citizen_id = e.citizen_id AND ca.status = 'ACTIVE')
              AND ($1::date IS NULL OR orec.recorded_at::date >= $1::date)
              AND ($2::date IS NULL OR orec.recorded_at::date <= $2::date)
@@ -716,7 +716,7 @@ export class AnalyticsRepository {
                   count(ca.id) FILTER (WHERE ca.risk_level = 'MODERATE')::int AS moderate,
                   count(ca.id) FILTER (WHERE ca.risk_level = 'SEVERE')::int   AS severe
            FROM generate_series(CURRENT_DATE - INTERVAL '29 days', CURRENT_DATE, '1 day') AS d(day)
-           LEFT JOIN public.clinical_alerts ca ON ca.triggered_at::date = d.day::date
+           LEFT JOIN dinc_app.clinical_alerts ca ON ca.triggered_at::date = d.day::date
              AND ($1::uuid IS NULL OR EXISTS (
                SELECT 1 FROM public.enrollments pe
                WHERE pe.citizen_id = ca.citizen_id AND pe.program_id = $1::uuid))
@@ -783,7 +783,7 @@ export class AnalyticsRepository {
                SELECT 1 FROM public.citizens c
                WHERE c.id = e.citizen_id AND c.district = $5::text))
              AND ($6::text IS NULL OR e.assigned_worker = $6::text)
-           LEFT JOIN public.clinical_alerts ca ON ca.citizen_id = e.citizen_id
+           LEFT JOIN dinc_app.clinical_alerts ca ON ca.citizen_id = e.citizen_id
              AND ca.disease = d.name AND ca.status = 'ACTIVE' AND ca.risk_level = 'SEVERE'
            WHERE d.is_active = true AND ($4::uuid IS NULL OR d.id = $4::uuid)
            GROUP BY d.id, d.name

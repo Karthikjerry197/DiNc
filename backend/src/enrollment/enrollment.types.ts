@@ -6,7 +6,7 @@
  * null so the UI renders professional empty states — nothing is fabricated.
  */
 import type { ActivityDto } from '../activity/activity.types';
-import type { GuidebookRef } from '../guidebooks/guidebooks.types';
+import type { GuidebookResolution } from '../guidebooks/guidebooks.types';
 
 export interface ProgramDto {
   id: string;
@@ -27,6 +27,13 @@ export interface DiseaseDto {
 
 export interface EventDto {
   id: string;
+  name: string;
+}
+
+/** One activity under an event (DiNc metadata hierarchy, Step 2). */
+export interface EventActivityDto {
+  id: string;
+  code: string;
   name: string;
 }
 
@@ -125,7 +132,9 @@ export interface CreateEnrollmentResultDto {
   activity: ActivityDto | null;
 }
 
-/** Response of the context-aware guidebook resolver (null when no rule matches). */
-export interface EnrollmentGuidebookDto {
-  guidebook: GuidebookRef | null;
-}
+/**
+ * Response of the context-aware guidebook resolver: the primary matched
+ * guidebook (or null), any related guidebooks, and a user-facing message when
+ * nothing is mapped for the enrollment's clinical context.
+ */
+export type EnrollmentGuidebookDto = GuidebookResolution;

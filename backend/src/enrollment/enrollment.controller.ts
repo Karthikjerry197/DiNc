@@ -17,6 +17,7 @@ import { CreateEnrollmentDto } from './dto/create-enrollment.dto';
 import { EnrollmentService } from './enrollment.service';
 import {
   CreateEnrollmentResultDto,
+  EventActivityDto,
   DiseaseDto,
   EnrollmentDetailDto,
   EnrollmentGuidebookDto,
@@ -67,6 +68,14 @@ export class EnrollmentController {
       throw new NotFoundException('Condition not found');
     }
     return this.enrollment.getEvents(diseaseId);
+  }
+
+  @Get('events/:eventId/activities')
+  getActivities(@Param('eventId') eventId: string): Promise<EventActivityDto[]> {
+    if (!UUID_RE.test(eventId)) {
+      throw new NotFoundException('Event not found');
+    }
+    return this.enrollment.getActivities(eventId);
   }
 
   @Get('citizens/:citizenId/enrollments')

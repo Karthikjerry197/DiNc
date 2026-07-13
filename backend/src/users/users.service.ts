@@ -6,6 +6,7 @@ import {
 } from '@nestjs/common';
 import * as bcrypt from 'bcrypt';
 import { UsersRepository } from './users.repository';
+import { RbacRepository } from '../rbac/rbac.repository';
 import { AdminUserDto } from './user.types';
 import { CreateUserDto } from './dto/create-user.dto';
 import { UpdateUserDto } from './dto/update-user.dto';
@@ -19,10 +20,31 @@ const BCRYPT_ROUNDS = 10;
  */
 @Injectable()
 export class UsersService {
-  constructor(private readonly repo: UsersRepository) {}
+  // RbacRepository is provided by the @Global RbacModule (no import needed).
+  constructor(
+    private readonly repo: UsersRepository,
+    private readonly rbacRepo: RbacRepository,
+  ) {}
 
   listUsers(): Promise<AdminUserDto[]> {
     return this.repo.listAll();
+  }
+
+  /**
+   * The assignable role vocabulary — resolved from the `rbac_roles` single source
+   * of truth (M40 Configuration Convergence). Backs `GET /api/users/roles`.
+   */
+  async listAssignableRoles(): Promise<string[]> {
+    const roles = await this.rbacRepo.listRoles();
+    return roles.map((r) => r.key);
+  }
+
+  /** Rejects a role that is not a defined RBAC role. */
+  private async assertValidRole(role: string): Promise<void> {
+    const keys = await this.listAssignableRoles();
+    if (!keys.includes(role)) {
+      throw new BadRequestException(`Role must be one of: ${keys.join(', ')}.`);
+    }
   }
 
   async createUser(input: CreateUserDto): Promise<AdminUserDto> {
@@ -30,6 +52,7 @@ export class UsersService {
     if (await this.repo.usernameExists(username)) {
       throw new ConflictException(`Username '${username}' is already taken.`);
     }
+    await this.assertValidRole(input.role);
     const passwordHash = await bcrypt.hash(input.password, BCRYPT_ROUNDS);
     return this.repo.insertUser({
       username,
@@ -60,6 +83,8 @@ export class UsersService {
     actingUsername: string,
   ): Promise<AdminUserDto> {
     const existing = await this.requireUser(id);
+
+    if (input.role !== undefined) await this.assertValidRole(input.role);
 
     const nextRole = input.role ?? existing.role;
     const nextActive = input.isActive ?? existing.isActive;

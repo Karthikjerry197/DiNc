@@ -59,6 +59,26 @@ export class ActivityController {
     return this.activities.createActivity(enrollmentId, body);
   }
 
+  /**
+   * Step 6A: marks one activity_instance complete and advances the lifecycle
+   * (next activity, event completion, dependent-event activation) atomically.
+   */
+  @Post('activity-instances/:activityInstanceId/complete')
+  @HttpCode(HttpStatus.OK)
+  completeActivityInstance(
+    @Param('activityInstanceId') activityInstanceId: string,
+  ): Promise<{
+    eventInstanceId: string;
+    eventCompleted: boolean;
+    nextActivityInstanceId: string | null;
+    activatedEvents: { eventInstanceId: string; eventCode: string; dueDate: string }[];
+  }> {
+    if (!UUID_RE.test(activityInstanceId)) {
+      throw new NotFoundException('Activity instance not found');
+    }
+    return this.activities.completeActivityInstance(activityInstanceId);
+  }
+
   @Get('activities/:activityId')
   async getActivity(@Param('activityId') activityId: string): Promise<ActivityDto> {
     if (!UUID_RE.test(activityId)) {

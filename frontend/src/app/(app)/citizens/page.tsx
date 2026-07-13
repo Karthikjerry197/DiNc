@@ -9,6 +9,8 @@ import {
   fetchEnrollmentActivities,
   fetchEnrollmentDetail,
   fetchEnrollmentGuidebook,
+  fetchWorklistItemGuidebook,
+  guidebookHref,
   type Activity,
   type CitizenDetail,
   type CitizenListItem,
@@ -27,6 +29,9 @@ import StartConsultationDialog from '@/components/citizens/StartConsultationDial
 import ClinicalJourney from '@/components/citizens/ClinicalJourney';
 import PatientActions from '@/components/patients/PatientActions';
 import ClinicalDecisionPanel from '@/components/consultation/ClinicalDecisionPanel';
+import ReportDuplicateDialog, {
+  type ReportDuplicateTarget,
+} from '@/components/dataquality/ReportDuplicateDialog';
 import IntelligencePanel from '@/components/intelligence/IntelligencePanel';
 import Workspace from '@/components/workspace/Workspace';
 import WorkspaceHeader from '@/components/workspace/WorkspaceHeader';
@@ -80,6 +85,7 @@ function CitizensWorkspace() {
   const pendingEnrollmentId = useRef<string | null>(null);
   const [activeTab, setActiveTab] = useState<'profile' | 'journey' | 'intelligence'>('profile');
   const [error, setError] = useState('');
+  const [reportTarget, setReportTarget] = useState<ReportDuplicateTarget | null>(null);
   const [toast, setToast] = useState('');
   const toastTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -110,17 +116,42 @@ function CitizensWorkspace() {
       return;
     }
     try {
-      const guidebook = await fetchEnrollmentGuidebook(token, selectedEnrollmentId);
-      if (guidebook) {
-        router.push(`/guidebooks?g=${guidebook.id}`);
+      const resolution = await fetchEnrollmentGuidebook(token, selectedEnrollmentId);
+      if (resolution.matched && resolution.guidebook) {
+        router.push(guidebookHref(resolution));
       } else {
-        flash('No specific guidebook for this enrollment.');
+        flash(resolution.message ?? 'No guidebook is currently mapped for this programme.');
         router.push('/guidebooks');
       }
     } catch {
       router.push('/guidebooks');
     }
   }, [router, selectedEnrollmentId, flash]);
+
+  // Context-aware: resolve a single activity's guidebook (activity → programme →
+  // disease → event → mapping) and open the highest-priority match — identical
+  // behaviour to the Guidebook icon on the Worklist and Dashboard. Never toggles
+  // any panel; shows the friendly message in place when nothing is mapped.
+  const openActivityGuidebook = useCallback(
+    async (activityId: string) => {
+      const token = getToken();
+      if (!token) {
+        router.push('/guidebooks');
+        return;
+      }
+      try {
+        const resolution = await fetchWorklistItemGuidebook(token, activityId);
+        if (resolution.matched && resolution.guidebook) {
+          router.push(guidebookHref(resolution, activityId));
+        } else {
+          flash(resolution.message ?? 'No guidebook is currently mapped for this programme.');
+        }
+      } catch {
+        flash('Unable to open the guidebook for this activity.');
+      }
+    },
+    [router, flash],
+  );
 
   // Load the citizen list once, then select the requested (?c=) or first citizen.
   useEffect(() => {
@@ -380,6 +411,14 @@ function CitizensWorkspace() {
             onAddProgram={() => detail && setAddOpen(true)}
             onOpenGuidebook={openGuidebook}
             onStartConsultation={() => selectedId && setStartConsultOpen(true)}
+            onReportDuplicate={() =>
+              selectedCitizen &&
+              setReportTarget({
+                id: selectedCitizen.id,
+                uhid: selectedCitizen.uhid,
+                fullName: selectedCitizen.fullName,
+              })
+            }
           />
 
           <ActivityWorkspace
@@ -392,6 +431,7 @@ function CitizensWorkspace() {
               const returnUrl = encodeURIComponent(`/citizens?c=${selectedId ?? ''}`);
               router.push(`/worklist/${activityId}/consult?returnUrl=${returnUrl}`);
             }}
+            onOpenGuidebook={openActivityGuidebook}
           />
         </WorkspaceGrid>
       ) : activeTab === 'journey' ? (
@@ -453,6 +493,18 @@ function CitizensWorkspace() {
           activities={detail?.activities ?? []}
           open={startConsultOpen}
           onClose={() => setStartConsultOpen(false)}
+        />
+      )}
+
+      {reportTarget && (
+        <ReportDuplicateDialog
+          current={reportTarget}
+          open={reportTarget !== null}
+          onClose={() => setReportTarget(null)}
+          onSubmitted={(request) => {
+            setReportTarget(null);
+            flash(`Duplicate request ${request.reference} submitted for review.`);
+          }}
         />
       )}
 

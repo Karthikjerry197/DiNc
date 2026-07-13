@@ -13,6 +13,7 @@ import {
   GuidebookDetail,
   GuidebookListItem,
   GuidebookRef,
+  GuidebookResolution,
   GuidebookSections,
   GuidebookVersion,
 } from './guidebooks.types';
@@ -46,10 +47,10 @@ export class GuidebooksService implements OnModuleInit {
   private async migrateGuidebookVersions(): Promise<void> {
     try {
       await this.db.query(`
-        CREATE TABLE IF NOT EXISTS public.guidebook_versions (
+        CREATE TABLE IF NOT EXISTS dinc_app.guidebook_versions (
           id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
           guidebook_id UUID NOT NULL
-            REFERENCES public.guidebooks(id) ON DELETE CASCADE,
+            /* TODO(Step 2+): restore FK to migrated dinc_runtime/dinc_metadata table */,
           version_number INTEGER NOT NULL,
           action VARCHAR(20) NOT NULL,
           changed_by VARCHAR(100),
@@ -61,16 +62,16 @@ export class GuidebooksService implements OnModuleInit {
       `);
       await this.db.query(`
         CREATE INDEX IF NOT EXISTS idx_guidebook_versions_guidebook
-          ON public.guidebook_versions(guidebook_id, version_number DESC)
+          ON dinc_app.guidebook_versions(guidebook_id, version_number DESC)
       `);
 
       const result = await this.db.query(`
-        INSERT INTO public.guidebook_versions
+        INSERT INTO dinc_app.guidebook_versions
           (guidebook_id, version_number, action, change_summary, snapshot, created_at)
         SELECT g.id, 1, 'BASELINE', 'Initial record', g.guidebook_sections, g.updated_at
         FROM public.guidebooks g
         WHERE NOT EXISTS (
-          SELECT 1 FROM public.guidebook_versions v WHERE v.guidebook_id = g.id
+          SELECT 1 FROM dinc_app.guidebook_versions v WHERE v.guidebook_id = g.id
         )
       `);
       if (result.rowCount) {
@@ -212,7 +213,7 @@ export class GuidebooksService implements OnModuleInit {
                 g.escalation_criteria, g.source, g.is_active, g.updated_at,
                 g.guidebook_sections,
                 (SELECT MAX(v.version_number)
-                 FROM public.guidebook_versions v
+                 FROM dinc_app.guidebook_versions v
                  WHERE v.guidebook_id = g.id) AS version
          FROM public.guidebooks g
          WHERE g.id = $1
@@ -372,7 +373,7 @@ export class GuidebooksService implements OnModuleInit {
         created_at: Date;
       }>(
         `SELECT version_number, action, changed_by, change_summary, created_at
-         FROM public.guidebook_versions
+         FROM dinc_app.guidebook_versions
          WHERE guidebook_id = $1
          ORDER BY version_number DESC`,
         [guidebookId],
@@ -407,11 +408,11 @@ export class GuidebooksService implements OnModuleInit {
   ): Promise<void> {
     try {
       await this.db.query(
-        `INSERT INTO public.guidebook_versions
+        `INSERT INTO dinc_app.guidebook_versions
            (guidebook_id, version_number, action, changed_by, change_summary, snapshot)
          VALUES (
            $1,
-           COALESCE((SELECT MAX(version_number) FROM public.guidebook_versions
+           COALESCE((SELECT MAX(version_number) FROM dinc_app.guidebook_versions
                      WHERE guidebook_id = $1), 0) + 1,
            $2, $3, $4, $5::jsonb
          )`,
@@ -450,13 +451,13 @@ export class GuidebooksService implements OnModuleInit {
         item_body: string;
       }>(
         `SELECT cs.name AS section_name, ci.body AS item_body
-         FROM   public.counselling_sections cs
-         JOIN   public.counselling_items ci
+         FROM   dinc_app.counselling_sections cs
+         JOIN   dinc_app.counselling_items ci
                   ON ci.section_id = cs.id AND ci.is_active = true
          WHERE  cs.is_active = true
            AND  (
                  cs.protocol_id = (
-                   SELECT id FROM public.counselling_protocols
+                   SELECT id FROM dinc_app.counselling_protocols
                    WHERE  guidebook_id = $1 AND is_active = true
                    ORDER  BY sort_order ASC LIMIT 1
                  )
@@ -465,7 +466,7 @@ export class GuidebooksService implements OnModuleInit {
                    cs.protocol_id IS NULL
                    AND cs.guidebook_id = $1
                    AND NOT EXISTS (
-                     SELECT 1 FROM public.counselling_protocols
+                     SELECT 1 FROM dinc_app.counselling_protocols
                      WHERE guidebook_id = $1 AND is_active = true
                    )
                  )
@@ -514,6 +515,100 @@ export class GuidebooksService implements OnModuleInit {
     } catch (error) {
       this.logger.warn(`Guidebook match query failed: ${(error as Error).message}`);
       return null;
+    }
+  }
+
+  /** Shown when a clinical context resolves to no guidebook at all. */
+  static readonly NO_MAPPING_MESSAGE =
+    'No guidebook is currently mapped for this programme.';
+
+  /**
+   * Resolves the guidebook(s) for a clinical context using the configurable
+   * `public.guidebook_mappings` table (Programme / Disease / Event → Guidebook).
+   *
+   * Ordering (highest priority first): the mapping row's `priority` ascending
+   * (lower number = higher priority), then scope specificity (EVENT is more
+   * specific than DISEASE, DISEASE than PROGRAMME) as a tie-breaker, then title.
+   * The first result is opened automatically; the rest become "Related
+   * Guidebooks". Duplicate guidebooks (mapped at more than one scope) are
+   * collapsed to their best-ranked entry.
+   *
+   * The lookup is defensive: if the mapping table is absent or a query fails, it
+   * falls back to the existing curated `guide_rules` text match so the feature
+   * never regresses. When nothing matches at all, `matched` is false and a
+   * friendly {@link NO_MAPPING_MESSAGE} is returned.
+   *
+   * This method contains no hardcoded programme/disease/guidebook associations —
+   * every mapping is data in PostgreSQL.
+   */
+  async resolveForContext(ctx: {
+    programId: string | null;
+    diseaseId: string | null;
+    eventId: string | null;
+    haystack: string;
+  }): Promise<GuidebookResolution> {
+    const mapped = await this.matchByMappings(ctx.programId, ctx.diseaseId, ctx.eventId);
+    if (mapped.length > 0) {
+      const [primary, ...related] = mapped;
+      return { guidebook: primary, related, matched: true, message: null };
+    }
+
+    // Fallback: existing curated regex rules (keeps legacy matches working).
+    const legacy = await this.matchByText(ctx.haystack);
+    if (legacy) {
+      return { guidebook: legacy, related: [], matched: true, message: null };
+    }
+
+    return {
+      guidebook: null,
+      related: [],
+      matched: false,
+      message: GuidebooksService.NO_MAPPING_MESSAGE,
+    };
+  }
+
+  /**
+   * Ordered, de-duplicated list of guidebooks mapped to the given context via
+   * public.guidebook_mappings. Returns [] when the table does not exist yet (so
+   * resolveForContext can fall back) — a missing table is logged, not thrown.
+   */
+  private async matchByMappings(
+    programId: string | null,
+    diseaseId: string | null,
+    eventId: string | null,
+  ): Promise<GuidebookRef[]> {
+    if (!programId && !diseaseId && !eventId) return [];
+    try {
+      const result = await this.db.query<GuidebookRef>(
+        `SELECT g.id, g.code, g.category, g.title
+         FROM public.guidebook_mappings gm
+         JOIN public.guidebooks g ON g.id = gm.guidebook_id AND g.is_active = true
+         WHERE gm.is_active = true
+           AND (
+                 (gm.scope = 'EVENT'     AND gm.event_id   = $3::uuid) OR
+                 (gm.scope = 'DISEASE'   AND gm.disease_id = $2::uuid) OR
+                 (gm.scope = 'PROGRAMME' AND gm.program_id = $1::uuid)
+               )
+         ORDER BY gm.priority ASC,
+                  CASE gm.scope WHEN 'EVENT' THEN 1 WHEN 'DISEASE' THEN 2 ELSE 3 END ASC,
+                  g.title ASC`,
+        [programId, diseaseId, eventId],
+      );
+      // Collapse a guidebook mapped at multiple scopes to its best-ranked entry.
+      const seen = new Set<string>();
+      const unique: GuidebookRef[] = [];
+      for (const row of result.rows) {
+        if (seen.has(row.id)) continue;
+        seen.add(row.id);
+        unique.push(row);
+      }
+      return unique;
+    } catch (error) {
+      this.logger.warn(
+        `Guidebook mappings query skipped (${(error as Error).message}). ` +
+          `Falling back to curated text rules.`,
+      );
+      return [];
     }
   }
 

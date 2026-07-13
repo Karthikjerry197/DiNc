@@ -10,6 +10,28 @@ export interface GuidebookRef {
   title: string;
 }
 
+/**
+ * The three configurable mapping scopes (public.guidebook_mappings.scope).
+ * PROGRAMME and DISEASE are used today; EVENT is future-ready (a worklist item
+ * already carries an event, so event-level mappings resolve automatically once
+ * an administrator adds them).
+ */
+export type GuidebookMappingScope = 'PROGRAMME' | 'DISEASE' | 'EVENT';
+
+/**
+ * The result of resolving the guidebook(s) for a clinical context
+ * (programme / disease / event). `guidebook` is the highest-priority match that
+ * the caller should open automatically; `related` lists the other applicable
+ * guidebooks. When nothing is mapped, `matched` is false and `message` carries a
+ * friendly, display-ready explanation.
+ */
+export interface GuidebookResolution {
+  guidebook: GuidebookRef | null;
+  related: GuidebookRef[];
+  matched: boolean;
+  message: string | null;
+}
+
 export interface GuidebookListItem {
   id: string;
   code: string;

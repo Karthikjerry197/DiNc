@@ -37,7 +37,7 @@ export default function RiskGauge({
 
   return (
     <div className="ai-gauge">
-      <svg viewBox="0 0 120 120" className="ai-gauge-svg" role="img" aria-label={`AI risk score ${score} of 100, ${level}`}>
+      <svg viewBox="0 0 120 120" className="ai-gauge-svg" role="img" aria-label={`Risk score ${score} of 100, ${level}`}>
         <circle cx="60" cy="60" r={r} className="ai-gauge-track" />
         <circle
           cx="60"

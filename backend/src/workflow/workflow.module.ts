@@ -3,6 +3,7 @@ import { AuthModule } from '../auth/auth.module';
 import { ActivityModule } from '../activity/activity.module';
 import { CdseModule } from '../cdse/cdse.module';
 import { EnrollmentModule } from '../enrollment/enrollment.module';
+import { ReferenceDataModule } from '../reference-data/reference-data.module';
 import { WorkflowController } from './workflow.controller';
 import { WorkflowEngine } from './workflow.engine';
 import { WorkflowRepository } from './workflow.repository';
@@ -18,7 +19,7 @@ import { WorkflowService } from './workflow.service';
  * processing to it instead of containing workflow logic of its own.
  */
 @Module({
-  imports: [AuthModule, ActivityModule, CdseModule, EnrollmentModule],
+  imports: [AuthModule, ActivityModule, CdseModule, EnrollmentModule, ReferenceDataModule],
   controllers: [WorkflowController],
   providers: [WorkflowEngine, WorkflowService, WorkflowRepository],
   exports: [WorkflowEngine],

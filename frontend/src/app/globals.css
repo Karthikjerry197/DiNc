@@ -3411,6 +3411,231 @@ a.wl-icon-btn {
   font-style: italic;
 }
 
+/* ── Duplicate Review Workspace (Administrator) ── */
+.dq-status-closed { background: #ede9fe; color: #6d28d9; }
+.dq-status-confirmed_duplicate { background: #ffedd5; color: #c2410c; }
+.dq-risk-severe { background: #fee2e2; color: #b91c1c; }
+.dq-risk-moderate { background: #fef3c7; color: #b45309; }
+.dq-risk-low { background: #dcfce7; color: #15803d; }
+
+.dqr-workspace {
+  display: grid;
+  grid-template-columns: 300px minmax(0, 1fr) 340px;
+  gap: 14px;
+  height: calc(100vh - 210px);
+  min-height: 520px;
+}
+.dqr-workspace .panel {
+  min-width: 0;
+  overflow: auto;
+  padding: 0;
+}
+.dqr-pad { padding: 14px; }
+
+/* List panel */
+.dqr-req-list { list-style: none; margin: 0; padding: 6px; display: flex; flex-direction: column; gap: 6px; }
+.dqr-req {
+  width: 100%;
+  text-align: left;
+  background: transparent;
+  border: 1px solid var(--bd);
+  border-radius: 10px;
+  padding: 10px;
+  cursor: pointer;
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  transition: background 0.12s, border-color 0.12s;
+}
+.dqr-req:hover { background: var(--bg2, #f8fafc); }
+.dqr-req.active { border-color: var(--p); background: var(--pl); }
+.dqr-req-top { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.dqr-req-ref { font-size: 12px; font-weight: 700; }
+.dqr-req-names { font-size: 12px; color: var(--tp); font-weight: 600; line-height: 1.35; }
+.dqr-req-vs { color: var(--ts); font-weight: 400; }
+.dqr-req-meta { font-size: 11px; color: var(--ts); }
+
+/* Comparison panel */
+.dqr-compare-scroll { padding: 14px; }
+.dqr-compare-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 12px;
+}
+.dqr-reason { color: var(--ts); font-size: 13px; }
+.dqr-submitter-note,
+.dqr-reviewed-note,
+.dqr-future {
+  background: var(--bg2, #f8fafc);
+  border: 1px solid var(--bd);
+  border-radius: 10px;
+  padding: 10px 12px;
+  margin-bottom: 12px;
+  font-size: 12.5px;
+}
+.dqr-note-label {
+  display: block;
+  font-size: 10.5px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--ts);
+  margin-bottom: 4px;
+}
+.dqr-submitter-note p, .dqr-reviewed-note p { margin: 0; }
+.dq-admin-info { margin-top: 16px; border-top: 1px solid var(--bd); padding-top: 12px; }
+.dq-admin-grid { grid-template-columns: 1fr; }
+
+/* Decision panel */
+.dqr-decision-body { padding: 14px; display: flex; flex-direction: column; gap: 14px; }
+.dqr-decision-status { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.dqr-decision-options { display: flex; flex-direction: column; gap: 8px; }
+.dqr-option {
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
+  text-align: left;
+  border: 1px solid var(--bd);
+  border-radius: 10px;
+  padding: 10px;
+  background: transparent;
+  cursor: pointer;
+  transition: border-color 0.12s, background 0.12s;
+}
+.dqr-option:hover { background: var(--bg2, #f8fafc); }
+.dqr-option.selected { border-color: var(--p); background: var(--pl); }
+.dqr-option--danger.selected { border-color: #b91c1c; background: #fef2f2; }
+.dqr-option--warn.selected { border-color: #c2410c; background: #fff7ed; }
+.dqr-option-icon { margin-top: 1px; }
+.dqr-option-text { display: flex; flex-direction: column; gap: 2px; }
+.dqr-option-label { font-size: 12.5px; font-weight: 700; color: var(--tp); }
+.dqr-option-hint { font-size: 11px; color: var(--ts); line-height: 1.35; }
+.dqr-comments { margin: 0; }
+.dqr-submit { width: 100%; }
+.dqr-reviewed { display: flex; flex-direction: column; gap: 8px; }
+.dqr-reviewed-row { display: flex; justify-content: space-between; gap: 10px; font-size: 12.5px; }
+.dqr-reviewed-row > span:last-child { font-weight: 600; color: var(--tp); text-align: right; }
+.dqr-future { color: #9a3412; background: #fff7ed; border-color: #fed7aa; }
+
+/* Timeline */
+.dqr-timeline { border-top: 1px solid var(--bd); padding-top: 12px; }
+.dqr-timeline-list { list-style: none; margin: 8px 0 0; padding: 0; display: flex; flex-direction: column; gap: 12px; }
+.dqr-timeline-item { display: flex; gap: 10px; position: relative; }
+.dqr-timeline-dot { width: 10px; height: 10px; border-radius: 999px; margin-top: 3px; flex: 0 0 auto; }
+.dqr-timeline-status { font-size: 12.5px; font-weight: 700; color: var(--tp); }
+.dqr-timeline-meta { font-size: 11px; color: var(--ts); }
+.dqr-timeline-comment { font-size: 12px; color: var(--tp); margin-top: 3px; }
+
+/* ── Reference Data badges/chips (ReferenceBadge / ReferenceChip) ── */
+.ref-badge, .ref-chip {
+  display: inline-flex;
+  align-items: center;
+  border-radius: 999px;
+  padding: 2px 10px;
+  font-size: 11.5px;
+  font-weight: 600;
+  line-height: 1.6;
+  white-space: nowrap;
+}
+.ref-badge { background: #f3f4f6; color: #4b5563; }
+.ref-chip { background: transparent; border: 1px solid var(--bd); color: var(--tp); }
+
+/* ── Reference Data admin workspace (administration/reference-data) ── */
+.rd-grid {
+  display: grid;
+  grid-template-columns: 280px 1fr;
+  gap: var(--sp-4, 16px);
+  align-items: start;
+}
+.rd-cats { padding: 12px; }
+.rd-cats-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 8px;
+}
+.rd-cat-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 2px; }
+.rd-cat {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  text-align: left;
+  background: none;
+  border: 1px solid transparent;
+  border-radius: var(--radius-sm);
+  padding: 7px 9px;
+  cursor: pointer;
+  transition: background 0.12s, border-color 0.12s;
+}
+.rd-cat:hover { background: var(--bg); }
+.rd-cat.active { background: var(--pl); border-color: #b6e6c2; }
+.rd-cat-name { display: flex; align-items: center; gap: 6px; font-size: 12.5px; font-weight: 600; color: var(--tp); }
+.rd-cat-meta { font-size: 10.5px; color: var(--ts); font-variant-numeric: tabular-nums; }
+.rd-inactive-tag { font-size: 9.5px; padding: 0 6px; }
+
+.rd-values { padding: 0; overflow: hidden; }
+.rd-values-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 14px 16px;
+  border-bottom: 1px solid var(--bd);
+}
+.rd-values-title { font-size: 14px; font-weight: 700; color: var(--tp); }
+.rd-values-desc { font-size: 12px; color: var(--ts); margin-top: 2px; }
+.rd-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 10px 16px;
+  border-bottom: 1px solid var(--bd);
+}
+.rd-search { display: flex; align-items: center; gap: 6px; flex: 1; color: var(--ts); }
+.rd-search .fc { border: none; padding: 4px 0; background: none; }
+.rd-search .fc:focus { outline: none; box-shadow: none; }
+.rd-active-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  color: var(--ts);
+  cursor: pointer;
+  white-space: nowrap;
+}
+.rd-move { display: inline-flex; gap: 2px; }
+.rd-swatch {
+  display: inline-block;
+  width: 18px;
+  height: 18px;
+  border-radius: 5px;
+  border: 1px solid var(--bd);
+  vertical-align: middle;
+}
+.rd-colour-row { display: flex; align-items: center; gap: 10px; }
+.rd-row-inactive { opacity: 0.55; }
+.rd-sys { color: var(--p); }
+.rd-empty-row { text-align: center; padding: 22px 0; }
+.rd-reorder-note, .rd-hint { font-size: 11px; color: var(--ts); }
+.rd-reorder-note { padding: 8px 16px; }
+.rd-hint { margin-top: 4px; }
+.rd-hint code { font-family: var(--font-mono, monospace); font-size: 10.5px; }
+
+@media (max-width: 900px) {
+  .rd-grid { grid-template-columns: 1fr; }
+}
+
+@media (max-width: 1100px) {
+  .dqr-workspace {
+    grid-template-columns: 1fr;
+    height: auto;
+  }
+  .dqr-workspace .panel { max-height: 60vh; }
+}
+
 @media (max-width: 760px) {
   .modal-wide {
     width: 96vw;
@@ -7773,6 +7998,13 @@ a.wl-icon-btn {
   background: #fee2e2; color: #991b1b;
   border: 1px solid #fca5a5;
 }
+/* M40: wrapper for the converged risk badge (decorative icon + ReferenceBadge,
+   whose label + colour come from the `risk_level` Reference Data category). */
+.cdse-risk-badge-wrap { display: inline-flex; align-items: center; gap: 5px; }
+.cdse-risk-badge-wrap--none    { color: #6b7280; }
+.cdse-risk-badge-wrap--low     { color: var(--risk-low); }
+.cdse-risk-badge-wrap--moderate { color: var(--risk-moderate); }
+.cdse-risk-badge-wrap--severe  { color: var(--risk-severe); }
 
 /* CDSE Panel — redesigned for Milestone 25 */
 .cdse-risk-detail {
@@ -7964,6 +8196,41 @@ a.wl-icon-btn {
   font-size: 12.5px;
   padding: 6px 14px;
 }
+
+/* Related Guidebooks (M42) — quick-switch chips for other guidebooks mapped to
+   the same programme/disease/event as the one opened from a worklist item. */
+.gb-related {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 10px 14px;
+  margin: 0 0 12px;
+  border: 1px solid var(--bd);
+  border-left: 3px solid var(--p);
+  border-radius: 9px;
+  background: var(--bg);
+}
+.gb-related-label {
+  font-size: 11px;
+  font-weight: var(--fw-semibold);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--ts);
+}
+.gb-related-chips { display: flex; flex-wrap: wrap; gap: 6px; }
+.gb-related-chip {
+  display: inline-flex;
+  align-items: center;
+  padding: 4px 11px;
+  border: 1px solid var(--bd);
+  border-radius: var(--radius-pill);
+  background: var(--card);
+  font-size: 12.5px;
+  font-weight: var(--fw-medium);
+  color: var(--tp);
+  cursor: pointer;
+}
+.gb-related-chip:hover { background: var(--pl); border-color: var(--p); color: var(--ps); }
 
 /* Timeline → Consultation link (M33.1). */
 .pt-consult-link {
@@ -9495,6 +9762,18 @@ a.wl-icon-btn {
   padding: 1px 6px;
   border-radius: 6px;
 }
+/* Overall Risk chip — the PRIMARY patient risk (matrix-driven, shared service). */
+.czx-overall {
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 0.02em;
+  padding: 2px 8px;
+  border-radius: 6px;
+  border: 1px solid transparent;
+}
+.czx-overall-high     { background: #fde8e8; color: #b91c1c; border-color: #f6c6c6; }
+.czx-overall-moderate { background: #fef3e2; color: #b45309; border-color: #f6dcae; }
+.czx-overall-low      { background: var(--pl); color: var(--ps); border-color: #b6e6c2; }
 .czx-identity-name { font-size: 13px; font-weight: 700; color: var(--tp); margin-top: 1px; }
 .czx-identity-meta { font-size: 11px; color: var(--ts); margin-top: 1px; }
 .czx-identity-progs { font-size: 10.5px; color: var(--p); font-weight: 600; margin-top: 2px; }
@@ -10080,6 +10359,7 @@ a.wl-icon-btn {
 .rd-perm-desc { font-size: 10.5px; color: var(--ts); line-height: 1.35; }
 .rd-perm-req { font-size: 10px; color: var(--warn); font-weight: 600; }
 
+/* ==========================================================================
    AI Decision-Support Layer (docs/AI-LAYER-SPEC.md)
    Namespace: ai-* (panel/badges/gauge) and wl-ai-* (worklist enhancements).
    Reuses the existing --risk-* / spacing / radius tokens throughout.
@@ -10125,7 +10405,8 @@ a.wl-icon-btn {
 
 /* — Circular gauge — */
 .ai-gauge { display: flex; flex-direction: column; align-items: center; gap: var(--sp-2); }
-.ai-gauge-svg { width: 120px; height: 120px; }
+/* M42: gauge shrunk ~32% so it reads as supporting detail, not competing with the Overall Risk hero. */
+.ai-gauge-svg { width: 82px; height: 82px; }
 .ai-gauge-track { fill: none; stroke: var(--bd); stroke-width: 10; }
 .ai-gauge-arc { fill: none; stroke-width: 10; stroke-linecap: round; transition: stroke-dasharray 0.5s ease; }
 .ai-gauge-score { text-anchor: middle; font-size: 30px; font-weight: 700; fill: var(--tp); }
@@ -10143,6 +10424,196 @@ a.wl-icon-btn {
 .ai-section-title { display: inline-flex; align-items: center; gap: 5px; font-size: var(--fs-sm); font-weight: var(--fw-semibold); color: var(--tp); }
 .ai-lead { font-size: var(--fs-sm); color: var(--tp); margin: 0; }
 .ai-lead strong { font-size: var(--fs-lg); }
+
+/* — Overall Risk (matrix-driven composite) — */
+.ai-overall {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+  padding: var(--sp-3);
+  margin-top: var(--sp-3);
+  border: 1px solid var(--bd);
+  border-radius: var(--radius-md);
+  background: var(--bg);
+}
+.ai-overall-head { display: flex; align-items: center; justify-content: space-between; gap: var(--sp-2); }
+.ai-overall-badge {
+  display: inline-flex; align-items: center;
+  padding: 3px 12px; border-radius: var(--radius-pill);
+  font-size: var(--fs-sm); font-weight: var(--fw-bold);
+  border: 1px solid transparent; letter-spacing: 0.02em;
+}
+.ai-overall-badge--low { background: #ecfdf3; color: var(--risk-low); border-color: #c7ecd3; }
+.ai-overall-badge--moderate { background: #fff7ed; color: var(--risk-moderate); border-color: #fed7aa; }
+.ai-overall-badge--severe { background: #fef2f2; color: var(--risk-severe); border-color: #fecaca; }
+.ai-overall-inputs { display: flex; align-items: flex-end; gap: var(--sp-2); flex-wrap: wrap; }
+.ai-overall-input { display: flex; flex-direction: column; gap: 3px; }
+.ai-overall-input-label { font-size: var(--fs-2xs); color: var(--ts); text-transform: uppercase; letter-spacing: 0.04em; }
+.ai-overall-op { font-size: var(--fs-sm); color: var(--ts); font-weight: var(--fw-bold); padding-bottom: 2px; }
+.ai-overall-chip {
+  display: inline-flex; align-items: center;
+  padding: 2px 9px; border-radius: var(--radius-pill);
+  font-size: var(--fs-xs); font-weight: var(--fw-semibold);
+  border: 1px solid var(--bd); background: var(--card);
+}
+.ai-overall-chip--low { color: var(--risk-low); border-color: #c7ecd3; }
+.ai-overall-chip--moderate { color: var(--risk-moderate); border-color: #fed7aa; }
+.ai-overall-chip--severe { color: var(--risk-severe); border-color: #fecaca; }
+.ai-overall-why { font-size: var(--fs-xs); color: var(--ts); margin: 0; line-height: 1.5; }
+
+/* — Overall Risk HERO (primary risk, M-Unified) — */
+.ai-overall-hero {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-3);
+  padding: var(--sp-4, 16px);
+  border: 1px solid var(--bd);
+  border-left-width: 4px;
+  border-radius: var(--radius-md);
+  background: var(--card);
+}
+.ai-overall-hero--low { border-left-color: var(--risk-low); }
+.ai-overall-hero--moderate { border-left-color: var(--risk-moderate); }
+.ai-overall-hero--severe { border-left-color: var(--risk-severe); }
+.ai-overall-hero--pending { border-left-color: var(--bd); }
+.ai-overall-hero-top { display: flex; align-items: flex-start; justify-content: space-between; gap: var(--sp-3); }
+.ai-overall-hero-label {
+  font-size: var(--fs-2xs); font-weight: var(--fw-semibold);
+  text-transform: uppercase; letter-spacing: 0.06em; color: var(--ts);
+}
+.ai-overall-hero-value {
+  display: inline-flex; align-items: center; gap: 8px;
+  font-size: 2rem; line-height: 1.05; font-weight: var(--fw-bold); letter-spacing: -0.01em;
+}
+.ai-overall-hero-value--low { color: var(--risk-low); }
+.ai-overall-hero-value--moderate { color: var(--risk-moderate); }
+.ai-overall-hero-value--severe { color: var(--risk-severe); }
+.ai-overall-hero-value--pending { font-size: 1.4rem; color: #6b7280; }
+.ai-overall-hero-action { text-align: right; display: flex; flex-direction: column; gap: 2px; }
+
+/* Rule composition: Clinical Severity + Follow-up Risk → Overall Risk */
+.ai-overall-formula {
+  display: flex; align-items: flex-end; flex-wrap: wrap; gap: var(--sp-2);
+  padding: var(--sp-3); border-radius: var(--radius-sm); background: var(--bg);
+}
+.ai-overall-term { display: flex; flex-direction: column; gap: 3px; }
+.ai-overall-term-label { font-size: var(--fs-2xs); color: var(--ts); text-transform: uppercase; letter-spacing: 0.04em; }
+.ai-overall-op--arrow { color: var(--tp); }
+.ai-overall-chip--strong { font-weight: var(--fw-bold); background: var(--card); }
+
+/* — Supporting risks row (Clinical Severity | Follow-up Default Probability) — */
+.ai-support-row { display: grid; grid-template-columns: 1fr 1fr; gap: var(--sp-3); margin-top: var(--sp-3); }
+.ai-support-card {
+  display: flex; flex-direction: column; gap: 6px;
+  padding: var(--sp-3); border: 1px solid var(--bd); border-radius: var(--radius-md); background: var(--card);
+}
+.ai-support-label {
+  font-size: var(--fs-2xs); font-weight: var(--fw-semibold);
+  text-transform: uppercase; letter-spacing: 0.05em; color: var(--ts);
+}
+.ai-support-value { display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap; }
+.ai-support-pct { font-size: 1.5rem; font-weight: var(--fw-bold); line-height: 1; }
+.ai-support-pct--low { color: var(--risk-low); }
+.ai-support-pct--moderate { color: var(--risk-moderate); }
+.ai-support-pct--severe { color: var(--risk-severe); }
+.ai-support-band { font-size: var(--fs-2xs); color: var(--ts); }
+.ai-support-note { font-size: var(--fs-2xs); color: var(--ts); margin: 0; line-height: 1.4; }
+.ai-risk-supporting { display: flex; justify-content: center; padding-top: var(--sp-2); }
+
+@media (max-width: 640px) {
+  .ai-support-row { grid-template-columns: 1fr; }
+}
+
+/* ── M42: Clinical Intelligence UI polish ─────────────────────────────────── */
+
+/* Clinical Severity card — coloured severity icon beside the reference badge. */
+.ai-sev-value { align-items: center; gap: 8px; }
+.ai-sev-icon { display: inline-flex; align-items: center; }
+.ai-sev-icon svg { width: 16px; height: 16px; }
+.ai-sev-icon--none { color: #6b7280; }
+.ai-sev-icon--low { color: var(--risk-low); }
+.ai-sev-icon--moderate { color: var(--risk-moderate); }
+.ai-sev-icon--severe { color: var(--risk-severe); }
+
+/* Follow-up card — three clearly-labelled fields (probability / band / follow-up). */
+.ai-fu-field { display: flex; flex-direction: column; gap: 4px; }
+.ai-fu-field-label {
+  font-size: var(--fs-2xs); font-weight: var(--fw-semibold);
+  text-transform: uppercase; letter-spacing: 0.04em; color: var(--ts);
+}
+.ai-fu-row { display: flex; gap: var(--sp-4, 16px); flex-wrap: wrap; }
+.ai-fu-row .ai-fu-field { min-width: 128px; }
+.ai-fu-band {
+  align-self: flex-start; display: inline-flex; align-items: center;
+  padding: 2px 10px; border-radius: var(--radius-pill);
+  font-size: var(--fs-xs); font-weight: var(--fw-bold); border: 1px solid transparent;
+}
+.ai-fu-band--low { background: #ecfdf3; color: var(--risk-low); border-color: #c7ecd3; }
+.ai-fu-band--moderate { background: #fff7ed; color: var(--risk-moderate); border-color: #fed7aa; }
+.ai-fu-band--severe { background: #fef2f2; color: var(--risk-severe); border-color: #fecaca; }
+.ai-fu-followup { font-size: var(--fs-sm); font-weight: var(--fw-semibold); color: var(--tp); }
+
+/* Priority block in the Overall Risk hero — coloured (amber/red) badge, not plain text. */
+.ai-priority { display: flex; flex-direction: column; align-items: flex-end; gap: 4px; text-align: right; }
+.ai-priority-label {
+  font-size: var(--fs-2xs); font-weight: var(--fw-semibold);
+  text-transform: uppercase; letter-spacing: 0.06em; color: var(--ts);
+}
+.ai-priority-badge {
+  display: inline-flex; align-items: center;
+  padding: 3px 12px; border-radius: var(--radius-pill);
+  font-size: var(--fs-sm); font-weight: var(--fw-bold); letter-spacing: 0.04em;
+  border: 1px solid transparent;
+}
+.ai-priority-badge--low { background: #ecfdf3; color: var(--risk-low); border-color: #c7ecd3; }
+.ai-priority-badge--moderate { background: #fff7ed; color: var(--risk-moderate); border-color: #fed7aa; }
+.ai-priority-badge--severe { background: #fef2f2; color: var(--risk-severe); border-color: #fecaca; }
+.ai-priority-detail { font-size: var(--fs-sm); color: var(--tp); }
+
+/* Clinical decision flow — vertical stepper: Severity → Follow-up → Overall. */
+.ai-decision-flow {
+  display: flex; flex-direction: column; align-items: center; gap: 6px;
+  padding: var(--sp-3); border-radius: var(--radius-sm); background: var(--bg);
+}
+.ai-decision-step {
+  width: 100%; max-width: 340px;
+  display: flex; align-items: center; justify-content: space-between; gap: var(--sp-3);
+  padding: 7px 12px; border: 1px solid var(--bd); border-radius: var(--radius-md); background: var(--card);
+}
+.ai-decision-step--result { border-width: 2px; }
+.ai-decision-step-label {
+  font-size: var(--fs-2xs); font-weight: var(--fw-semibold);
+  text-transform: uppercase; letter-spacing: 0.04em; color: var(--ts);
+}
+.ai-decision-chip {
+  display: inline-flex; align-items: center;
+  padding: 2px 11px; border-radius: var(--radius-pill);
+  font-size: var(--fs-xs); font-weight: var(--fw-semibold); border: 1px solid var(--bd); background: var(--bg);
+}
+.ai-decision-chip--strong { font-weight: var(--fw-bold); font-size: var(--fs-sm); }
+.ai-decision-chip--low { color: var(--risk-low); border-color: #c7ecd3; background: #ecfdf3; }
+.ai-decision-chip--moderate { color: var(--risk-moderate); border-color: #fed7aa; background: #fff7ed; }
+.ai-decision-chip--severe { color: var(--risk-severe); border-color: #fecaca; background: #fef2f2; }
+.ai-decision-arrow { color: var(--ts); flex-shrink: 0; }
+
+/* — Overall Risk badge (primary risk indicator: icon + colour + label) — */
+.ovr-badge {
+  display: inline-flex; align-items: center; gap: 5px;
+  padding: 2px 9px; border-radius: var(--radius-pill);
+  font-size: var(--fs-2xs); font-weight: var(--fw-bold);
+  letter-spacing: 0.02em; border: 1px solid transparent; white-space: nowrap;
+}
+.ovr-badge svg { width: 13px; height: 13px; flex-shrink: 0; }
+.ovr-badge--md { font-size: var(--fs-xs); padding: 3px 11px; gap: 6px; }
+.ovr-badge--md svg { width: 15px; height: 15px; }
+.ovr-badge-text { line-height: 1; }
+.ovr-badge--low      { background: #ecfdf3; color: var(--risk-low);      border-color: #c7ecd3; }
+.ovr-badge--moderate { background: #fff7ed; color: var(--risk-moderate); border-color: #fed7aa; }
+.ovr-badge--high     { background: #fef2f2; color: var(--risk-severe);   border-color: #fecaca; }
+.ovr-badge--pending  { background: #f3f4f6; color: #6b7280;              border-color: #e5e7eb; }
+/* Worklist risk cell: Overall Risk primary, escalation flag beneath. */
+.wl-risk-cell { display: flex; flex-direction: column; align-items: flex-start; gap: 4px; }
+.wl-risk-escal { font-size: var(--fs-2xs); }
 
 /* — Bars — */
 .ai-bar-track { height: 8px; background: var(--bd); border-radius: var(--radius-pill); overflow: hidden; }
@@ -10197,7 +10668,7 @@ a.wl-icon-btn {
 .wl-ai-preset.active { background: var(--pl); border-color: var(--p); color: var(--ps); }
 .wl-ai-sort { display: inline-flex; align-items: center; gap: 6px; font-size: var(--fs-xs); color: var(--ts); }
 .wl-ai-sort select { font-size: var(--fs-xs); padding: 4px 8px; border: 1px solid var(--bd); border-radius: var(--radius-sm); background: var(--card); color: var(--tp); }
-=======
+
 /* User Workspace — per-user permission overrides (grant / deny / inherit) */
 .uw-perm-tools { display: flex; align-items: center; gap: 8px; }
 .uw-reset-btn { white-space: nowrap; }

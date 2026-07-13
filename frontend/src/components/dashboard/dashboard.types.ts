@@ -55,11 +55,5 @@ export interface WidgetMeta {
   defaultColSpan: ColSpan;
 }
 
-// ── Known roles ───────────────────────────────────────────────────────────────
-
-export const KNOWN_ROLES: { value: string; label: string }[] = [
-  { value: 'ADMIN',          label: 'Admin' },
-  { value: 'CLINICIAN',      label: 'Clinician' },
-  { value: 'CARE_ASSISTANT', label: 'Care Assistant' },
-  { value: 'ANM',            label: 'ANM' },
-];
+// M40 Configuration Convergence: the hardcoded KNOWN_ROLES list was retired.
+// Role pickers now read from the rbac_roles single source of truth via useRoles().

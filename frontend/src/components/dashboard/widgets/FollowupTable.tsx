@@ -1,10 +1,13 @@
 'use client';
 
-import { useCallback } from 'react';
+import { useCallback, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
 import { BookOpen, Phone, Eye, Flag, Inbox } from 'lucide-react';
-import { fetchWorklistItemGuidebook, type WorklistItem } from '@/lib/api';
+import { fetchWorklistItemGuidebook, guidebookHref, type OverallRiskBatchInput, type WorklistItem } from '@/lib/api';
 import { getToken } from '@/lib/session';
+import { worklistFeatures, computePatientIntelligence } from '@/lib/ai';
+import { useOverallRiskBatch } from '@/lib/useOverallRiskBatch';
+import OverallRiskBadge from '@/components/intelligence/OverallRiskBadge';
 
 interface Props {
   items: WorklistItem[];
@@ -53,14 +56,30 @@ export default function FollowupTable({
 }: Props) {
   const router = useRouter();
 
+  // Overall Risk for the whole list, resolved in ONE batch request via the shared
+  // OverallRiskService. Follow-up band and clinical severity are derived from the
+  // same worklist rows; no Overall Risk combination logic lives here.
+  const overallInputs = useMemo<OverallRiskBatchInput[]>(() => {
+    const arr: OverallRiskBatchInput[] = [];
+    for (const [id, features] of worklistFeatures(items)) {
+      const intel = computePatientIntelligence(features);
+      arr.push({ id, clinicalSeverity: intel.risk.dincLevel ?? 'NONE', followupRisk: intel.followup.band });
+    }
+    return arr;
+  }, [items]);
+  const overallById = useOverallRiskBatch(overallInputs);
+
   const openGuidebook = useCallback(
     async (itemId: string) => {
       const token = getToken();
       if (!token) { onFlash('Session expired.'); return; }
       try {
-        const gb = await fetchWorklistItemGuidebook(token, itemId);
-        if (gb) { router.push(`/guidebooks?g=${gb.id}&activity=${itemId}`); }
-        else { onFlash('No specific guidebook is mapped to this activity.'); }
+        const resolution = await fetchWorklistItemGuidebook(token, itemId);
+        if (resolution.matched && resolution.guidebook) {
+          router.push(guidebookHref(resolution, itemId));
+        } else {
+          onFlash(resolution.message ?? 'No guidebook is currently mapped for this programme.');
+        }
       } catch {
         onFlash('Unable to open the guidebook for this activity.');
       }
@@ -92,6 +111,7 @@ export default function FollowupTable({
             <th>Program</th>
             <th className="dash-td-due">Due</th>
             <th>Priority</th>
+            <th>Overall Risk</th>
             <th className="dash-col-actions">Actions</th>
           </tr>
         </thead>
@@ -108,6 +128,11 @@ export default function FollowupTable({
               </td>
               <td>
                 <span className={`pill pill-${item.priority.toLowerCase()}`}>{item.priority}</span>
+              </td>
+              <td>
+                <OverallRiskBadge
+                  resolution={item.citizenId ? overallById.get(item.citizenId) ?? null : null}
+                />
               </td>
               <td className="dash-col-actions">
                 <div className="dash-row-actions">

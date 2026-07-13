@@ -40,6 +40,9 @@ export default function GuidebooksPage() {
   // Guidebook → Consultation (M33.1): when opened from a worklist item
   // (?activity=<id>), offer a direct path into its consultation workspace.
   const [consultActivityId, setConsultActivityId] = useState<string | null>(null);
+  // Related Guidebooks (M42): the other guidebooks mapped to the same clinical
+  // context, passed as ?related=<id,id>. Rendered as quick-switch chips.
+  const [relatedIds, setRelatedIds] = useState<string[]>([]);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [detail, setDetail] = useState<GuidebookDetail | null>(null);
   const [listLoading, setListLoading] = useState(true);
@@ -93,6 +96,16 @@ export default function GuidebooksPage() {
         const initial = list.find((g) => g.id === requested)?.id ?? matched ?? list[0]?.id ?? null;
         setSelectedId(initial);
         setConsultActivityId(params.get('activity'));
+        // Related guidebooks and the "no mapping" deep-link message (M42).
+        const relatedParam = params.get('related');
+        setRelatedIds(
+          relatedParam
+            ? relatedParam.split(',').map((s) => s.trim()).filter(Boolean)
+            : [],
+        );
+        if (params.get('unmapped') === '1') {
+          showToast('No guidebook is currently mapped for this programme.', 'err');
+        }
       })
       .catch(() => {
         if (active) {
@@ -144,6 +157,11 @@ export default function GuidebooksPage() {
 
   /** Section keys in stored order — the entire tab set, no hardcoded names. */
   const sectionKeys = detail ? Object.keys(detail.sections) : [];
+
+  /** Related guidebooks to offer as quick-switch chips (excludes the open one). */
+  const relatedItems = relatedIds
+    .map((id) => guidebooks.find((g) => g.id === id))
+    .filter((g): g is GuidebookListItem => !!g && g.id !== selectedId);
 
   /** Adds a freshly imported guidebook to the list (server sort order) and opens it. */
   const handleImported = useCallback(
@@ -233,6 +251,24 @@ export default function GuidebooksPage() {
             />
           ) : (
             <>
+              {relatedItems.length > 0 && (
+                <div className="gb-related">
+                  <span className="gb-related-label">Related Guidebooks</span>
+                  <div className="gb-related-chips">
+                    {relatedItems.map((g) => (
+                      <button
+                        key={g.id}
+                        type="button"
+                        className="gb-related-chip"
+                        title={g.summary ?? undefined}
+                        onClick={() => setSelectedId(g.id)}
+                      >
+                        {g.title}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
               <GuidebookHeader detail={detail} />
               {sectionKeys.length === 0 ? (
                 <div className="gb-tab-content">

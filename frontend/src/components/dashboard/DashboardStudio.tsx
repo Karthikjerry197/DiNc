@@ -8,7 +8,8 @@ import {
   type WorklistItem,
 } from '@/lib/api';
 import type { ReportDuplicateTarget } from '@/components/dataquality/ReportDuplicateDialog';
-import { KNOWN_ROLES, type ColSpan, type StudioLayoutItem } from './dashboard.types';
+import { useRoles } from '@/lib/useRoles';
+import { type ColSpan, type StudioLayoutItem } from './dashboard.types';
 import WIDGET_REGISTRY, {
   getDefaultLayout,
   normaliseLayout,
@@ -70,6 +71,8 @@ export default function DashboardStudio({
 
   // ── Edit mode state ───────────────────────────────────────────────────────
 
+  // Role vocabulary from the rbac_roles single source of truth (M40).
+  const { roles: knownRoles } = useRoles();
   const [editing,      setEditing]     = useState(false);
   const [editLayout,   setEditLayout]  = useState<StudioLayoutItem[]>([]);
   const [editingRole,  setEditingRole] = useState<string>(role);
@@ -326,8 +329,8 @@ export default function DashboardStudio({
               onChange={(e) => void handleRoleChange(e.target.value)}
               aria-label="Select role to edit"
             >
-              {KNOWN_ROLES.map((r) => (
-                <option key={r.value} value={r.value}>{r.label}</option>
+              {knownRoles.map((r) => (
+                <option key={r.key} value={r.key}>{r.name}</option>
               ))}
             </select>
 

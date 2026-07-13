@@ -21,6 +21,8 @@ import { CdseModule } from './cdse/cdse.module';
 import { CarePlanModule } from './care-plan/care-plan.module';
 import { SystemModule } from './system/system.module';
 import { RbacModule } from './rbac/rbac.module';
+import { ReferenceDataModule } from './reference-data/reference-data.module';
+import { OverallRiskModule } from './overall-risk/overall-risk.module';
 
 @Module({
   imports: [
@@ -46,6 +48,8 @@ import { RbacModule } from './rbac/rbac.module';
     CarePlanModule,
     SystemModule,
     RbacModule,
+    ReferenceDataModule,
+    OverallRiskModule,
   ],
 })
 export class AppModule {}

@@ -11,9 +11,6 @@ import {
 } from 'class-validator';
 import { WORKFLOW_ACTIONS } from '../workflow.types';
 
-/** Priorities accepted on a rule (worklist_items.priority is varchar(8)). */
-export const RULE_PRIORITIES = ['URGENT', 'HIGH', 'NORMAL', 'LOW'] as const;
-
 /**
  * Request body for POST /api/workflow/rules/:id.
  *
@@ -37,9 +34,10 @@ export class UpdateRuleDto {
   delayDays?: number;
 
   // Optional: only RESCHEDULE_ACTIVITY consumes the rule's priority, so other
-  // action editors omit it and the stored value is preserved.
+  // action editors omit it and the stored value is preserved. Validated against
+  // the `priority` Reference Data category in WorkflowService (M40).
   @IsOptional()
-  @IsIn(RULE_PRIORITIES, { message: 'Invalid priority.' })
+  @IsString()
   priority?: string;
 
   @IsOptional()

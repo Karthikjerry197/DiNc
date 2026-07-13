@@ -40,7 +40,8 @@ export class BulkRegisterDto {
   @IsOptional()
   @IsArray()
   @ArrayMaxSize(20)
-  @IsUUID('4', { each: true })
+  // 'all': DiNc metadata programme ids are deterministic UUIDv5 (Step 5).
+  @IsUUID('all', { each: true })
   defaultProgramIds?: string[];
 
   @IsOptional()

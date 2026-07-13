@@ -6,15 +6,20 @@ import {
 } from '@nestjs/common';
 import { CitizensService } from '../citizens/citizens.service';
 import { EnrollmentService } from '../enrollment/enrollment.service';
+import { ReferenceDataService } from '../reference-data/reference-data.service';
 import { GuidebookRef } from '../guidebooks/guidebooks.types';
 import { DataQualityRepository } from './data-quality.repository';
 import { CreateDuplicateRequestDto } from './dto/create-duplicate-request.dto';
 import {
+  DECISION_STATUS,
   DuplicateComparisonDto,
+  DuplicateDecision,
   DuplicateRequestDto,
   DuplicateRequestRow,
   EnrollmentEntryDto,
   PatientComparisonSide,
+  StatusHistoryEntry,
+  StatusHistoryRow,
 } from './data-quality.types';
 
 /**
@@ -31,6 +36,7 @@ export class DataQualityService {
     private readonly repo: DataQualityRepository,
     private readonly citizens: CitizensService,
     private readonly enrollments: EnrollmentService,
+    private readonly refData: ReferenceDataService,
   ) {}
 
   /** Creates a duplicate request after validating both citizens exist and differ. */
@@ -42,6 +48,11 @@ export class DataQualityService {
       throw new BadRequestException(
         'The current patient and the possible duplicate must be different.',
       );
+    }
+    // Validate the reason against the `duplicate_reason` Reference Data source of
+    // truth (M40) instead of a hardcoded DTO array.
+    if (!(await this.refData.isActiveValue('duplicate_reason', dto.reason))) {
+      throw new BadRequestException('Invalid duplicate reason.');
     }
     if (!(await this.repo.citizenExists(dto.currentCitizenId))) {
       throw new NotFoundException('Current patient not found.');
@@ -86,6 +97,50 @@ export class DataQualityService {
     remarks: string | null,
   ): Promise<DuplicateRequestDto> {
     return this.transition(id, 'REJECTED', reviewedBy, remarks);
+  }
+
+  /**
+   * Records an Administrator Review decision (the Duplicate Review Workspace).
+   *
+   *   • REJECTED            → status REJECTED            (not a duplicate)
+   *   • MULTIPLE_ENROLMENT  → status CLOSED              (valid multi-programme)
+   *   • CONFIRMED_DUPLICATE → status CONFIRMED_DUPLICATE (awaiting future archive)
+   *
+   * Comments are mandatory for every decision (healthcare-grade auditability).
+   * A CONFIRMED_DUPLICATE deliberately does NOT merge, archive or delete anything
+   * — it only records intent, so the next milestone can add an Archive/Merge
+   * action on top of this state without reworking the workflow.
+   */
+  async decide(
+    id: string,
+    decision: DuplicateDecision,
+    reviewedBy: string,
+    comments: string | null,
+  ): Promise<DuplicateRequestDto> {
+    const trimmed = (comments ?? '').trim();
+    if (!trimmed) {
+      throw new BadRequestException('Comments are required to record a review decision.');
+    }
+    const toStatus = DECISION_STATUS[decision];
+    if (!toStatus) {
+      throw new BadRequestException('Unknown review decision.');
+    }
+
+    const existing = await this.repo.findById(id);
+    if (!existing) {
+      throw new NotFoundException('Duplicate request not found.');
+    }
+    if (existing.status !== 'PENDING') {
+      throw new ConflictException(
+        `This request has already been reviewed (${existing.status}) and cannot be changed.`,
+      );
+    }
+
+    const row = await this.repo.decide(id, toStatus, decision, reviewedBy, trimmed);
+    if (!row) {
+      throw new ConflictException('This request could not be updated (already reviewed).');
+    }
+    return DataQualityService.toDto(row);
   }
 
   private async transition(
@@ -157,18 +212,26 @@ export class DataQualityService {
     if (!row) {
       throw new NotFoundException('Duplicate request not found.');
     }
-    const [current, duplicate] = await Promise.all([
+    const [current, duplicate, history] = await Promise.all([
       this.buildSide(row.current_citizen_id),
       this.buildSide(row.duplicate_citizen_id),
+      this.repo.findStatusHistory(id),
     ]);
-    return { request: DataQualityService.toDto(row), current, duplicate };
+    return {
+      request: DataQualityService.toDto(row),
+      current,
+      duplicate,
+      statusHistory: history.map(DataQualityService.toHistoryEntry),
+    };
   }
 
   /** Assembles one patient's record by reusing the existing read services. */
   private async buildSide(citizenId: string): Promise<PatientComparisonSide> {
-    const [detail, enrollmentSummaries] = await Promise.all([
+    const [detail, enrollmentSummaries, demographics, alerts] = await Promise.all([
       this.citizens.detail(citizenId),
       this.enrollments.getEnrollmentsForCitizen(citizenId),
+      this.repo.findDemographics(citizenId),
+      this.repo.findActiveAlerts(citizenId),
     ]);
 
     if (!detail) {
@@ -196,10 +259,36 @@ export class DataQualityService {
 
     return {
       citizen: detail.citizen,
+      demographics: demographics ?? {
+        uhid: detail.citizen.uhid,
+        abha: null,
+        aadhaar: null,
+        fullName: detail.citizen.fullName,
+        dateOfBirth: null,
+        age: detail.citizen.age,
+        gender: detail.citizen.gender,
+        mobile: detail.citizen.phone,
+        address: null,
+        village: null,
+        district: detail.citizen.district,
+      },
       programs: detail.programs.map((p) => ({ id: p.id, name: p.name })),
       enrollments,
       activities: detail.activities,
+      alerts,
       guidebooks,
+    };
+  }
+
+  private static toHistoryEntry(row: StatusHistoryRow): StatusHistoryEntry {
+    return {
+      id: row.id,
+      fromStatus: row.from_status,
+      toStatus: row.to_status,
+      decision: row.decision,
+      comments: row.comments,
+      actor: row.actor,
+      createdAt: row.created_at.toISOString(),
     };
   }
 
@@ -228,12 +317,16 @@ export class DataQualityService {
       reason: row.reason,
       comments: row.comments,
       status: row.status,
+      decision: row.decision,
       resolution: row.resolution,
       submittedBy: row.submitted_by,
       submittedAt: row.submitted_at.toISOString(),
       reviewedBy: row.reviewed_by,
       reviewedAt: row.reviewed_at ? row.reviewed_at.toISOString() : null,
-      remarks: row.remarks,
+      // Canonical review comments, falling back to the legacy remarks column.
+      reviewComments: row.review_comments ?? row.remarks,
+      remarks: row.review_comments ?? row.remarks,
+      updatedAt: (row.updated_at ?? row.submitted_at).toISOString(),
     };
   }
 

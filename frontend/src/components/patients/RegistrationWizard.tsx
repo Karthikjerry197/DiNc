@@ -12,6 +12,7 @@ import {
 import { getToken } from '@/lib/session';
 import { calculateAge } from '@/lib/format';
 import { Check, TriangleAlert } from 'lucide-react';
+import ReferenceSelect from '@/components/reference/ReferenceSelect';
 import { useDialogA11y } from '@/lib/useDialogA11y';
 
 interface RegistrationWizardProps {
@@ -39,7 +40,12 @@ const EMPTY: FormState = {
 };
 
 const STEPS = ['Patient', 'Programs', 'Worker', 'Review'];
-const GENDERS = ['Female', 'Male', 'Other'];
+// Fallback used only if the reference-data API is unavailable (backward compat).
+const GENDER_FALLBACK = [
+  { code: 'Female', displayName: 'Female' },
+  { code: 'Male', displayName: 'Male' },
+  { code: 'Other', displayName: 'Other' },
+];
 
 /**
  * Integrated Patient Registration wizard — the single canonical onboarding
@@ -241,10 +247,14 @@ export default function RegistrationWizard({ open, onClose, onRegistered }: Regi
               <div className="modal-row">
                 <div className="fg">
                   <label className="fl" htmlFor="rw-gender">Gender</label>
-                  <select id="rw-gender" className="fc" value={form.gender} onChange={(e) => set('gender', e.target.value)}>
-                    <option value="">—</option>
-                    {GENDERS.map((g) => <option key={g} value={g}>{g}</option>)}
-                  </select>
+                  <ReferenceSelect
+                    id="rw-gender"
+                    category="gender"
+                    value={form.gender}
+                    onChange={(code) => set('gender', code)}
+                    placeholder="—"
+                    fallback={GENDER_FALLBACK}
+                  />
                 </div>
                 <div className="fg">
                   <label className="fl" htmlFor="rw-phone">Phone</label>

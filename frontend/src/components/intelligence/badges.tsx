@@ -36,6 +36,8 @@ export function RiskScoreBadge({
       title={title ?? `AI risk ${score}/100 — ${level}`}
     >
       <span className="ai-badge-num">{score}</span>
+      {/* Explicit space so the value never abuts the label if CSS gap is missing. */}
+      {' '}
       <span className="ai-badge-label">{level} risk</span>
     </span>
   );
@@ -53,10 +55,12 @@ export function DefaultProbBadge({
   return (
     <span
       className={`ai-badge ai-badge--${followupTone(band)}`}
-      title={title ?? `${probability}% likely to miss next follow-up — ${band}`}
+      title={title ?? `${probability}% predicted probability of missing the next follow-up — ${band}`}
     >
+      {/* Never render a bare "Default"; explicit space guarantees separation. */}
+      <span className="ai-badge-label">Follow-up Default Probability</span>
+      {' '}
       <span className="ai-badge-num">{probability}%</span>
-      <span className="ai-badge-label">default</span>
     </span>
   );
 }

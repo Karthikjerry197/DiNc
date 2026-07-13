@@ -155,10 +155,10 @@ export class CarePlanRepository implements OnModuleInit {
     try {
       // 1. care_plans — citizen-centric, one per citizen
       await this.db.query(`
-        CREATE TABLE IF NOT EXISTS public.care_plans (
+        CREATE TABLE IF NOT EXISTS dinc_app.care_plans (
           id               UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
           citizen_id       UUID        NOT NULL UNIQUE
-                             REFERENCES public.citizens(id) ON DELETE CASCADE,
+                             /* TODO(Step 2+): restore FK to migrated dinc_runtime/dinc_metadata table */,
           status           VARCHAR(20) NOT NULL DEFAULT 'DRAFT'
                              CHECK (status IN ('DRAFT','ACTIVE','COMPLETED','SUSPENDED')),
           title            TEXT        NOT NULL,
@@ -172,19 +172,19 @@ export class CarePlanRepository implements OnModuleInit {
       `);
       await this.db.query(`
         CREATE INDEX IF NOT EXISTS idx_care_plans_status
-          ON public.care_plans (citizen_id, status)
+          ON dinc_app.care_plans (citizen_id, status)
       `);
 
       // 2. care_plan_problems — health problems identified for the citizen
       await this.db.query(`
-        CREATE TABLE IF NOT EXISTS public.care_plan_problems (
+        CREATE TABLE IF NOT EXISTS dinc_app.care_plan_problems (
           id              UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
           care_plan_id    UUID        NOT NULL
-                            REFERENCES public.care_plans(id) ON DELETE CASCADE,
+                            REFERENCES dinc_app.care_plans(id) ON DELETE CASCADE,
           enrollment_id   UUID
-                            REFERENCES public.enrollments(id) ON DELETE SET NULL,
+                            /* TODO(Step 2+): restore FK to migrated dinc_runtime/dinc_metadata table */,
           program_id      UUID
-                            REFERENCES public.programs(id) ON DELETE SET NULL,
+                            /* TODO(Step 2+): restore FK to migrated dinc_runtime/dinc_metadata table */,
           title           TEXT        NOT NULL,
           description     TEXT,
           identified_date DATE,
@@ -198,17 +198,17 @@ export class CarePlanRepository implements OnModuleInit {
       `);
       await this.db.query(`
         CREATE INDEX IF NOT EXISTS idx_care_plan_problems_plan
-          ON public.care_plan_problems (care_plan_id, sort_order)
+          ON dinc_app.care_plan_problems (care_plan_id, sort_order)
       `);
 
       // 3. care_plan_goals — goals linked to a problem
       await this.db.query(`
-        CREATE TABLE IF NOT EXISTS public.care_plan_goals (
+        CREATE TABLE IF NOT EXISTS dinc_app.care_plan_goals (
           id            UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
           problem_id    UUID        NOT NULL
-                          REFERENCES public.care_plan_problems(id) ON DELETE CASCADE,
+                          REFERENCES dinc_app.care_plan_problems(id) ON DELETE CASCADE,
           care_plan_id  UUID        NOT NULL
-                          REFERENCES public.care_plans(id) ON DELETE CASCADE,
+                          REFERENCES dinc_app.care_plans(id) ON DELETE CASCADE,
           title         TEXT        NOT NULL,
           description   TEXT,
           target_value  TEXT,
@@ -230,21 +230,21 @@ export class CarePlanRepository implements OnModuleInit {
       `);
       await this.db.query(`
         CREATE INDEX IF NOT EXISTS idx_care_plan_goals_problem
-          ON public.care_plan_goals (problem_id, sort_order)
+          ON dinc_app.care_plan_goals (problem_id, sort_order)
       `);
       await this.db.query(`
         CREATE INDEX IF NOT EXISTS idx_care_plan_goals_plan
-          ON public.care_plan_goals (care_plan_id)
+          ON dinc_app.care_plan_goals (care_plan_id)
       `);
 
       // 4. care_plan_interventions — actions linked to a goal
       await this.db.query(`
-        CREATE TABLE IF NOT EXISTS public.care_plan_interventions (
+        CREATE TABLE IF NOT EXISTS dinc_app.care_plan_interventions (
           id              UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
           goal_id         UUID        NOT NULL
-                            REFERENCES public.care_plan_goals(id) ON DELETE CASCADE,
+                            REFERENCES dinc_app.care_plan_goals(id) ON DELETE CASCADE,
           care_plan_id    UUID        NOT NULL
-                            REFERENCES public.care_plans(id) ON DELETE CASCADE,
+                            REFERENCES dinc_app.care_plans(id) ON DELETE CASCADE,
           title           TEXT        NOT NULL,
           description     TEXT,
           frequency       TEXT,
@@ -265,25 +265,25 @@ export class CarePlanRepository implements OnModuleInit {
       `);
       await this.db.query(`
         CREATE INDEX IF NOT EXISTS idx_care_plan_interventions_goal
-          ON public.care_plan_interventions (goal_id, sort_order)
+          ON dinc_app.care_plan_interventions (goal_id, sort_order)
       `);
       await this.db.query(`
         CREATE INDEX IF NOT EXISTS idx_care_plan_interventions_plan
-          ON public.care_plan_interventions (care_plan_id)
+          ON dinc_app.care_plan_interventions (care_plan_id)
       `);
 
       // 5. care_plan_progress — longitudinal progress entries
       await this.db.query(`
-        CREATE TABLE IF NOT EXISTS public.care_plan_progress (
+        CREATE TABLE IF NOT EXISTS dinc_app.care_plan_progress (
           id                UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
           care_plan_id      UUID        NOT NULL
-                              REFERENCES public.care_plans(id) ON DELETE CASCADE,
+                              REFERENCES dinc_app.care_plans(id) ON DELETE CASCADE,
           goal_id           UUID
-                              REFERENCES public.care_plan_goals(id) ON DELETE SET NULL,
+                              REFERENCES dinc_app.care_plan_goals(id) ON DELETE SET NULL,
           worklist_item_id  UUID
-                              REFERENCES public.worklist_items(id) ON DELETE SET NULL,
+                              /* TODO(Step 2+): restore FK to migrated dinc_runtime/dinc_metadata table */,
           outcome_record_id UUID
-                              REFERENCES public.outcome_records(id) ON DELETE SET NULL,
+                              /* TODO(Step 2+): restore FK to migrated dinc_runtime/dinc_metadata table */,
           progress_note     TEXT        NOT NULL,
           progress_type     VARCHAR(20) NOT NULL DEFAULT 'UPDATE'
                               CHECK (progress_type IN
@@ -294,45 +294,45 @@ export class CarePlanRepository implements OnModuleInit {
       `);
       await this.db.query(`
         CREATE INDEX IF NOT EXISTS idx_care_plan_progress_plan
-          ON public.care_plan_progress (care_plan_id, recorded_at DESC)
+          ON dinc_app.care_plan_progress (care_plan_id, recorded_at DESC)
       `);
       await this.db.query(`
         CREATE INDEX IF NOT EXISTS idx_care_plan_progress_goal
-          ON public.care_plan_progress (goal_id, recorded_at DESC)
+          ON dinc_app.care_plan_progress (goal_id, recorded_at DESC)
           WHERE goal_id IS NOT NULL
       `);
       await this.db.query(`
         CREATE INDEX IF NOT EXISTS idx_care_plan_progress_worklist
-          ON public.care_plan_progress (worklist_item_id)
+          ON dinc_app.care_plan_progress (worklist_item_id)
           WHERE worklist_item_id IS NOT NULL
       `);
 
       // 6. cdse_recommendation_decisions — CDSE accept / decline audit
       await this.db.query(`
-        CREATE TABLE IF NOT EXISTS public.cdse_recommendation_decisions (
+        CREATE TABLE IF NOT EXISTS dinc_app.cdse_recommendation_decisions (
           id                    UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
           care_plan_id          UUID        NOT NULL
-                                  REFERENCES public.care_plans(id) ON DELETE CASCADE,
+                                  REFERENCES dinc_app.care_plans(id) ON DELETE CASCADE,
           citizen_id            UUID        NOT NULL
-                                  REFERENCES public.citizens(id) ON DELETE CASCADE,
+                                  /* TODO(Step 2+): restore FK to migrated dinc_runtime/dinc_metadata table */,
           cdse_rule_id          TEXT        NOT NULL,
           recommendation_title  TEXT        NOT NULL,
           decision              VARCHAR(10) NOT NULL
                                   CHECK (decision IN ('ACCEPTED','DECLINED')),
           decline_reason        TEXT,
           goal_id               UUID
-                                  REFERENCES public.care_plan_goals(id) ON DELETE SET NULL,
+                                  REFERENCES dinc_app.care_plan_goals(id) ON DELETE SET NULL,
           decided_by            TEXT        NOT NULL,
           decided_at            TIMESTAMPTZ NOT NULL DEFAULT NOW()
         )
       `);
       await this.db.query(`
         CREATE INDEX IF NOT EXISTS idx_cdse_decisions_care_plan
-          ON public.cdse_recommendation_decisions (care_plan_id, decided_at DESC)
+          ON dinc_app.cdse_recommendation_decisions (care_plan_id, decided_at DESC)
       `);
       await this.db.query(`
         CREATE INDEX IF NOT EXISTS idx_cdse_decisions_rule
-          ON public.cdse_recommendation_decisions (care_plan_id, cdse_rule_id)
+          ON dinc_app.cdse_recommendation_decisions (care_plan_id, cdse_rule_id)
       `);
 
       this.logger.log('Care plan tables ready.');
@@ -347,7 +347,7 @@ export class CarePlanRepository implements OnModuleInit {
   async findByCitizenId(citizenId: string): Promise<CarePlanDto | null> {
     const planRes = await this.db.query<PlanRow>(`
       SELECT cp.*, c.full_name AS citizen_name
-      FROM   public.care_plans cp
+      FROM   dinc_app.care_plans cp
       JOIN   public.citizens c ON c.id = cp.citizen_id
       WHERE  cp.citizen_id = $1
     `, [citizenId]);
@@ -358,20 +358,20 @@ export class CarePlanRepository implements OnModuleInit {
     const [problemRes, goalRes, interventionRes] = await Promise.all([
       this.db.query<ProblemRow>(`
         SELECT pp.*, p.name AS program_name
-        FROM   public.care_plan_problems pp
+        FROM   dinc_app.care_plan_problems pp
         LEFT JOIN public.programs p ON p.id = pp.program_id
         WHERE  pp.care_plan_id = $1
         ORDER BY pp.sort_order, pp.created_at
       `, [plan.id]),
 
       this.db.query<GoalRow>(`
-        SELECT * FROM public.care_plan_goals
+        SELECT * FROM dinc_app.care_plan_goals
         WHERE  care_plan_id = $1
         ORDER  BY sort_order, created_at
       `, [plan.id]),
 
       this.db.query<InterventionRow>(`
-        SELECT * FROM public.care_plan_interventions
+        SELECT * FROM dinc_app.care_plan_interventions
         WHERE  care_plan_id = $1
         ORDER  BY sort_order, created_at
       `, [plan.id]),
@@ -382,7 +382,7 @@ export class CarePlanRepository implements OnModuleInit {
 
   async findIdByCitizenId(citizenId: string): Promise<string | null> {
     const res = await this.db.query<{ id: string }>(
-      'SELECT id FROM public.care_plans WHERE citizen_id = $1',
+      'SELECT id FROM dinc_app.care_plans WHERE citizen_id = $1',
       [citizenId],
     );
     return res.rows[0]?.id ?? null;
@@ -391,7 +391,7 @@ export class CarePlanRepository implements OnModuleInit {
   async findById(carePlanId: string): Promise<CarePlanDto | null> {
     const planRes = await this.db.query<PlanRow>(`
       SELECT cp.*, c.full_name AS citizen_name
-      FROM   public.care_plans cp
+      FROM   dinc_app.care_plans cp
       JOIN   public.citizens c ON c.id = cp.citizen_id
       WHERE  cp.id = $1
     `, [carePlanId]);
@@ -402,20 +402,20 @@ export class CarePlanRepository implements OnModuleInit {
     const [problemRes, goalRes, interventionRes] = await Promise.all([
       this.db.query<ProblemRow>(`
         SELECT pp.*, p.name AS program_name
-        FROM   public.care_plan_problems pp
+        FROM   dinc_app.care_plan_problems pp
         LEFT JOIN public.programs p ON p.id = pp.program_id
         WHERE  pp.care_plan_id = $1
         ORDER BY pp.sort_order, pp.created_at
       `, [plan.id]),
 
       this.db.query<GoalRow>(`
-        SELECT * FROM public.care_plan_goals
+        SELECT * FROM dinc_app.care_plan_goals
         WHERE  care_plan_id = $1
         ORDER  BY sort_order, created_at
       `, [plan.id]),
 
       this.db.query<InterventionRow>(`
-        SELECT * FROM public.care_plan_interventions
+        SELECT * FROM dinc_app.care_plan_interventions
         WHERE  care_plan_id = $1
         ORDER  BY sort_order, created_at
       `, [plan.id]),
@@ -433,9 +433,9 @@ export class CarePlanRepository implements OnModuleInit {
         COUNT(DISTINCT prob.id) FILTER (WHERE prob.status = 'ACTIVE')    AS active_problems,
         COUNT(DISTINCT g.id)    FILTER (WHERE g.status = 'ACTIVE')       AS active_goals,
         COUNT(DISTINCT g.id)    FILTER (WHERE g.status = 'ACHIEVED')     AS achieved_goals
-      FROM  public.care_plans cp
-      LEFT JOIN public.care_plan_problems prob ON prob.care_plan_id = cp.id
-      LEFT JOIN public.care_plan_goals g       ON g.care_plan_id = cp.id
+      FROM  dinc_app.care_plans cp
+      LEFT JOIN dinc_app.care_plan_problems prob ON prob.care_plan_id = cp.id
+      LEFT JOIN dinc_app.care_plan_goals g       ON g.care_plan_id = cp.id
       WHERE cp.citizen_id = $1
       GROUP BY cp.id
     `, [citizenId]);
@@ -448,7 +448,7 @@ export class CarePlanRepository implements OnModuleInit {
 
   async create(citizenId: string, dto: CreateCarePlanDto, user: string): Promise<string> {
     const res = await this.db.query<{ id: string }>(`
-      INSERT INTO public.care_plans (citizen_id, title, summary, status, created_by)
+      INSERT INTO dinc_app.care_plans (citizen_id, title, summary, status, created_by)
       VALUES ($1, $2, $3, 'DRAFT', $4)
       RETURNING id
     `, [citizenId, dto.title.trim(), dto.summary?.trim() ?? null, user]);
@@ -471,7 +471,7 @@ export class CarePlanRepository implements OnModuleInit {
     params.push(carePlanId);
 
     await this.db.query(
-      `UPDATE public.care_plans SET ${sets.join(', ')} WHERE id = $${i}`,
+      `UPDATE dinc_app.care_plans SET ${sets.join(', ')} WHERE id = $${i}`,
       params,
     );
   }
@@ -485,13 +485,13 @@ export class CarePlanRepository implements OnModuleInit {
     user: string,
   ): Promise<string> {
     const sortRes = await this.db.query<{ max: number | null }>(
-      'SELECT MAX(sort_order) AS max FROM public.care_plan_problems WHERE care_plan_id = $1',
+      'SELECT MAX(sort_order) AS max FROM dinc_app.care_plan_problems WHERE care_plan_id = $1',
       [carePlanId],
     );
     const nextOrder = (sortRes.rows[0]?.max ?? -1) + 1;
 
     const res = await this.db.query<{ id: string }>(`
-      INSERT INTO public.care_plan_problems
+      INSERT INTO dinc_app.care_plan_problems
         (care_plan_id, enrollment_id, program_id, title, description,
          identified_date, status, sort_order, created_by)
       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
@@ -514,7 +514,7 @@ export class CarePlanRepository implements OnModuleInit {
 
   async updateProblem(problemId: string, carePlanId: string, dto: UpsertProblemDto, user: string): Promise<void> {
     await this.db.query(`
-      UPDATE public.care_plan_problems
+      UPDATE dinc_app.care_plan_problems
       SET title           = $1,
           description     = $2,
           enrollment_id   = $3,
@@ -536,7 +536,7 @@ export class CarePlanRepository implements OnModuleInit {
 
   async deleteProblem(problemId: string, carePlanId: string, user: string): Promise<void> {
     await this.db.query(
-      'DELETE FROM public.care_plan_problems WHERE id = $1 AND care_plan_id = $2',
+      'DELETE FROM dinc_app.care_plan_problems WHERE id = $1 AND care_plan_id = $2',
       [problemId, carePlanId],
     );
     await this.touchPlan(carePlanId, user);
@@ -544,7 +544,7 @@ export class CarePlanRepository implements OnModuleInit {
 
   async findProblemOwner(problemId: string): Promise<string | null> {
     const res = await this.db.query<{ care_plan_id: string }>(
-      'SELECT care_plan_id FROM public.care_plan_problems WHERE id = $1',
+      'SELECT care_plan_id FROM dinc_app.care_plan_problems WHERE id = $1',
       [problemId],
     );
     return res.rows[0]?.care_plan_id ?? null;
@@ -562,13 +562,13 @@ export class CarePlanRepository implements OnModuleInit {
 
   async addGoal(problemId: string, carePlanId: string, dto: UpsertGoalDto, user: string): Promise<CarePlanGoalDto> {
     const sortRes = await this.db.query<{ max: number | null }>(
-      'SELECT MAX(sort_order) AS max FROM public.care_plan_goals WHERE problem_id = $1',
+      'SELECT MAX(sort_order) AS max FROM dinc_app.care_plan_goals WHERE problem_id = $1',
       [problemId],
     );
     const nextOrder = (sortRes.rows[0]?.max ?? -1) + 1;
 
     const res = await this.db.query<GoalRow>(`
-      INSERT INTO public.care_plan_goals
+      INSERT INTO dinc_app.care_plan_goals
         (problem_id, care_plan_id, title, description, target_value, target_date,
          category, status, priority, cdse_rule_id, sort_order, created_by)
       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
@@ -594,7 +594,7 @@ export class CarePlanRepository implements OnModuleInit {
 
   async updateGoal(goalId: string, carePlanId: string, dto: UpsertGoalDto, user: string): Promise<void> {
     await this.db.query(`
-      UPDATE public.care_plan_goals
+      UPDATE dinc_app.care_plan_goals
       SET title        = $1,
           description  = $2,
           target_value = $3,
@@ -620,7 +620,7 @@ export class CarePlanRepository implements OnModuleInit {
 
   async updateGoalStatus(goalId: string, carePlanId: string, status: GoalStatus, user: string): Promise<void> {
     await this.db.query(
-      'UPDATE public.care_plan_goals SET status = $1, updated_at = NOW() WHERE id = $2 AND care_plan_id = $3',
+      'UPDATE dinc_app.care_plan_goals SET status = $1, updated_at = NOW() WHERE id = $2 AND care_plan_id = $3',
       [status, goalId, carePlanId],
     );
     await this.touchPlan(carePlanId, user);
@@ -628,7 +628,7 @@ export class CarePlanRepository implements OnModuleInit {
 
   async deleteGoal(goalId: string, carePlanId: string, user: string): Promise<void> {
     await this.db.query(
-      'DELETE FROM public.care_plan_goals WHERE id = $1 AND care_plan_id = $2',
+      'DELETE FROM dinc_app.care_plan_goals WHERE id = $1 AND care_plan_id = $2',
       [goalId, carePlanId],
     );
     await this.touchPlan(carePlanId, user);
@@ -636,7 +636,7 @@ export class CarePlanRepository implements OnModuleInit {
 
   async findGoalOwner(goalId: string): Promise<{ carePlanId: string; problemId: string } | null> {
     const res = await this.db.query<{ care_plan_id: string; problem_id: string }>(
-      'SELECT care_plan_id, problem_id FROM public.care_plan_goals WHERE id = $1',
+      'SELECT care_plan_id, problem_id FROM dinc_app.care_plan_goals WHERE id = $1',
       [goalId],
     );
     if (!res.rows[0]) return null;
@@ -645,7 +645,7 @@ export class CarePlanRepository implements OnModuleInit {
 
   async goalExistsForRule(carePlanId: string, cdseRuleId: string): Promise<boolean> {
     const res = await this.db.query<{ count: string }>(
-      'SELECT COUNT(*) AS count FROM public.care_plan_goals WHERE care_plan_id = $1 AND cdse_rule_id = $2',
+      'SELECT COUNT(*) AS count FROM dinc_app.care_plan_goals WHERE care_plan_id = $1 AND cdse_rule_id = $2',
       [carePlanId, cdseRuleId],
     );
     return parseInt(res.rows[0]?.count ?? '0', 10) > 0;
@@ -653,7 +653,7 @@ export class CarePlanRepository implements OnModuleInit {
 
   async linkGoalToDecision(decisionId: string, goalId: string): Promise<void> {
     await this.db.query(
-      'UPDATE public.cdse_recommendation_decisions SET goal_id = $1 WHERE id = $2',
+      'UPDATE dinc_app.cdse_recommendation_decisions SET goal_id = $1 WHERE id = $2',
       [goalId, decisionId],
     );
   }
@@ -667,13 +667,13 @@ export class CarePlanRepository implements OnModuleInit {
     user: string,
   ): Promise<CarePlanInterventionDto> {
     const sortRes = await this.db.query<{ max: number | null }>(
-      'SELECT MAX(sort_order) AS max FROM public.care_plan_interventions WHERE goal_id = $1',
+      'SELECT MAX(sort_order) AS max FROM dinc_app.care_plan_interventions WHERE goal_id = $1',
       [goalId],
     );
     const nextOrder = (sortRes.rows[0]?.max ?? -1) + 1;
 
     const res = await this.db.query<InterventionRow>(`
-      INSERT INTO public.care_plan_interventions
+      INSERT INTO dinc_app.care_plan_interventions
         (goal_id, care_plan_id, title, description, frequency, responsible,
          status, assigned_by, assigned_to, due_date, completed_by, completed_date,
          sort_order, created_by)
@@ -707,7 +707,7 @@ export class CarePlanRepository implements OnModuleInit {
     user: string,
   ): Promise<void> {
     await this.db.query(`
-      UPDATE public.care_plan_interventions
+      UPDATE dinc_app.care_plan_interventions
       SET title          = $1,
           description    = $2,
           frequency      = $3,
@@ -739,7 +739,7 @@ export class CarePlanRepository implements OnModuleInit {
 
   async deleteIntervention(interventionId: string, carePlanId: string, user: string): Promise<void> {
     await this.db.query(
-      'DELETE FROM public.care_plan_interventions WHERE id = $1 AND care_plan_id = $2',
+      'DELETE FROM dinc_app.care_plan_interventions WHERE id = $1 AND care_plan_id = $2',
       [interventionId, carePlanId],
     );
     await this.touchPlan(carePlanId, user);
@@ -747,7 +747,7 @@ export class CarePlanRepository implements OnModuleInit {
 
   async findInterventionOwner(interventionId: string): Promise<{ carePlanId: string; goalId: string } | null> {
     const res = await this.db.query<{ care_plan_id: string; goal_id: string }>(
-      'SELECT care_plan_id, goal_id FROM public.care_plan_interventions WHERE id = $1',
+      'SELECT care_plan_id, goal_id FROM dinc_app.care_plan_interventions WHERE id = $1',
       [interventionId],
     );
     if (!res.rows[0]) return null;
@@ -762,7 +762,7 @@ export class CarePlanRepository implements OnModuleInit {
     user: string,
   ): Promise<CarePlanProgressDto> {
     const res = await this.db.query<{ id: string; recorded_at: Date }>(`
-      INSERT INTO public.care_plan_progress
+      INSERT INTO dinc_app.care_plan_progress
         (care_plan_id, goal_id, worklist_item_id, outcome_record_id,
          progress_note, progress_type, recorded_by)
       VALUES ($1,$2,$3,$4,$5,$6,$7)
@@ -788,9 +788,9 @@ export class CarePlanRepository implements OnModuleInit {
         cp.worklist_item_id, cp.outcome_record_id,
         cp.progress_note, cp.progress_type,
         cp.recorded_by, cp.recorded_at
-      FROM  public.care_plan_progress cp
-      LEFT JOIN public.care_plan_goals g    ON g.id    = cp.goal_id
-      LEFT JOIN public.care_plan_problems prob ON prob.id = g.problem_id
+      FROM  dinc_app.care_plan_progress cp
+      LEFT JOIN dinc_app.care_plan_goals g    ON g.id    = cp.goal_id
+      LEFT JOIN dinc_app.care_plan_problems prob ON prob.id = g.problem_id
       WHERE cp.id = $1
     `, [res.rows[0].id]);
 
@@ -806,9 +806,9 @@ export class CarePlanRepository implements OnModuleInit {
         cp.worklist_item_id, cp.outcome_record_id,
         cp.progress_note, cp.progress_type,
         cp.recorded_by, cp.recorded_at
-      FROM  public.care_plan_progress cp
-      LEFT JOIN public.care_plan_goals g       ON g.id    = cp.goal_id
-      LEFT JOIN public.care_plan_problems prob ON prob.id = g.problem_id
+      FROM  dinc_app.care_plan_progress cp
+      LEFT JOIN dinc_app.care_plan_goals g       ON g.id    = cp.goal_id
+      LEFT JOIN dinc_app.care_plan_problems prob ON prob.id = g.problem_id
       WHERE cp.care_plan_id = $1
       ORDER BY cp.recorded_at DESC
       LIMIT 200
@@ -829,7 +829,7 @@ export class CarePlanRepository implements OnModuleInit {
     user: string,
   ): Promise<string> {
     const res = await this.db.query<{ id: string }>(`
-      INSERT INTO public.cdse_recommendation_decisions
+      INSERT INTO dinc_app.cdse_recommendation_decisions
         (care_plan_id, citizen_id, cdse_rule_id, recommendation_title,
          decision, decline_reason, decided_by)
       VALUES ($1,$2,$3,$4,$5,$6,$7)
@@ -844,7 +844,7 @@ export class CarePlanRepository implements OnModuleInit {
   ): Promise<{ decision: CdseDecision; declineReason: string | null } | null> {
     const res = await this.db.query<DecisionRow>(`
       SELECT decision, decline_reason
-      FROM   public.cdse_recommendation_decisions
+      FROM   dinc_app.cdse_recommendation_decisions
       WHERE  care_plan_id = $1 AND cdse_rule_id = $2
       ORDER  BY decided_at DESC
       LIMIT  1
@@ -861,7 +861,7 @@ export class CarePlanRepository implements OnModuleInit {
 
   async findCarePlanCitizenId(carePlanId: string): Promise<string | null> {
     const res = await this.db.query<{ citizen_id: string }>(
-      'SELECT citizen_id FROM public.care_plans WHERE id = $1',
+      'SELECT citizen_id FROM dinc_app.care_plans WHERE id = $1',
       [carePlanId],
     );
     return res.rows[0]?.citizen_id ?? null;
@@ -871,7 +871,7 @@ export class CarePlanRepository implements OnModuleInit {
 
   private async touchPlan(carePlanId: string, user: string): Promise<void> {
     await this.db.query(
-      'UPDATE public.care_plans SET updated_at = NOW(), last_reviewed_by = $1, last_reviewed_at = NOW() WHERE id = $2',
+      'UPDATE dinc_app.care_plans SET updated_at = NOW(), last_reviewed_by = $1, last_reviewed_at = NOW() WHERE id = $2',
       [user, carePlanId],
     );
   }

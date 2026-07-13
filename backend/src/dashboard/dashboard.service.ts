@@ -1,6 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
-import { hasPermission } from '../auth/permissions';
 import { DatabaseService } from '../database/database.service';
+import { PermissionsService } from '../rbac/permissions.service';
 import {
   ActivityItem,
   AdminDashboardSummary,
@@ -39,7 +39,10 @@ export class DashboardService {
   private static readonly ASSIGNEE_SCOPE =
     '($1::varchar IS NULL OR w.assigned_to = $1)';
 
-  constructor(private readonly db: DatabaseService) {}
+  constructor(
+    private readonly db: DatabaseService,
+    private readonly permissions: PermissionsService,
+  ) {}
 
   /**
    * Dashboard summary, scoped by permission (M31): viewers holding
@@ -52,7 +55,10 @@ export class DashboardService {
     username: string;
     role: string;
   }): Promise<AdminDashboardSummary> {
-    const scopeTo = hasPermission(viewer.role, 'dashboard.view.all')
+    const scopeTo = (await this.permissions.has(
+      { username: viewer.username, role: viewer.role },
+      'dashboard.view.all',
+    ))
       ? null
       : viewer.username;
     // `($1 IS NULL OR column = $1)` — NULL disables the scope (view-all).
@@ -204,7 +210,7 @@ export class DashboardService {
                 count(e.id) FILTER (WHERE e.status = 'ACTIVE')::int AS active_enrollments
          FROM public.programs p
          LEFT JOIN public.enrollments e ON e.program_id = p.id
-         LEFT JOIN public.program_display_config pdc ON pdc.program_id = p.id
+         LEFT JOIN dinc_app.program_display_config pdc ON pdc.program_id = p.id
          WHERE p.is_active = true
          GROUP BY p.id, p.name, pdc.color, pdc.display_order
          ORDER BY pdc.display_order ASC NULLS LAST, active_enrollments DESC, p.name
@@ -231,15 +237,15 @@ export class DashboardService {
     const [severe, moderate, low] = await Promise.all([
       this.count(
         `SELECT count(DISTINCT citizen_id)::int AS c
-         FROM public.clinical_alerts
+         FROM dinc_app.clinical_alerts
          WHERE status = 'ACTIVE' AND risk_level = 'SEVERE'`,
       ),
       this.count(
         `SELECT count(DISTINCT ca.citizen_id)::int AS c
-         FROM public.clinical_alerts ca
+         FROM dinc_app.clinical_alerts ca
          WHERE ca.status = 'ACTIVE' AND ca.risk_level = 'MODERATE'
            AND NOT EXISTS (
-             SELECT 1 FROM public.clinical_alerts s
+             SELECT 1 FROM dinc_app.clinical_alerts s
              WHERE s.citizen_id = ca.citizen_id
                AND s.status = 'ACTIVE' AND s.risk_level = 'SEVERE'
            )`,
@@ -250,7 +256,7 @@ export class DashboardService {
          JOIN public.worklist_items w ON w.id = orec.worklist_item_id
          JOIN public.enrollments e ON e.id = w.enrollment_id
          WHERE NOT EXISTS (
-           SELECT 1 FROM public.clinical_alerts ca
+           SELECT 1 FROM dinc_app.clinical_alerts ca
            WHERE ca.citizen_id = e.citizen_id AND ca.status = 'ACTIVE'
          )`,
       ),

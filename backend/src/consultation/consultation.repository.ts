@@ -65,7 +65,7 @@ interface NoteRow {
  * Data-access layer for the Teleconsultation / Clinical Activity engine. The ONLY
  * place holding SQL for this feature. All statements are parameterised.
  *
- * On startup: creates public.consultation_notes and its two indexes if they do not
+ * On startup: creates dinc_app.consultation_notes and its two indexes if they do not
  * exist yet. Uses CREATE TABLE/INDEX IF NOT EXISTS so the migration is fully
  * idempotent and never overwrites existing data.
  */
@@ -90,12 +90,12 @@ export class ConsultationRepository implements OnModuleInit {
   private async migrateConsultationNotes(): Promise<void> {
     try {
       await this.db.query(`
-        CREATE TABLE IF NOT EXISTS public.consultation_notes (
+        CREATE TABLE IF NOT EXISTS dinc_app.consultation_notes (
           id                UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
           worklist_item_id  UUID        NOT NULL
-                              REFERENCES public.worklist_items(id) ON DELETE CASCADE,
+                              /* TODO(Step 2+): restore FK to migrated dinc_runtime/dinc_metadata table */,
           outcome_record_id UUID
-                              REFERENCES public.outcome_records(id) ON DELETE SET NULL,
+                              /* TODO(Step 2+): restore FK to migrated dinc_runtime/dinc_metadata table */,
           generated_note    TEXT        NOT NULL,
           note_version      INT         NOT NULL DEFAULT 1,
           status            VARCHAR(10) NOT NULL DEFAULT 'DRAFT'
@@ -108,13 +108,13 @@ export class ConsultationRepository implements OnModuleInit {
 
       await this.db.query(`
         CREATE UNIQUE INDEX IF NOT EXISTS idx_consultation_notes_draft
-          ON public.consultation_notes(worklist_item_id)
+          ON dinc_app.consultation_notes(worklist_item_id)
           WHERE status = 'DRAFT'
       `);
 
       await this.db.query(`
         CREATE INDEX IF NOT EXISTS idx_consultation_notes_worklist
-          ON public.consultation_notes(worklist_item_id, created_at DESC)
+          ON dinc_app.consultation_notes(worklist_item_id, created_at DESC)
       `);
 
       this.logger.log('consultation_notes table ready.');
@@ -134,9 +134,9 @@ export class ConsultationRepository implements OnModuleInit {
   private async migrateCounsellingTables(): Promise<void> {
     try {
       await this.db.query(`
-        CREATE TABLE IF NOT EXISTS public.counselling_sections (
+        CREATE TABLE IF NOT EXISTS dinc_app.counselling_sections (
           id           UUID    PRIMARY KEY DEFAULT gen_random_uuid(),
-          guidebook_id UUID    NOT NULL REFERENCES public.guidebooks(id) ON DELETE CASCADE,
+          guidebook_id UUID    NOT NULL /* TODO(Step 2+): restore FK to migrated dinc_runtime/dinc_metadata table */,
           name         TEXT    NOT NULL,
           sort_order   INT     NOT NULL DEFAULT 0,
           is_active    BOOLEAN NOT NULL DEFAULT true
@@ -144,13 +144,13 @@ export class ConsultationRepository implements OnModuleInit {
       `);
       await this.db.query(`
         CREATE INDEX IF NOT EXISTS idx_counselling_sections_guidebook
-          ON public.counselling_sections(guidebook_id, sort_order)
+          ON dinc_app.counselling_sections(guidebook_id, sort_order)
       `);
       await this.db.query(`
-        CREATE TABLE IF NOT EXISTS public.counselling_items (
+        CREATE TABLE IF NOT EXISTS dinc_app.counselling_items (
           id         UUID    PRIMARY KEY DEFAULT gen_random_uuid(),
           section_id UUID    NOT NULL
-                       REFERENCES public.counselling_sections(id) ON DELETE CASCADE,
+                       REFERENCES dinc_app.counselling_sections(id) ON DELETE CASCADE,
           body       TEXT    NOT NULL,
           note_text  TEXT,
           sort_order INT     NOT NULL DEFAULT 0,
@@ -159,7 +159,7 @@ export class ConsultationRepository implements OnModuleInit {
       `);
       await this.db.query(`
         CREATE INDEX IF NOT EXISTS idx_counselling_items_section
-          ON public.counselling_items(section_id, sort_order)
+          ON dinc_app.counselling_items(section_id, sort_order)
       `);
       this.logger.log('Counselling tables ready.');
     } catch (error) {
@@ -183,9 +183,9 @@ export class ConsultationRepository implements OnModuleInit {
     try {
       // Table: counselling_protocols
       await this.db.query(`
-        CREATE TABLE IF NOT EXISTS public.counselling_protocols (
+        CREATE TABLE IF NOT EXISTS dinc_app.counselling_protocols (
           id           UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
-          guidebook_id UUID        NOT NULL REFERENCES public.guidebooks(id) ON DELETE CASCADE,
+          guidebook_id UUID        NOT NULL /* TODO(Step 2+): restore FK to migrated dinc_runtime/dinc_metadata table */,
           name         TEXT        NOT NULL,
           description  TEXT,
           sort_order   INT         NOT NULL DEFAULT 0,
@@ -197,36 +197,36 @@ export class ConsultationRepository implements OnModuleInit {
       // Unique: one protocol with the same name per guidebook
       await this.db.query(`
         CREATE UNIQUE INDEX IF NOT EXISTS idx_counselling_protocols_name
-          ON public.counselling_protocols(guidebook_id, name)
+          ON dinc_app.counselling_protocols(guidebook_id, name)
       `);
       await this.db.query(`
         CREATE INDEX IF NOT EXISTS idx_counselling_protocols_guidebook
-          ON public.counselling_protocols(guidebook_id, sort_order)
+          ON dinc_app.counselling_protocols(guidebook_id, sort_order)
           WHERE is_active = true
       `);
 
       // Link counselling_sections to a protocol (nullable for backward compat)
       await this.db.query(`
-        ALTER TABLE public.counselling_sections
+        ALTER TABLE dinc_app.counselling_sections
           ADD COLUMN IF NOT EXISTS protocol_id UUID
-            REFERENCES public.counselling_protocols(id) ON DELETE CASCADE
+            REFERENCES dinc_app.counselling_protocols(id) ON DELETE CASCADE
       `);
       await this.db.query(`
         CREATE INDEX IF NOT EXISTS idx_counselling_sections_protocol
-          ON public.counselling_sections(protocol_id, sort_order)
+          ON dinc_app.counselling_sections(protocol_id, sort_order)
           WHERE protocol_id IS NOT NULL
       `);
       // Unique: one section with the same name per protocol (enables DO NOTHING seed)
       await this.db.query(`
         CREATE UNIQUE INDEX IF NOT EXISTS idx_counselling_sections_protocol_name
-          ON public.counselling_sections(protocol_id, name)
+          ON dinc_app.counselling_sections(protocol_id, name)
           WHERE protocol_id IS NOT NULL
       `);
 
       // Unique: one item with the same body text per section (enables DO NOTHING seed)
       await this.db.query(`
         CREATE UNIQUE INDEX IF NOT EXISTS idx_counselling_items_section_body
-          ON public.counselling_items(section_id, body)
+          ON dinc_app.counselling_items(section_id, body)
       `);
 
       // Milestone 25A — permanent authored business identity key (item_key).
@@ -235,12 +235,12 @@ export class ConsultationRepository implements OnModuleInit {
       // display order, or risk category. Metadata mapping (CDSE) and future
       // integrations reference item_key, never the per-database UUID.
       await this.db.query(`
-        ALTER TABLE public.counselling_items
+        ALTER TABLE dinc_app.counselling_items
           ADD COLUMN IF NOT EXISTS item_key VARCHAR(20)
       `);
       await this.db.query(`
         CREATE UNIQUE INDEX IF NOT EXISTS idx_counselling_items_key
-          ON public.counselling_items(item_key)
+          ON dinc_app.counselling_items(item_key)
           WHERE item_key IS NOT NULL
       `);
 
@@ -267,7 +267,7 @@ export class ConsultationRepository implements OnModuleInit {
     try {
       // ── 1. One protocol per guidebook ────────────────────────────────────────
       await this.db.query(`
-        INSERT INTO public.counselling_protocols (guidebook_id, name, sort_order)
+        INSERT INTO dinc_app.counselling_protocols (guidebook_id, name, sort_order)
         SELECT g.id, v.pname, 0
         FROM (VALUES
           ('GB001'::text, 'Eligible Couple Counselling Protocol'),
@@ -295,19 +295,19 @@ export class ConsultationRepository implements OnModuleInit {
       // in 16D from sparse guidebook_sections JSONB. Now that rich protocol-based
       // sections exist, retire the generic ones for guidebooks that have a protocol.
       await this.db.query(`
-        UPDATE public.counselling_sections
+        UPDATE dinc_app.counselling_sections
         SET    is_active = false
         WHERE  protocol_id IS NULL
           AND  name IN ('Assessment Checklist', 'Referral Guidance')
           AND  guidebook_id IN (
-                 SELECT guidebook_id FROM public.counselling_protocols WHERE is_active = true
+                 SELECT guidebook_id FROM dinc_app.counselling_protocols WHERE is_active = true
                )
           AND  is_active = true
       `);
 
       // ── 3. Seed sections (linked to the first active protocol via LATERAL) ──
       await this.db.query(`
-        INSERT INTO public.counselling_sections (protocol_id, guidebook_id, name, sort_order)
+        INSERT INTO dinc_app.counselling_sections (protocol_id, guidebook_id, name, sort_order)
         SELECT cp.id, cp.guidebook_id, v.sname, v.sorder
         FROM (VALUES
           ('GB001'::text,'Preconception Care'::text,          1::int),
@@ -412,7 +412,7 @@ export class ConsultationRepository implements OnModuleInit {
         ) AS v(code, sname, sorder)
         JOIN public.guidebooks g ON g.code = v.code AND g.is_active = true
         JOIN LATERAL (
-          SELECT id, guidebook_id FROM public.counselling_protocols
+          SELECT id, guidebook_id FROM dinc_app.counselling_protocols
           WHERE  guidebook_id = g.id AND is_active = true
           ORDER  BY sort_order ASC LIMIT 1
         ) cp ON true
@@ -423,12 +423,12 @@ export class ConsultationRepository implements OnModuleInit {
       await this.db.query(`
         WITH sl AS (
           SELECT cs.id AS sid, g.code AS gcode, cs.name AS sname
-          FROM   public.counselling_sections cs
-          JOIN   public.counselling_protocols cp ON cp.id = cs.protocol_id AND cp.is_active = true
+          FROM   dinc_app.counselling_sections cs
+          JOIN   dinc_app.counselling_protocols cp ON cp.id = cs.protocol_id AND cp.is_active = true
           JOIN   public.guidebooks g ON g.id = cp.guidebook_id
           WHERE  cs.is_active = true
         )
-        INSERT INTO public.counselling_items (section_id, body, note_text, sort_order, item_key)
+        INSERT INTO dinc_app.counselling_items (section_id, body, note_text, sort_order, item_key)
         SELECT sl.sid, v.body, v.body, v.iord, v.item_key
         FROM (VALUES
           -- GB001 Preconception Care
@@ -963,9 +963,9 @@ export class ConsultationRepository implements OnModuleInit {
 
       const { rows } = await this.db.query<{ protocols: number; sections: number; items: number }>(
         `SELECT
-           (SELECT COUNT(*)::int FROM public.counselling_protocols WHERE is_active = true) AS protocols,
-           (SELECT COUNT(*)::int FROM public.counselling_sections  WHERE is_active = true) AS sections,
-           (SELECT COUNT(*)::int FROM public.counselling_items     WHERE is_active = true) AS items`,
+           (SELECT COUNT(*)::int FROM dinc_app.counselling_protocols WHERE is_active = true) AS protocols,
+           (SELECT COUNT(*)::int FROM dinc_app.counselling_sections  WHERE is_active = true) AS sections,
+           (SELECT COUNT(*)::int FROM dinc_app.counselling_items     WHERE is_active = true) AS items`,
       );
       this.logger.log(
         `Counselling content ready (16E): ${rows[0]?.protocols ?? 0} protocol(s), ` +
@@ -1007,14 +1007,14 @@ export class ConsultationRepository implements OnModuleInit {
               ci.body         AS item_body,
               ci.note_text    AS item_note_text,
               ci.sort_order   AS item_order
-       FROM   public.counselling_sections cs
-       LEFT   JOIN public.counselling_items ci
+       FROM   dinc_app.counselling_sections cs
+       LEFT   JOIN dinc_app.counselling_items ci
                 ON ci.section_id = cs.id AND ci.is_active = true
        WHERE  cs.is_active = true
          AND  (
                -- Protocol path (16E): sections belonging to the first active protocol
                cs.protocol_id = (
-                 SELECT id FROM public.counselling_protocols
+                 SELECT id FROM dinc_app.counselling_protocols
                  WHERE  guidebook_id = $1 AND is_active = true
                  ORDER  BY sort_order ASC LIMIT 1
                )
@@ -1024,7 +1024,7 @@ export class ConsultationRepository implements OnModuleInit {
                  cs.protocol_id IS NULL
                  AND cs.guidebook_id = $1
                  AND NOT EXISTS (
-                   SELECT 1 FROM public.counselling_protocols
+                   SELECT 1 FROM dinc_app.counselling_protocols
                    WHERE guidebook_id = $1 AND is_active = true
                  )
                )
@@ -1252,7 +1252,7 @@ export class ConsultationRepository implements OnModuleInit {
       risk_trigger_values: unknown;
     }>(
       `SELECT id, body, response_type, response_options, risk_category, risk_trigger_values
-       FROM public.counselling_items
+       FROM dinc_app.counselling_items
        WHERE id = ANY($1)`,
       [itemIds],
     );
@@ -1292,7 +1292,7 @@ export class ConsultationRepository implements OnModuleInit {
     if (written === 0) return 0;
 
     await this.db.query(
-      `INSERT INTO public.consultation_responses
+      `INSERT INTO dinc_app.consultation_responses
          (outcome_record_id, worklist_item_id, citizen_id, counselling_item_id,
           question_text, response_type, response_options, response_status,
           response_value, risk_category, triggered_risk, recorded_by)
@@ -1318,7 +1318,7 @@ export class ConsultationRepository implements OnModuleInit {
     const result = await this.db.query<NoteRow>(
       `SELECT id, worklist_item_id, outcome_record_id, generated_note,
               note_version, status, recorded_by, created_at, updated_at
-       FROM public.consultation_notes
+       FROM dinc_app.consultation_notes
        WHERE worklist_item_id = $1 AND status = 'DRAFT'
        LIMIT 1`,
       [activityId],
@@ -1339,7 +1339,7 @@ export class ConsultationRepository implements OnModuleInit {
     recordedBy: string | null,
   ): Promise<ConsultationNoteDto> {
     const result = await this.db.query<NoteRow>(
-      `INSERT INTO public.consultation_notes
+      `INSERT INTO dinc_app.consultation_notes
          (worklist_item_id, generated_note, status, recorded_by)
        VALUES ($1, $2, 'DRAFT', $3)
        ON CONFLICT (worklist_item_id) WHERE status = 'DRAFT'
@@ -1366,7 +1366,7 @@ export class ConsultationRepository implements OnModuleInit {
     recordedBy: string | null,
   ): Promise<ConsultationNoteDto> {
     const result = await this.db.query<NoteRow>(
-      `INSERT INTO public.consultation_notes
+      `INSERT INTO dinc_app.consultation_notes
          (worklist_item_id, outcome_record_id, generated_note, status, recorded_by)
        VALUES ($1, $2, $3, 'FINAL', $4)
        RETURNING id, worklist_item_id, outcome_record_id, generated_note,
@@ -1498,7 +1498,7 @@ export class ConsultationRepository implements OnModuleInit {
        LEFT JOIN public.outcome_types ot ON ot.id = orr.outcome_type_id
        LEFT JOIN LATERAL (
          SELECT generated_note
-         FROM public.consultation_notes
+         FROM dinc_app.consultation_notes
          WHERE worklist_item_id = w.id AND status = 'FINAL'
          ORDER BY created_at DESC
          LIMIT 1
@@ -1613,7 +1613,7 @@ export class ConsultationRepository implements OnModuleInit {
          LEFT JOIN public.outcome_types ot ON ot.id = orr.outcome_type_id
          LEFT JOIN LATERAL (
            SELECT generated_note
-           FROM public.consultation_notes
+           FROM dinc_app.consultation_notes
            WHERE worklist_item_id = w.id AND status = 'FINAL'
            ORDER BY created_at DESC
            LIMIT 1

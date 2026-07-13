@@ -1,14 +1,10 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import {
-  fetchDuplicateComparison,
-  type DuplicateComparison,
-  type PatientComparisonSide,
-} from '@/lib/api';
+import { fetchDuplicateComparison, type DuplicateComparison } from '@/lib/api';
 import { getToken } from '@/lib/session';
-import { formatDate } from '@/lib/format';
 import { useDialogA11y } from '@/lib/useDialogA11y';
+import ComparisonColumns from './ComparisonColumns';
 
 interface CompareRecordsDialogProps {
   requestId: string;
@@ -16,108 +12,10 @@ interface CompareRecordsDialogProps {
   onClose: () => void;
 }
 
-/** Renders one patient column of the side-by-side comparison. */
-function PatientColumn({
-  side,
-  heading,
-}: {
-  side: PatientComparisonSide;
-  heading: string;
-}) {
-  const c = side.citizen;
-  return (
-    <div className="dq-compare-col">
-      <div className="dq-compare-heading">{heading}</div>
-
-      <div className="dq-compare-section">
-        <div className="dq-compare-label">UHID</div>
-        <div className="mono dq-compare-uhid">{c.uhid ?? '—'}</div>
-      </div>
-
-      <div className="dq-compare-section">
-        <div className="dq-compare-label">Demographics</div>
-        <dl className="dq-demo">
-          <div><dt>Name</dt><dd>{c.fullName ?? '—'}</dd></div>
-          <div><dt>Age</dt><dd>{c.age ?? '—'}</dd></div>
-          <div><dt>Gender</dt><dd>{c.gender ?? '—'}</dd></div>
-          <div><dt>Phone</dt><dd>{c.phone ?? '—'}</dd></div>
-          <div><dt>District</dt><dd>{c.district ?? '—'}</dd></div>
-        </dl>
-      </div>
-
-      <div className="dq-compare-section">
-        <div className="dq-compare-label">Programs ({side.programs.length})</div>
-        {side.programs.length > 0 ? (
-          <div className="dq-chips">
-            {side.programs.map((p) => (
-              <span key={p.id ?? p.name} className="dq-chip">{p.name}</span>
-            ))}
-          </div>
-        ) : (
-          <div className="dq-muted">No programs.</div>
-        )}
-      </div>
-
-      <div className="dq-compare-section">
-        <div className="dq-compare-label">Enrollments ({side.enrollments.length})</div>
-        {side.enrollments.length > 0 ? (
-          <ul className="dq-list">
-            {side.enrollments.map((e) => (
-              <li key={e.id}>
-                <span className="dq-list-main">{e.program.name ?? '—'}</span>
-                <span className="dq-list-sub">
-                  {(e.subProgram?.name ?? '—')} · {formatDate(e.enrollmentDate)} ·{' '}
-                  <span className={`pill pill-${e.status.toLowerCase()}`}>{e.status}</span>
-                </span>
-              </li>
-            ))}
-          </ul>
-        ) : (
-          <div className="dq-muted">No enrollments.</div>
-        )}
-      </div>
-
-      <div className="dq-compare-section">
-        <div className="dq-compare-label">Activities ({side.activities.length})</div>
-        {side.activities.length > 0 ? (
-          <ul className="dq-list">
-            {side.activities.slice(0, 8).map((a) => (
-              <li key={a.id}>
-                <span className="dq-list-main">{a.activity ?? '—'}</span>
-                <span className="dq-list-sub">
-                  {(a.program ?? '—')} · {formatDate(a.dueDate)} ·{' '}
-                  <span className={`pill pill-${a.status.toLowerCase()}`}>{a.status}</span>
-                </span>
-              </li>
-            ))}
-          </ul>
-        ) : (
-          <div className="dq-muted">No activities.</div>
-        )}
-      </div>
-
-      <div className="dq-compare-section">
-        <div className="dq-compare-label">Guidebooks ({side.guidebooks.length})</div>
-        {side.guidebooks.length > 0 ? (
-          <ul className="dq-list">
-            {side.guidebooks.map((g) => (
-              <li key={g.id}>
-                <span className="dq-list-main">{g.title}</span>
-                <span className="dq-list-sub">{g.code} · {g.category}</span>
-              </li>
-            ))}
-          </ul>
-        ) : (
-          <div className="dq-muted">No matched guidebooks.</div>
-        )}
-      </div>
-    </div>
-  );
-}
-
 /**
  * Compare Records dialog — shows both patient records side-by-side so an
- * administrator can make an informed approve/reject decision. Read-only.
+ * administrator can make an informed decision. Read-only. Renders the shared
+ * {@link ComparisonColumns} (same component the Duplicate Review Workspace uses).
  */
 export default function CompareRecordsDialog({
   requestId,
@@ -185,10 +83,7 @@ export default function CompareRecordsDialog({
           {loading ? (
             <div className="dash-loading">Loading comparison&hellip;</div>
           ) : data ? (
-            <div className="dq-compare-grid">
-              <PatientColumn side={data.current} heading="Current Patient" />
-              <PatientColumn side={data.duplicate} heading="Possible Duplicate" />
-            </div>
+            <ComparisonColumns data={data} />
           ) : null}
         </div>
 

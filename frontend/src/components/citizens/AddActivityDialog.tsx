@@ -9,6 +9,8 @@ import {
 } from '@/lib/api';
 import { getToken } from '@/lib/session';
 import { useDialogA11y } from '@/lib/useDialogA11y';
+import ReferenceSelect from '@/components/reference/ReferenceSelect';
+import type { ReferenceOption } from '@/lib/useReferenceData';
 
 interface AddActivityDialogProps {
   enrollmentId: string;
@@ -17,7 +19,13 @@ interface AddActivityDialogProps {
   onCreated: (activity: Activity) => void;
 }
 
-const PRIORITY_OPTIONS = ['URGENT', 'HIGH', 'NORMAL', 'LOW'];
+/** Offline fallback for the DB-driven 'priority' reference category. */
+const PRIORITY_FALLBACK: ReferenceOption[] = [
+  { code: 'URGENT', displayName: 'Urgent' },
+  { code: 'HIGH', displayName: 'High' },
+  { code: 'NORMAL', displayName: 'Normal' },
+  { code: 'LOW', displayName: 'Low' },
+];
 
 function today(): string {
   return new Date().toISOString().slice(0, 10);
@@ -194,17 +202,14 @@ export default function AddActivityDialog({
           <div className="modal-row">
             <div className="fg">
               <label className="fl" htmlFor="aa-priority">Priority</label>
-              <select
+              <ReferenceSelect
                 id="aa-priority"
-                className="fc"
+                category="priority"
                 value={priority}
                 disabled={saving}
-                onChange={(e) => setPriority(e.target.value)}
-              >
-                {PRIORITY_OPTIONS.map((p) => (
-                  <option key={p} value={p}>{p}</option>
-                ))}
-              </select>
+                onChange={setPriority}
+                fallback={PRIORITY_FALLBACK}
+              />
             </div>
             <div className="fg">
               <label className="fl" htmlFor="aa-date">Due Date *</label>

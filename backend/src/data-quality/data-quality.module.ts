@@ -2,6 +2,7 @@ import { Module } from '@nestjs/common';
 import { AuthModule } from '../auth/auth.module';
 import { CitizensModule } from '../citizens/citizens.module';
 import { EnrollmentModule } from '../enrollment/enrollment.module';
+import { ReferenceDataModule } from '../reference-data/reference-data.module';
 import { DataQualityController } from './data-quality.controller';
 import { DataQualityRepository } from './data-quality.repository';
 import { DataQualityService } from './data-quality.service';
@@ -14,7 +15,7 @@ import { DataQualityService } from './data-quality.service';
  * their read services instead of duplicating SQL.
  */
 @Module({
-  imports: [AuthModule, CitizensModule, EnrollmentModule],
+  imports: [AuthModule, CitizensModule, EnrollmentModule, ReferenceDataModule],
   controllers: [DataQualityController],
   providers: [DataQualityService, DataQualityRepository],
 })

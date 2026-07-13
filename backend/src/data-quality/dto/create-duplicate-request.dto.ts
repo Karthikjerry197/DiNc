@@ -1,23 +1,12 @@
-import { IsIn, IsOptional, IsString, IsUUID, MaxLength } from 'class-validator';
-
-/**
- * Allowed duplicate reasons. Kept as a small controlled vocabulary so the
- * Administration list and reporting stay consistent; free-form context goes in
- * the optional comments field.
- */
-export const DUPLICATE_REASONS = [
-  'DUPLICATE_REGISTRATION',
-  'SAME_PERSON_DIFFERENT_UHID',
-  'DATA_ENTRY_ERROR',
-  'MERGED_FAMILY_RECORD',
-  'OTHER',
-] as const;
+import { IsOptional, IsString, IsUUID, MaxLength } from 'class-validator';
 
 /**
  * Request body for POST /api/data-quality/duplicate-requests.
  *
  * The two citizens must be different. The global ValidationPipe
- * (whitelist + forbidNonWhitelisted) rejects any other field.
+ * (whitelist + forbidNonWhitelisted) rejects any other field. The `reason` is
+ * validated against the `duplicate_reason` Reference Data category — the single
+ * source of truth (M40) — in DataQualityService, not a hardcoded array here.
  */
 export class CreateDuplicateRequestDto {
   @IsUUID('4', { message: 'A valid current patient must be selected.' })
@@ -26,7 +15,7 @@ export class CreateDuplicateRequestDto {
   @IsUUID('4', { message: 'A valid possible duplicate patient must be selected.' })
   duplicateCitizenId!: string;
 
-  @IsIn(DUPLICATE_REASONS, { message: 'Invalid duplicate reason.' })
+  @IsString()
   reason!: string;
 
   @IsOptional()

@@ -10,6 +10,7 @@ import { GuidebooksService } from '../guidebooks/guidebooks.service';
 import { CreateEnrollmentDto } from './dto/create-enrollment.dto';
 import {
   CreateEnrollmentResultDto,
+  EventActivityDto,
   DiseaseDto,
   EnrollmentDetailDto,
   EnrollmentDetailRow,
@@ -33,16 +34,20 @@ export class EnrollmentService {
     private readonly guidebooks: GuidebooksService,
   ) {}
 
-  /** Resolves the guidebook matching an enrollment's program/disease/event. */
+  /**
+   * Resolves the guidebook(s) matching an enrollment's programme/disease/event
+   * via the configurable guidebook_mappings table (with a curated-text-rule
+   * fallback). Returns the primary guidebook plus any related ones, or a friendly
+   * message when nothing is mapped.
+   */
   async getGuidebookForEnrollment(
     enrollmentId: string,
   ): Promise<EnrollmentGuidebookDto> {
-    const haystack = await this.repo.findEnrollmentHaystack(enrollmentId);
-    if (haystack === null) {
+    const ctx = await this.repo.findEnrollmentContext(enrollmentId);
+    if (ctx === null) {
       throw new NotFoundException('Enrollment not found.');
     }
-    const guidebook = await this.guidebooks.matchByText(haystack);
-    return { guidebook };
+    return this.guidebooks.resolveForContext(ctx);
   }
 
   async getActivePrograms(): Promise<ProgramDto[]> {
@@ -75,6 +80,11 @@ export class EnrollmentService {
 
   getEvents(diseaseId: string): Promise<EventDto[]> {
     return this.repo.findEventsByDisease(diseaseId);
+  }
+
+  /** Activities under an event (DiNc metadata hierarchy, Step 2). */
+  getActivities(eventId: string): Promise<EventActivityDto[]> {
+    return this.repo.findActivitiesByEvent(eventId);
   }
 
   /**

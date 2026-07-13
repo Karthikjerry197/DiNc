@@ -1,46 +1,38 @@
 import {
   Controller,
-  ForbiddenException,
   Get,
   HttpCode,
   HttpStatus,
   Post,
-  Req,
   UseGuards,
 } from '@nestjs/common';
-import { Request } from 'express';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
-import { JwtPayload } from '../auth/types/jwt-payload.type';
+import { PermissionsGuard } from '../rbac/permissions.guard';
+import { RequirePermissions } from '../rbac/require-permissions.decorator';
 import { SchedulerService } from './scheduler.service';
 import { SchedulerRunDto, SchedulerStatusDto } from './scheduler.types';
 
 /**
- * Administration API for the Scheduler. Protected by the existing JWT guard and
- * restricted to administrators. The automatic cycle runs internally; these
- * endpoints expose status and a manual "Run Now" trigger for testing.
+ * Administration API for the Scheduler. JWT-guarded and — since the Milestone 4
+ * enforcement flip — authorized by the database-driven {@link PermissionsGuard}
+ * against the `admin.scheduler` permission (Scheduler Configuration). The
+ * automatic cycle runs internally; these endpoints expose status and a manual
+ * "Run Now" trigger for testing.
  */
 @Controller('scheduler')
-@UseGuards(JwtAuthGuard)
+@UseGuards(JwtAuthGuard, PermissionsGuard)
+@RequirePermissions('admin.scheduler')
 export class SchedulerController {
   constructor(private readonly scheduler: SchedulerService) {}
 
   @Get('status')
-  status(@Req() req: Request): Promise<SchedulerStatusDto> {
-    SchedulerController.requireAdmin(req);
+  status(): Promise<SchedulerStatusDto> {
     return this.scheduler.getStatus();
   }
 
   @Post('run')
   @HttpCode(HttpStatus.OK)
-  run(@Req() req: Request): Promise<SchedulerRunDto> {
-    SchedulerController.requireAdmin(req);
+  run(): Promise<SchedulerRunDto> {
     return this.scheduler.runCycle('MANUAL');
-  }
-
-  private static requireAdmin(req: Request): void {
-    const user = (req as Request & { user?: JwtPayload }).user;
-    if ((user?.role ?? '').toUpperCase() !== 'ADMIN') {
-      throw new ForbiddenException('Administrator access is required.');
-    }
   }
 }

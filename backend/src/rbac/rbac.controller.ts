@@ -1,7 +1,6 @@
 import {
   Body,
   Controller,
-  ForbiddenException,
   Get,
   NotFoundException,
   Param,
@@ -14,6 +13,8 @@ import {
 import { Request } from 'express';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { JwtPayload } from '../auth/types/jwt-payload.type';
+import { PermissionsGuard } from './permissions.guard';
+import { RequirePermissions } from './require-permissions.decorator';
 import { RbacService } from './rbac.service';
 import { SetUserRolesDto } from './dto/set-user-roles.dto';
 import { SetUserOverridesDto } from './dto/set-user-overrides.dto';
@@ -31,36 +32,35 @@ const UUID_RE =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 /**
- * RBAC read API (Milestone 1). JWT-guarded and administrator-only, following the
- * established per-controller requireAdmin pattern (mirrors UsersController).
- * These endpoints back the User & Role workspaces built in Milestones 2–3.
+ * RBAC administration API. JWT-guarded and — since the Milestone 4 enforcement
+ * flip — authorized by the database-driven {@link PermissionsGuard} against the
+ * `admin.pages` permission (Access Administration), which backs the User & Role
+ * workspaces. The `@Req()` is retained only where the acting administrator's
+ * identity is recorded (override authorship).
  */
 @Controller('rbac')
-@UseGuards(JwtAuthGuard)
+@UseGuards(JwtAuthGuard, PermissionsGuard)
+@RequirePermissions('admin.pages')
 export class RbacController {
   constructor(private readonly rbac: RbacService) {}
 
   @Get('permissions')
-  permissions(@Req() req: Request): Promise<RbacPermissionGroupDto[]> {
-    RbacController.requireAdmin(req);
+  permissions(): Promise<RbacPermissionGroupDto[]> {
     return this.rbac.getPermissionCatalogue();
   }
 
   @Get('roles')
-  roles(@Req() req: Request): Promise<RbacRoleSummaryDto[]> {
-    RbacController.requireAdmin(req);
+  roles(): Promise<RbacRoleSummaryDto[]> {
     return this.rbac.listRoles();
   }
 
   @Get('roles/:idOrKey')
-  role(@Param('idOrKey') idOrKey: string, @Req() req: Request): Promise<RbacRoleDetailDto> {
-    RbacController.requireAdmin(req);
+  role(@Param('idOrKey') idOrKey: string): Promise<RbacRoleDetailDto> {
     return this.rbac.getRole(idOrKey);
   }
 
   @Post('roles')
-  createRole(@Body() body: CreateRoleDto, @Req() req: Request): Promise<RbacRoleDetailDto> {
-    RbacController.requireAdmin(req);
+  createRole(@Body() body: CreateRoleDto): Promise<RbacRoleDetailDto> {
     return this.rbac.createRole(body);
   }
 
@@ -68,9 +68,7 @@ export class RbacController {
   updateRole(
     @Param('idOrKey') idOrKey: string,
     @Body() body: UpdateRoleDto,
-    @Req() req: Request,
   ): Promise<RbacRoleDetailDto> {
-    RbacController.requireAdmin(req);
     return this.rbac.updateRole(idOrKey, body);
   }
 
@@ -78,15 +76,12 @@ export class RbacController {
   setRolePermissions(
     @Param('idOrKey') idOrKey: string,
     @Body() body: SetRolePermissionsDto,
-    @Req() req: Request,
   ): Promise<RbacRoleDetailDto> {
-    RbacController.requireAdmin(req);
     return this.rbac.setRolePermissions(idOrKey, body.permissionKeys);
   }
 
   @Get('users/:id/access')
-  userAccess(@Param('id') id: string, @Req() req: Request): Promise<RbacUserAccessDto> {
-    RbacController.requireAdmin(req);
+  userAccess(@Param('id') id: string): Promise<RbacUserAccessDto> {
     if (!UUID_RE.test(id)) throw new NotFoundException('User not found.');
     return this.rbac.getUserAccess(id);
   }
@@ -95,9 +90,7 @@ export class RbacController {
   setUserRoles(
     @Param('id') id: string,
     @Body() body: SetUserRolesDto,
-    @Req() req: Request,
   ): Promise<RbacUserAccessDto> {
-    RbacController.requireAdmin(req);
     if (!UUID_RE.test(id)) throw new NotFoundException('User not found.');
     return this.rbac.setUserRoles(id, body.roleKeys);
   }
@@ -109,16 +102,8 @@ export class RbacController {
     @Body() body: SetUserOverridesDto,
     @Req() req: Request,
   ): Promise<RbacUserAccessDto> {
-    const admin = RbacController.requireAdmin(req);
     if (!UUID_RE.test(id)) throw new NotFoundException('User not found.');
+    const admin = (req as Request & { user: JwtPayload }).user;
     return this.rbac.setUserOverrides(id, body.overrides, admin.sub);
-  }
-
-  private static requireAdmin(req: Request): JwtPayload {
-    const user = (req as Request & { user?: JwtPayload }).user;
-    if ((user?.role ?? '').toUpperCase() !== 'ADMIN') {
-      throw new ForbiddenException('Administrator access is required.');
-    }
-    return user as JwtPayload;
   }
 }

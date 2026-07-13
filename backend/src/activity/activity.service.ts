@@ -4,6 +4,7 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { ActivityRepository } from './activity.repository';
+import { ReferenceDataService } from '../reference-data/reference-data.service';
 import { CreateActivityDto } from './dto/create-activity.dto';
 import { ActivityDto, ActivityOptionsDto, ActivityRow } from './activity.types';
 
@@ -14,7 +15,10 @@ import { ActivityDto, ActivityOptionsDto, ActivityRow } from './activity.types';
  */
 @Injectable()
 export class ActivityService {
-  constructor(private readonly repo: ActivityRepository) {}
+  constructor(
+    private readonly repo: ActivityRepository,
+    private readonly refData: ReferenceDataService,
+  ) {}
 
   async getForEnrollment(enrollmentId: string): Promise<ActivityDto[]> {
     const rows = await this.repo.findByEnrollment(enrollmentId);
@@ -24,6 +28,25 @@ export class ActivityService {
   async getById(activityId: string): Promise<ActivityDto | null> {
     const row = await this.repo.findById(activityId);
     return row ? ActivityService.toDto(row) : null;
+  }
+
+  /**
+   * Step 6A: completes one activity_instance and advances the lifecycle
+   * (next-activity activation, event completion, dependent-event activation)
+   * atomically in the repository. 404 when the instance is unknown or already
+   * completed.
+   */
+  async completeActivityInstance(activityInstanceId: string): Promise<{
+    eventInstanceId: string;
+    eventCompleted: boolean;
+    nextActivityInstanceId: string | null;
+    activatedEvents: { eventInstanceId: string; eventCode: string; dueDate: string }[];
+  }> {
+    const result = await this.repo.completeActivityInstance(activityInstanceId);
+    if (!result) {
+      throw new NotFoundException('Activity instance not found or already completed.');
+    }
+    return result;
   }
 
   /** Events (for the enrollment's disease) + assignees + the default event. */
@@ -66,6 +89,11 @@ export class ActivityService {
       throw new BadRequestException(
         'Selected event does not belong to this enrollment.',
       );
+    }
+
+    // Validate priority against the `priority` Reference Data source of truth (M40).
+    if (dto.priority !== undefined && !(await this.refData.isActiveValue('priority', dto.priority))) {
+      throw new BadRequestException('Invalid priority.');
     }
 
     const assignedTo = dto.assignedTo?.trim() ? dto.assignedTo.trim() : null;

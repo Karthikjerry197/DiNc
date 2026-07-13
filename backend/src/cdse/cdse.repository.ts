@@ -221,9 +221,9 @@ export class CdseRepository implements OnModuleInit {
     // Drop the associated unique index first (DROP COLUMN would cascade it, but
     // being explicit documents intent and leaves no orphaned index if the column
     // was already removed by an earlier run).
-    await this.db.query(`DROP INDEX IF EXISTS public.idx_counselling_items_code`);
+    await this.db.query(`DROP INDEX IF EXISTS dinc_app.idx_counselling_items_code`);
     await this.db.query(`
-      ALTER TABLE public.counselling_items
+      ALTER TABLE dinc_app.counselling_items
         DROP COLUMN IF EXISTS item_code
     `);
   }
@@ -239,7 +239,7 @@ export class CdseRepository implements OnModuleInit {
   private async migrateCounsellingItemMetadata(): Promise<void> {
     // Legacy column — deprecated, kept one release for dual-read compatibility.
     await this.db.query(`
-      ALTER TABLE public.counselling_items
+      ALTER TABLE dinc_app.counselling_items
         ADD COLUMN IF NOT EXISTS category VARCHAR(25)
           CHECK (category IN ('DANGER_SIGN','REFERRAL_CRITERIA','MEDICATION_ADHERENCE','LIFESTYLE'))
     `);
@@ -252,7 +252,7 @@ export class CdseRepository implements OnModuleInit {
 
     // How the question is answered by the worker.
     await this.db.query(`
-      ALTER TABLE public.counselling_items
+      ALTER TABLE dinc_app.counselling_items
         ADD COLUMN IF NOT EXISTS response_type VARCHAR(20) NOT NULL DEFAULT 'BOOLEAN'
           CHECK (response_type IN ('BOOLEAN','YES_NO_UNKNOWN','CHOICE','NUMBER','TEXT'))
     `);
@@ -261,7 +261,7 @@ export class CdseRepository implements OnModuleInit {
     // the seed, which sets an explicit value). After seeding, values are
     // item-owned and admin-editable; the seed never overwrites a set value.
     await this.db.query(`
-      ALTER TABLE public.counselling_items
+      ALTER TABLE dinc_app.counselling_items
         ADD COLUMN IF NOT EXISTS risk_category VARCHAR(25)
           CHECK (risk_category IN ('NONE','DANGER_SIGN','REFERRAL_CRITERIA','MEDICATION_ADHERENCE','LIFESTYLE'))
     `);
@@ -269,14 +269,14 @@ export class CdseRepository implements OnModuleInit {
     // Allowed answer values for CHOICE / YES_NO_UNKNOWN (JSON array). NULL for
     // BOOLEAN / NUMBER / TEXT.
     await this.db.query(`
-      ALTER TABLE public.counselling_items
+      ALTER TABLE dinc_app.counselling_items
         ADD COLUMN IF NOT EXISTS response_options JSONB
     `);
 
     // Answer values that trigger CDSE risk (JSON array). NULL / [] = never
     // triggers. NOT_ASSESSED can never appear here, so it can never trigger.
     await this.db.query(`
-      ALTER TABLE public.counselling_items
+      ALTER TABLE dinc_app.counselling_items
         ADD COLUMN IF NOT EXISTS risk_trigger_values JSONB
     `);
   }
@@ -287,10 +287,10 @@ export class CdseRepository implements OnModuleInit {
    */
   private async migrateClinicalAlerts(): Promise<void> {
     await this.db.query(`
-      CREATE TABLE IF NOT EXISTS public.clinical_alerts (
+      CREATE TABLE IF NOT EXISTS dinc_app.clinical_alerts (
         id            UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
-        citizen_id    UUID        NOT NULL REFERENCES public.citizens(id) ON DELETE CASCADE,
-        activity_id   UUID        REFERENCES public.worklist_items(id) ON DELETE SET NULL,
+        citizen_id    UUID        NOT NULL /* TODO(Step 2+): restore FK to migrated dinc_runtime/dinc_metadata table */,
+        activity_id   UUID        /* TODO(Step 2+): restore FK to migrated dinc_runtime/dinc_metadata table */,
         disease       TEXT,
         risk_level    VARCHAR(10) NOT NULL CHECK (risk_level IN ('MODERATE','SEVERE')),
         status        VARCHAR(10) NOT NULL DEFAULT 'ACTIVE'
@@ -303,20 +303,20 @@ export class CdseRepository implements OnModuleInit {
 
     await this.db.query(`
       CREATE INDEX IF NOT EXISTS idx_clinical_alerts_citizen_status
-        ON public.clinical_alerts(citizen_id, status)
+        ON dinc_app.clinical_alerts(citizen_id, status)
     `);
 
     // Link the alert to the consultation (outcome_record) that produced it.
     await this.db.query(`
-      ALTER TABLE public.clinical_alerts
+      ALTER TABLE dinc_app.clinical_alerts
         ADD COLUMN IF NOT EXISTS outcome_record_id UUID
-          REFERENCES public.outcome_records(id) ON DELETE SET NULL
+          /* TODO(Step 2+): restore FK to migrated dinc_runtime/dinc_metadata table */
     `);
 
     // Exact counselling questions that produced the classification (JSON array
     // of { itemId, question, category, responseValue }).
     await this.db.query(`
-      ALTER TABLE public.clinical_alerts
+      ALTER TABLE dinc_app.clinical_alerts
         ADD COLUMN IF NOT EXISTS trigger_reasons JSONB NOT NULL DEFAULT '[]'::jsonb
     `);
 
@@ -324,7 +324,7 @@ export class CdseRepository implements OnModuleInit {
     // user opens the alert from the bell or the Notifications page; read
     // alerts stay visible (muted) but no longer count toward the bell badge.
     await this.db.query(`
-      ALTER TABLE public.clinical_alerts
+      ALTER TABLE dinc_app.clinical_alerts
         ADD COLUMN IF NOT EXISTS read_at TIMESTAMPTZ
     `);
   }
@@ -344,16 +344,16 @@ export class CdseRepository implements OnModuleInit {
    */
   private async migrateConsultationResponses(): Promise<void> {
     await this.db.query(`
-      CREATE TABLE IF NOT EXISTS public.consultation_responses (
+      CREATE TABLE IF NOT EXISTS dinc_app.consultation_responses (
         id                  UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
         outcome_record_id   UUID        NOT NULL
-                              REFERENCES public.outcome_records(id) ON DELETE CASCADE,
+                              /* TODO(Step 2+): restore FK to migrated dinc_runtime/dinc_metadata table */,
         worklist_item_id    UUID        NOT NULL
-                              REFERENCES public.worklist_items(id) ON DELETE CASCADE,
+                              /* TODO(Step 2+): restore FK to migrated dinc_runtime/dinc_metadata table */,
         citizen_id          UUID        NOT NULL
-                              REFERENCES public.citizens(id) ON DELETE CASCADE,
+                              /* TODO(Step 2+): restore FK to migrated dinc_runtime/dinc_metadata table */,
         counselling_item_id UUID
-                              REFERENCES public.counselling_items(id) ON DELETE SET NULL,
+                              REFERENCES dinc_app.counselling_items(id) ON DELETE SET NULL,
         question_text       TEXT        NOT NULL,
         response_type       VARCHAR(20) NOT NULL,
         response_options    JSONB,
@@ -372,44 +372,44 @@ export class CdseRepository implements OnModuleInit {
     // missing (idempotent). response_options in particular was added after the
     // table's first creation on some databases.
     await this.db.query(`
-      ALTER TABLE public.consultation_responses
+      ALTER TABLE dinc_app.consultation_responses
         ADD COLUMN IF NOT EXISTS response_options JSONB
     `);
     await this.db.query(`
-      ALTER TABLE public.consultation_responses
+      ALTER TABLE dinc_app.consultation_responses
         ADD COLUMN IF NOT EXISTS risk_category VARCHAR(25)
     `);
     await this.db.query(`
-      ALTER TABLE public.consultation_responses
+      ALTER TABLE dinc_app.consultation_responses
         ADD COLUMN IF NOT EXISTS triggered_risk BOOLEAN NOT NULL DEFAULT false
     `);
     await this.db.query(`
-      ALTER TABLE public.consultation_responses
+      ALTER TABLE dinc_app.consultation_responses
         ADD COLUMN IF NOT EXISTS recorded_by TEXT
     `);
 
     // One response per question per consultation.
     await this.db.query(`
       CREATE UNIQUE INDEX IF NOT EXISTS idx_consultation_responses_record_item
-        ON public.consultation_responses(outcome_record_id, counselling_item_id)
+        ON dinc_app.consultation_responses(outcome_record_id, counselling_item_id)
     `);
 
     // Population-health / patient history reads.
     await this.db.query(`
       CREATE INDEX IF NOT EXISTS idx_consultation_responses_citizen
-        ON public.consultation_responses(citizen_id, created_at DESC)
+        ON dinc_app.consultation_responses(citizen_id, created_at DESC)
     `);
 
     // Per-question analytics.
     await this.db.query(`
       CREATE INDEX IF NOT EXISTS idx_consultation_responses_item
-        ON public.consultation_responses(counselling_item_id)
+        ON dinc_app.consultation_responses(counselling_item_id)
     `);
 
     // Activity-scoped lookups.
     await this.db.query(`
       CREATE INDEX IF NOT EXISTS idx_consultation_responses_worklist
-        ON public.consultation_responses(worklist_item_id)
+        ON dinc_app.consultation_responses(worklist_item_id)
     `);
   }
 
@@ -443,7 +443,7 @@ export class CdseRepository implements OnModuleInit {
       return;
     }
     const keyed = await this.db.query<{ n: string }>(
-      `SELECT COUNT(*) AS n FROM public.counselling_items WHERE item_key IS NOT NULL`,
+      `SELECT COUNT(*) AS n FROM dinc_app.counselling_items WHERE item_key IS NOT NULL`,
     );
     if (Number(keyed.rows[0]?.n ?? 0) === 0) {
       this.logger.warn('item_key not yet populated; skipping curated metadata seed this cycle');
@@ -453,7 +453,7 @@ export class CdseRepository implements OnModuleInit {
     // B. Explicit curated risk categories, keyed by the permanent item_key.
     //    Items not listed here are non-clinical and default to NONE in step C.
     await this.db.query(`
-      UPDATE public.counselling_items ci
+      UPDATE dinc_app.counselling_items ci
       SET    risk_category = m.cat
       FROM   (VALUES
 ${EXPLICIT_RISK_CATEGORY_MAP}
@@ -464,7 +464,7 @@ ${EXPLICIT_RISK_CATEGORY_MAP}
 
     // C. Everything still unauthored is explicitly NONE.
     await this.db.query(`
-      UPDATE public.counselling_items
+      UPDATE dinc_app.counselling_items
       SET risk_category = 'NONE'
       WHERE risk_category IS NULL
         AND item_key IS NOT NULL
@@ -473,7 +473,7 @@ ${EXPLICIT_RISK_CATEGORY_MAP}
     // D. Baseline trigger for BOOLEAN risk-bearing items: a checked box means
     //    the risk condition is present (answer = YES).
     await this.db.query(`
-      UPDATE public.counselling_items
+      UPDATE dinc_app.counselling_items
       SET risk_trigger_values = '["YES"]'::jsonb
       WHERE risk_trigger_values IS NULL
         AND response_type = 'BOOLEAN'
@@ -484,7 +484,7 @@ ${EXPLICIT_RISK_CATEGORY_MAP}
     // E. Keep the deprecated legacy `category` column in sync so the existing
     //    dual-read classification path keeps working for one release.
     await this.db.query(`
-      UPDATE public.counselling_items
+      UPDATE dinc_app.counselling_items
       SET category = NULLIF(risk_category, 'NONE')
       WHERE category IS DISTINCT FROM NULLIF(risk_category, 'NONE')
     `);
@@ -496,7 +496,7 @@ ${EXPLICIT_RISK_CATEGORY_MAP}
     if (itemIds.length === 0) return new Map();
     const res = await this.db.query<{ id: string; category: string }>(
       `SELECT id, category
-       FROM public.counselling_items
+       FROM dinc_app.counselling_items
        WHERE id = ANY($1) AND category IS NOT NULL`,
       [itemIds],
     );
@@ -540,7 +540,7 @@ ${EXPLICIT_RISK_CATEGORY_MAP}
       triggered_at: Date;
       resolved_at: Date | null;
     }>(
-      `INSERT INTO public.clinical_alerts
+      `INSERT INTO dinc_app.clinical_alerts
          (citizen_id, activity_id, disease, risk_level)
        VALUES ($1, $2, $3, $4)
        RETURNING id, citizen_id, activity_id, disease, risk_level, status,
@@ -556,7 +556,7 @@ ${EXPLICIT_RISK_CATEGORY_MAP}
     resolvedBy?: string,
   ): Promise<void> {
     await this.db.query(
-      `UPDATE public.clinical_alerts
+      `UPDATE dinc_app.clinical_alerts
        SET status = 'RESOLVED', resolved_at = NOW(), resolved_by = $3
        WHERE citizen_id = $1
          AND status = 'ACTIVE'
@@ -580,7 +580,7 @@ ${EXPLICIT_RISK_CATEGORY_MAP}
     }>(
       `SELECT id, citizen_id, activity_id, disease, risk_level, status,
               triggered_at, resolved_at
-       FROM public.clinical_alerts
+       FROM dinc_app.clinical_alerts
        WHERE citizen_id = $1 AND status = 'ACTIVE'
        ORDER BY triggered_at DESC`,
       [citizenId],
@@ -601,7 +601,7 @@ ${EXPLICIT_RISK_CATEGORY_MAP}
     }>(
       `SELECT id, citizen_id, activity_id, disease, risk_level, status,
               triggered_at, resolved_at
-       FROM public.clinical_alerts
+       FROM dinc_app.clinical_alerts
        WHERE citizen_id = $1
        ORDER BY triggered_at DESC
        LIMIT 20`,
@@ -643,7 +643,7 @@ ${EXPLICIT_RISK_CATEGORY_MAP}
       `SELECT ca.id, ca.citizen_id, ca.activity_id, ca.disease, ca.risk_level,
               ca.status, ca.triggered_at, ca.resolved_at, ca.read_at,
               c.full_name AS citizen_name, c.uhid
-       FROM public.clinical_alerts ca
+       FROM dinc_app.clinical_alerts ca
        JOIN public.citizens c ON c.id = ca.citizen_id
        WHERE ca.status = $2 AND ca.risk_level = 'SEVERE'
        ORDER BY ${orderBy}
@@ -665,7 +665,7 @@ ${EXPLICIT_RISK_CATEGORY_MAP}
    */
   async markAlertRead(alertId: string): Promise<boolean> {
     const res = await this.db.query(
-      `UPDATE public.clinical_alerts
+      `UPDATE dinc_app.clinical_alerts
        SET read_at = COALESCE(read_at, NOW())
        WHERE id = $1`,
       [alertId],
@@ -698,7 +698,7 @@ ${EXPLICIT_RISK_CATEGORY_MAP}
       disease: string | null;
     }>(
       `SELECT DISTINCT ON (citizen_id) citizen_id, risk_level, disease
-       FROM public.clinical_alerts
+       FROM dinc_app.clinical_alerts
        WHERE citizen_id = ANY($1) AND status = 'ACTIVE'
        ORDER BY citizen_id, (risk_level = 'SEVERE') DESC, triggered_at DESC`,
       [citizenIds],

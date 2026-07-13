@@ -1,0 +1,269 @@
+dinc_audit.audit_log | audit_id bigint NOT NULL
+dinc_audit.audit_log | entity_table text NOT NULL
+dinc_audit.audit_log | entity_id text NOT NULL
+dinc_audit.audit_log | action text NOT NULL
+dinc_audit.audit_log | actor uuid
+dinc_audit.audit_log | old_data jsonb
+dinc_audit.audit_log | new_data jsonb
+dinc_audit.audit_log | occurred_at timestamp with time zone NOT NULL
+dinc_metadata.activity | activity_id uuid NOT NULL
+dinc_metadata.activity | activity_code text NOT NULL
+dinc_metadata.activity | event_id uuid NOT NULL
+dinc_metadata.activity | activity_name text NOT NULL
+dinc_metadata.activity | display_order integer NOT NULL
+dinc_metadata.call_outcome | code text NOT NULL
+dinc_metadata.call_outcome | name text NOT NULL
+dinc_metadata.call_outcome | category text NOT NULL
+dinc_metadata.call_outcome | is_active boolean NOT NULL
+dinc_metadata.call_outcome | display_order integer NOT NULL
+dinc_metadata.call_outcome_rule | outcome_code text NOT NULL
+dinc_metadata.call_outcome_rule | programme_code text NOT NULL
+dinc_metadata.call_outcome_rule | next_action text NOT NULL
+dinc_metadata.call_outcome_rule | followup_delay_days integer
+dinc_metadata.call_outcome_rule | priority text NOT NULL
+dinc_metadata.call_outcome_rule | is_active boolean NOT NULL
+dinc_metadata.enum_reference | enum_column text NOT NULL
+dinc_metadata.enum_reference | allowed_value text NOT NULL
+dinc_metadata.enum_reference | meaning text NOT NULL
+dinc_metadata.event | event_id uuid NOT NULL
+dinc_metadata.event | event_code text NOT NULL
+dinc_metadata.event | programme_id uuid NOT NULL
+dinc_metadata.event | event_name text NOT NULL
+dinc_metadata.event | display_order integer NOT NULL
+dinc_metadata.event_call_outcome | event_code text NOT NULL
+dinc_metadata.event_call_outcome | outcome_code text NOT NULL
+dinc_metadata.event_call_outcome | display_order integer NOT NULL
+dinc_metadata.event_call_outcome | is_active boolean NOT NULL
+dinc_metadata.faq | faq_code text NOT NULL
+dinc_metadata.faq | category text NOT NULL
+dinc_metadata.faq | question text NOT NULL
+dinc_metadata.faq | answer text NOT NULL
+dinc_metadata.faq | is_active boolean NOT NULL
+dinc_metadata.faq_mapping | mapping_id uuid NOT NULL
+dinc_metadata.faq_mapping | faq_code text NOT NULL
+dinc_metadata.faq_mapping | scope_level text NOT NULL
+dinc_metadata.faq_mapping | scope_code text NOT NULL
+dinc_metadata.faq_mapping | display_order integer NOT NULL
+dinc_metadata.faq_mapping | is_active boolean NOT NULL
+dinc_metadata.guidebook | guidebook_code text NOT NULL
+dinc_metadata.guidebook | title text NOT NULL
+dinc_metadata.guidebook | category text NOT NULL
+dinc_metadata.guidebook | source text NOT NULL
+dinc_metadata.guidebook | is_active boolean NOT NULL
+dinc_metadata.guidebook_discovery_rule | rule_id uuid NOT NULL
+dinc_metadata.guidebook_discovery_rule | pattern text NOT NULL
+dinc_metadata.guidebook_discovery_rule | guidebook_code text NOT NULL
+dinc_metadata.guidebook_discovery_rule | sort_order integer NOT NULL
+dinc_metadata.guidebook_discovery_rule | is_active boolean NOT NULL
+dinc_metadata.guidebook_mapping | mapping_id uuid NOT NULL
+dinc_metadata.guidebook_mapping | guidebook_code text NOT NULL
+dinc_metadata.guidebook_mapping | scope_level text NOT NULL
+dinc_metadata.guidebook_mapping | scope_code text NOT NULL
+dinc_metadata.guidebook_mapping | display_order integer NOT NULL
+dinc_metadata.guidebook_mapping | is_active boolean NOT NULL
+dinc_metadata.guidebook_section | section_id uuid NOT NULL
+dinc_metadata.guidebook_section | guidebook_code text NOT NULL
+dinc_metadata.guidebook_section | section_type text NOT NULL
+dinc_metadata.guidebook_section | section_title text NOT NULL
+dinc_metadata.guidebook_section | content text NOT NULL
+dinc_metadata.guidebook_section | display_order integer NOT NULL
+dinc_metadata.metadata_release | release_version text NOT NULL
+dinc_metadata.metadata_release | workbook_file text NOT NULL
+dinc_metadata.metadata_release | workbook_sha256 text NOT NULL
+dinc_metadata.metadata_release | loaded_at timestamp with time zone NOT NULL
+dinc_metadata.nutrition_advice | advice_id uuid NOT NULL
+dinc_metadata.nutrition_advice | advice_code text NOT NULL
+dinc_metadata.nutrition_advice | category text NOT NULL
+dinc_metadata.nutrition_advice | advice_text text NOT NULL
+dinc_metadata.nutrition_advice | is_active boolean NOT NULL
+dinc_metadata.nutrition_advice_mapping | mapping_id uuid NOT NULL
+dinc_metadata.nutrition_advice_mapping | advice_code text NOT NULL
+dinc_metadata.nutrition_advice_mapping | scope_level text NOT NULL
+dinc_metadata.nutrition_advice_mapping | scope_code text NOT NULL
+dinc_metadata.nutrition_advice_mapping | display_order integer NOT NULL
+dinc_metadata.nutrition_advice_mapping | is_active boolean NOT NULL
+dinc_metadata.outcome_template | template_id uuid NOT NULL
+dinc_metadata.outcome_template | activity_id uuid NOT NULL
+dinc_metadata.outcome_template | activity_code text NOT NULL
+dinc_metadata.outcome_template | activity_name text NOT NULL
+dinc_metadata.outcome_template | template_name text NOT NULL
+dinc_metadata.outcome_template | display_order integer NOT NULL
+dinc_metadata.outcome_template_field | field_id uuid NOT NULL
+dinc_metadata.outcome_template_field | template_id uuid NOT NULL
+dinc_metadata.outcome_template_field | field_name text NOT NULL
+dinc_metadata.outcome_template_field | field_label text NOT NULL
+dinc_metadata.outcome_template_field | field_type text NOT NULL
+dinc_metadata.outcome_template_field | required boolean NOT NULL
+dinc_metadata.outcome_template_field | display_order integer NOT NULL
+dinc_metadata.outcome_template_field | default_value text
+dinc_metadata.outcome_template_field | workflow_action text NOT NULL
+dinc_metadata.programme | programme_id uuid NOT NULL
+dinc_metadata.programme | programme_code text NOT NULL
+dinc_metadata.programme | programme_name text NOT NULL
+dinc_metadata.programme | display_order integer NOT NULL
+dinc_metadata.schedule_rule | rule_id uuid NOT NULL
+dinc_metadata.schedule_rule | event_code text NOT NULL
+dinc_metadata.schedule_rule | event_id uuid NOT NULL
+dinc_metadata.schedule_rule | schedule_type text NOT NULL
+dinc_metadata.schedule_rule | anchor_type text NOT NULL
+dinc_metadata.schedule_rule | offset_days integer
+dinc_metadata.schedule_rule | repeat_interval_days integer
+dinc_metadata.schedule_rule | repeat_count integer
+dinc_metadata.schedule_rule | repeat_until_event_code text
+dinc_metadata.schedule_rule | dependency_event_code text
+dinc_metadata.schedule_rule | condition_code text
+dinc_metadata.schedule_rule | reference_source text
+dinc_metadata.schedule_rule | rule_description text
+dinc_metadata.schedule_rule_override | override_id uuid NOT NULL
+dinc_metadata.schedule_rule_override | event_code text NOT NULL
+dinc_metadata.schedule_rule_override | event_id uuid NOT NULL
+dinc_metadata.schedule_rule_override | condition_code text NOT NULL
+dinc_metadata.schedule_rule_override | offset_days integer
+dinc_metadata.schedule_rule_override | repeat_interval_days integer
+dinc_metadata.schedule_rule_override | repeat_count integer
+dinc_metadata.schedule_rule_override | repeat_until_event_code text
+dinc_metadata.schedule_rule_override | is_active boolean NOT NULL
+dinc_metadata.schedule_rule_override | rule_description text
+dinc_metadata.training_module | module_code text NOT NULL
+dinc_metadata.training_module | title text NOT NULL
+dinc_metadata.training_module | category text NOT NULL
+dinc_metadata.training_module | description text NOT NULL
+dinc_metadata.training_module | duration_minutes integer NOT NULL
+dinc_metadata.training_module | content text NOT NULL
+dinc_metadata.training_module | is_active boolean NOT NULL
+dinc_metadata.training_module_mapping | mapping_id uuid NOT NULL
+dinc_metadata.training_module_mapping | module_code text NOT NULL
+dinc_metadata.training_module_mapping | scope_level text NOT NULL
+dinc_metadata.training_module_mapping | scope_code text NOT NULL
+dinc_metadata.training_module_mapping | display_order integer NOT NULL
+dinc_metadata.training_module_mapping | is_active boolean NOT NULL
+dinc_metadata.v_call_outcome_rule_resolved | programme_code text
+dinc_metadata.v_call_outcome_rule_resolved | outcome_code text
+dinc_metadata.v_call_outcome_rule_resolved | next_action text
+dinc_metadata.v_call_outcome_rule_resolved | followup_delay_days integer
+dinc_metadata.v_call_outcome_rule_resolved | priority text
+dinc_metadata.v_call_outcome_rule_resolved | resolution_source text
+dinc_metadata.v_event_call_outcome_resolved | event_code text
+dinc_metadata.v_event_call_outcome_resolved | outcome_code text
+dinc_metadata.v_event_call_outcome_resolved | display_order integer
+dinc_metadata.v_event_call_outcome_resolved | resolution_source text
+dinc_metadata.v_faq_placement | programme_code text
+dinc_metadata.v_faq_placement | faq_code text
+dinc_metadata.v_faq_placement | category text
+dinc_metadata.v_faq_placement | question text
+dinc_metadata.v_faq_placement | answer text
+dinc_metadata.v_faq_placement | display_order integer
+dinc_metadata.v_faq_placement | scope_level text
+dinc_metadata.v_guidebook_placement | programme_code text
+dinc_metadata.v_guidebook_placement | guidebook_code text
+dinc_metadata.v_guidebook_placement | title text
+dinc_metadata.v_guidebook_placement | category text
+dinc_metadata.v_guidebook_placement | display_order integer
+dinc_metadata.v_guidebook_placement | scope_level text
+dinc_metadata.v_nutrition_advice_placement | programme_code text
+dinc_metadata.v_nutrition_advice_placement | advice_code text
+dinc_metadata.v_nutrition_advice_placement | category text
+dinc_metadata.v_nutrition_advice_placement | advice_text text
+dinc_metadata.v_nutrition_advice_placement | display_order integer
+dinc_metadata.v_nutrition_advice_placement | scope_level text
+dinc_metadata.v_schedule_rule_effective | event_code text
+dinc_metadata.v_schedule_rule_effective | event_id uuid
+dinc_metadata.v_schedule_rule_effective | condition_context text
+dinc_metadata.v_schedule_rule_effective | resolution_source text
+dinc_metadata.v_schedule_rule_effective | schedule_type text
+dinc_metadata.v_schedule_rule_effective | anchor_type text
+dinc_metadata.v_schedule_rule_effective | offset_days integer
+dinc_metadata.v_schedule_rule_effective | repeat_interval_days integer
+dinc_metadata.v_schedule_rule_effective | repeat_count integer
+dinc_metadata.v_schedule_rule_effective | repeat_until_event_code text
+dinc_metadata.v_schedule_rule_effective | dependency_event_code text
+dinc_metadata.v_schedule_rule_effective | existence_condition text
+dinc_metadata.v_schedule_rule_effective | reference_source text
+dinc_metadata.v_training_module_placement | programme_code text
+dinc_metadata.v_training_module_placement | module_code text
+dinc_metadata.v_training_module_placement | title text
+dinc_metadata.v_training_module_placement | category text
+dinc_metadata.v_training_module_placement | duration_minutes integer
+dinc_metadata.v_training_module_placement | display_order integer
+dinc_metadata.v_training_module_placement | scope_level text
+dinc_runtime.activity_instance | activity_instance_id uuid NOT NULL
+dinc_runtime.activity_instance | event_instance_id uuid NOT NULL
+dinc_runtime.activity_instance | activity_id uuid NOT NULL
+dinc_runtime.activity_instance | status text NOT NULL
+dinc_runtime.activity_instance | completed_at timestamp with time zone
+dinc_runtime.activity_instance | created_at timestamp with time zone NOT NULL
+dinc_runtime.call_log | call_log_id uuid NOT NULL
+dinc_runtime.call_log | enrolment_id uuid NOT NULL
+dinc_runtime.call_log | event_instance_id uuid
+dinc_runtime.call_log | outcome_code text NOT NULL
+dinc_runtime.call_log | called_at timestamp with time zone NOT NULL
+dinc_runtime.call_log | called_by uuid
+dinc_runtime.call_log | notes text
+dinc_runtime.event_instance | event_instance_id uuid NOT NULL
+dinc_runtime.event_instance | enrolment_id uuid NOT NULL
+dinc_runtime.event_instance | event_id uuid NOT NULL
+dinc_runtime.event_instance | occurrence_number integer NOT NULL
+dinc_runtime.event_instance | status text NOT NULL
+dinc_runtime.event_instance | due_date date
+dinc_runtime.event_instance | condition_context text
+dinc_runtime.event_instance | activated_at timestamp with time zone
+dinc_runtime.event_instance | completed_at timestamp with time zone
+dinc_runtime.event_instance | created_at timestamp with time zone NOT NULL
+dinc_runtime.followup_task | followup_task_id uuid NOT NULL
+dinc_runtime.followup_task | call_log_id uuid NOT NULL
+dinc_runtime.followup_task | enrolment_id uuid NOT NULL
+dinc_runtime.followup_task | due_date date NOT NULL
+dinc_runtime.followup_task | priority text NOT NULL
+dinc_runtime.followup_task | status text NOT NULL
+dinc_runtime.followup_task | assigned_to uuid
+dinc_runtime.followup_task | completed_at timestamp with time zone
+dinc_runtime.followup_task | created_at timestamp with time zone NOT NULL
+dinc_runtime.notification | notification_id uuid NOT NULL
+dinc_runtime.notification | patient_id uuid NOT NULL
+dinc_runtime.notification | event_instance_id uuid
+dinc_runtime.notification | followup_task_id uuid
+dinc_runtime.notification | channel text NOT NULL
+dinc_runtime.notification | message_body text NOT NULL
+dinc_runtime.notification | scheduled_for timestamp with time zone NOT NULL
+dinc_runtime.notification | sent_at timestamp with time zone
+dinc_runtime.notification | status text NOT NULL
+dinc_runtime.notification | failure_detail text
+dinc_runtime.notification | created_at timestamp with time zone NOT NULL
+dinc_runtime.outcome_response | response_id uuid NOT NULL
+dinc_runtime.outcome_response | activity_instance_id uuid NOT NULL
+dinc_runtime.outcome_response | field_id uuid NOT NULL
+dinc_runtime.outcome_response | response_value text NOT NULL
+dinc_runtime.outcome_response | recorded_at timestamp with time zone NOT NULL
+dinc_runtime.outcome_response | recorded_by uuid
+dinc_runtime.patient | patient_id uuid NOT NULL
+dinc_runtime.patient | external_id text
+dinc_runtime.patient | full_name text NOT NULL
+dinc_runtime.patient | sex text NOT NULL
+dinc_runtime.patient | birth_date date
+dinc_runtime.patient | phone text
+dinc_runtime.patient | address text
+dinc_runtime.patient | is_active boolean NOT NULL
+dinc_runtime.patient | created_at timestamp with time zone NOT NULL
+dinc_runtime.patient_condition | condition_id uuid NOT NULL
+dinc_runtime.patient_condition | patient_id uuid NOT NULL
+dinc_runtime.patient_condition | enrolment_id uuid
+dinc_runtime.patient_condition | condition_code text NOT NULL
+dinc_runtime.patient_condition | flagged_at timestamp with time zone NOT NULL
+dinc_runtime.patient_condition | flagged_by uuid
+dinc_runtime.patient_condition | cleared_at timestamp with time zone
+dinc_runtime.patient_condition | cleared_by uuid
+dinc_runtime.patient_condition | source text
+dinc_runtime.programme_enrolment | enrolment_id uuid NOT NULL
+dinc_runtime.programme_enrolment | patient_id uuid NOT NULL
+dinc_runtime.programme_enrolment | programme_id uuid NOT NULL
+dinc_runtime.programme_enrolment | registration_date date NOT NULL
+dinc_runtime.programme_enrolment | status text NOT NULL
+dinc_runtime.programme_enrolment | exit_reason text
+dinc_runtime.programme_enrolment | exited_at timestamp with time zone
+dinc_runtime.programme_enrolment | created_at timestamp with time zone NOT NULL
+dinc_security.app_user | user_id uuid NOT NULL
+dinc_security.app_user | username text NOT NULL
+dinc_security.app_user | full_name text NOT NULL
+dinc_security.app_user | role text NOT NULL
+dinc_security.app_user | is_active boolean NOT NULL
+dinc_security.app_user | created_at timestamp with time zone NOT NULL

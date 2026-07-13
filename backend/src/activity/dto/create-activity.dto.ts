@@ -1,14 +1,10 @@
 import {
   IsDateString,
-  IsIn,
   IsOptional,
   IsString,
   IsUUID,
   MaxLength,
 } from 'class-validator';
-
-/** Allowed worklist priorities (free varchar(8) in the schema; constrained here). */
-export const ACTIVITY_PRIORITIES = ['URGENT', 'HIGH', 'NORMAL', 'LOW'] as const;
 
 /**
  * Request body for POST /api/enrollments/:enrollmentId/activities.
@@ -35,7 +31,8 @@ export class CreateActivityDto {
   @MaxLength(50, { message: 'Assigned role must be 50 characters or fewer.' })
   assignedRole?: string;
 
+  // Validated against the `priority` Reference Data category in ActivityService (M40).
   @IsOptional()
-  @IsIn(ACTIVITY_PRIORITIES, { message: 'Invalid priority.' })
+  @IsString()
   priority?: string;
 }

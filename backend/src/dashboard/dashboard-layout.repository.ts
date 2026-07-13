@@ -19,7 +19,7 @@ export class DashboardLayoutRepository implements OnModuleInit {
 
   async onModuleInit(): Promise<void> {
     await this.db.query(`
-      CREATE TABLE IF NOT EXISTS public.dashboard_layouts (
+      CREATE TABLE IF NOT EXISTS dinc_app.dashboard_layouts (
         role        VARCHAR(50)  PRIMARY KEY,
         layout      JSONB        NOT NULL DEFAULT '[]',
         updated_by  VARCHAR(100),

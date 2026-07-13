@@ -9,6 +9,7 @@ import {
 import { ProgressBar } from './Charts';
 import { Lock, UsersRound } from 'lucide-react';
 import { SkeletonLines } from '@/components/shell/Skeleton';
+import { useRoles } from '@/lib/useRoles';
 
 interface Props {
   token: string;
@@ -16,18 +17,9 @@ interface Props {
   isAdmin: boolean;
 }
 
-const ROLE_LABELS: Record<string, string> = {
-  ADMIN: 'Admin',
-  CLINICIAN: 'Clinician',
-  CARE_ASSISTANT: 'ASHA / CA',
-  ANM: 'ANM',
-};
-
-function roleLabel(role: string): string {
-  return ROLE_LABELS[role] ?? role;
-}
-
 export default function WorkersSection({ token, params, isAdmin }: Props) {
+  // Role display names from the rbac_roles single source of truth (M40).
+  const { labelFor: roleLabel } = useRoles();
   const [rows, setRows] = useState<WorkerPerformanceRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');

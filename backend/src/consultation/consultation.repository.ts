@@ -7,20 +7,30 @@ import {
   ConsultationNoteDto,
   ConsultationResponseInput,
   CounsellingSectionDto,
-  FieldCondition,
 } from './consultation.types';
 
-/** Raw context row for a teleconsultation, assembled in one join. */
+/**
+ * Raw context row for a teleconsultation, assembled in one join (Step 7:
+ * dinc_runtime/dinc_metadata). `activity_id` is the event_instance_id — the
+ * worklist item identity since Step 4. The "current activity" is the first
+ * incomplete activity_instance of the event (by metadata display_order); its
+ * outcome template drives the dynamic clinical form. Legacy shim fields:
+ * disease_id mirrors programme_id (Step 2), disease_name carries the
+ * enrolment's latest uncleared condition_code (Step 3 convention).
+ */
 export interface ConsultationContextRow {
   activity_id: string;
   activity_status: string;
   priority: string;
   due_date: Date | null;
   event_id: string | null;
+  event_code: string | null;
   event_name: string | null;
   sequence: number | null;
-  expected_days: number | null;
   outcome_template_id: string | null;
+  current_activity_instance_id: string | null;
+  current_activity_id: string | null;
+  current_activity_name: string | null;
   disease_id: string | null;
   disease_name: string | null;
   program_id: string | null;
@@ -28,14 +38,32 @@ export interface ConsultationContextRow {
   program_code: string | null;
   enrollment_id: string;
   enrollment_status: string | null;
+  assigned_to: string | null;
   assigned_worker: string | null;
-  current_event_id: string | null;
   citizen_id: string | null;
   uhid: string | null;
   full_name: string | null;
   age: number | null;
   gender: string | null;
   phone: string | null;
+}
+
+/** One clinical-form field of the current activity's outcome template. */
+export interface TemplateFieldRow {
+  field_id: string;
+  field_name: string;
+  field_label: string;
+  field_type: string;
+  required: boolean;
+  display_order: number;
+  default_value: string | null;
+  workflow_action: string;
+}
+
+/** One field response to persist into dinc_runtime.outcome_response. */
+export interface OutcomeResponseInput {
+  fieldId: string;
+  value: string;
 }
 
 export interface TimelineRow {
@@ -1055,68 +1083,113 @@ export class ConsultationRepository implements OnModuleInit {
     return Array.from(map.values());
   }
 
-  /** Full teleconsultation context for an activity, or null when not found. */
+  /** Full teleconsultation context for an event instance, or null when not found. */
   async findContext(activityId: string): Promise<ConsultationContextRow | null> {
     const result = await this.db.query<ConsultationContextRow>(
-      `SELECT w.id AS activity_id,
-              w.status AS activity_status,
-              w.priority AS priority,
-              w.due_date AS due_date,
-              w.event_id AS event_id,
-              ev.name AS event_name,
-              ev.sequence AS sequence,
-              ev.expected_days AS expected_days,
-              ev.outcome_template_id AS outcome_template_id,
-              COALESCE(w.disease_id, e.disease_id) AS disease_id,
-              d.name AS disease_name,
-              p.id AS program_id,
-              p.name AS program_name,
-              p.code AS program_code,
-              e.id AS enrollment_id,
-              e.status AS enrollment_status,
-              e.assigned_worker AS assigned_worker,
-              e.current_event_id AS current_event_id,
-              c.id AS citizen_id,
-              c.uhid AS uhid,
-              c.full_name AS full_name,
-              c.age AS age,
-              c.gender AS gender,
-              c.phone AS phone
-       FROM public.worklist_items w
-       JOIN public.enrollments e ON e.id = w.enrollment_id
-       LEFT JOIN public.events ev ON ev.id = w.event_id
-       LEFT JOIN public.diseases d ON d.id = COALESCE(w.disease_id, e.disease_id)
-       LEFT JOIN public.programs p ON p.id = COALESCE(w.program_id, e.program_id)
-       LEFT JOIN public.citizens c ON c.id = e.citizen_id
-       WHERE w.id = $1
+      `SELECT ei.event_instance_id AS activity_id,
+              CASE ei.status WHEN 'ACTIVE' THEN 'PENDING' ELSE ei.status END AS activity_status,
+              COALESCE(ei.priority, 'NORMAL') AS priority,
+              ei.due_date AS due_date,
+              ei.event_id AS event_id,
+              e.event_code AS event_code,
+              e.event_name AS event_name,
+              e.display_order AS sequence,
+              cur.template_id AS outcome_template_id,
+              cur.activity_instance_id AS current_activity_instance_id,
+              cur.activity_id AS current_activity_id,
+              cur.activity_name AS current_activity_name,
+              pr.programme_id AS disease_id,
+              cond.condition_code AS disease_name,
+              pr.programme_id AS program_id,
+              pr.programme_name AS program_name,
+              pr.programme_code AS program_code,
+              pe.enrolment_id AS enrollment_id,
+              pe.status AS enrollment_status,
+              ei.assigned_to AS assigned_to,
+              u.username AS assigned_worker,
+              p.patient_id AS citizen_id,
+              p.external_id AS uhid,
+              p.full_name AS full_name,
+              date_part('year', age(p.birth_date))::int AS age,
+              p.sex AS gender,
+              p.phone AS phone
+       FROM dinc_runtime.event_instance ei
+       JOIN dinc_runtime.programme_enrolment pe ON pe.enrolment_id = ei.enrolment_id
+       JOIN dinc_runtime.patient p ON p.patient_id = pe.patient_id
+       JOIN dinc_metadata.event e ON e.event_id = ei.event_id
+       JOIN dinc_metadata.programme pr ON pr.programme_id = pe.programme_id
+       LEFT JOIN dinc_security.app_user u ON u.user_id = ei.assigned_to
+       LEFT JOIN LATERAL (
+         SELECT ai.activity_instance_id, a.activity_id, a.activity_name, t.template_id
+         FROM dinc_runtime.activity_instance ai
+         JOIN dinc_metadata.activity a ON a.activity_id = ai.activity_id
+         LEFT JOIN dinc_metadata.outcome_template t ON t.activity_id = a.activity_id
+         WHERE ai.event_instance_id = ei.event_instance_id
+           AND ai.completed_at IS NULL
+         ORDER BY a.display_order
+         LIMIT 1
+       ) cur ON true
+       LEFT JOIN LATERAL (
+         SELECT pc.condition_code
+         FROM dinc_runtime.patient_condition pc
+         WHERE pc.enrolment_id = pe.enrolment_id AND pc.cleared_at IS NULL
+         ORDER BY pc.flagged_at DESC
+         LIMIT 1
+       ) cond ON true
+       WHERE ei.event_instance_id = $1
        LIMIT 1`,
       [activityId],
     );
     return result.rows[0] ?? null;
   }
 
-  /** The dynamic clinical field definitions from an outcome template. */
-  async findTemplate(
-    templateId: string,
-  ): Promise<{ name: string; fields: ClinicalFieldDef[] } | null> {
-    const result = await this.db.query<{ name: string; fields: unknown }>(
-      `SELECT name, fields
-       FROM public.outcome_templates
-       WHERE id = $1 AND is_active = true
-       LIMIT 1`,
-      [templateId],
+  /**
+   * The dynamic clinical form for an activity: its 1:1 outcome_template and the
+   * template's fields (dinc_metadata, read-only). Field rows also carry the
+   * metadata `workflow_action` the save path evaluates (e.g. COMPLETE_ACTIVITY).
+   */
+  async findTemplateForActivity(
+    activityId: string,
+  ): Promise<{ templateId: string; name: string; fields: TemplateFieldRow[] } | null> {
+    const result = await this.db.query<TemplateFieldRow & { template_id: string; template_name: string }>(
+      `SELECT t.template_id, t.template_name,
+              f.field_id, f.field_name, f.field_label, f.field_type,
+              f.required, f.display_order, f.default_value, f.workflow_action
+       FROM dinc_metadata.outcome_template t
+       LEFT JOIN dinc_metadata.outcome_template_field f ON f.template_id = t.template_id
+       WHERE t.activity_id = $1
+       ORDER BY f.display_order`,
+      [activityId],
     );
-    const row = result.rows[0];
-    if (!row) return null;
-    return { name: row.name, fields: ConsultationRepository.normaliseFields(row.fields) };
+    if (result.rows.length === 0) return null;
+    return {
+      templateId: result.rows[0].template_id,
+      name: result.rows[0].template_name,
+      fields: result.rows.filter((r) => r.field_id != null),
+    };
+  }
+
+  /** Maps template field rows onto the frontend's ClinicalFieldDef contract. */
+  static toClinicalFieldDefs(fields: TemplateFieldRow[]): ClinicalFieldDef[] {
+    return fields.map((f) => ({
+      type: f.field_type.toLowerCase(),
+      label: f.field_label,
+      options: [],
+      required: f.required,
+      sortOrder: f.display_order,
+      key: f.field_name,
+      defaultValue: f.default_value ?? undefined,
+    }));
   }
 
   /**
-   * The configurable outcomes for an event (the worker's selectable consultation
-   * outcomes). These drive the Workflow Rules Engine — each maps to a `rules` row.
+   * The selectable consultation outcomes for an event, resolved from
+   * dinc_metadata.v_event_call_outcome_resolved (specific mappings override the
+   * ALL sentinel) joined to the call_outcome reference. `id` = outcome code —
+   * codes are the stable metadata identity.
    */
-  async findOutcomeTypes(
-    eventId: string,
+  async findOutcomeOptions(
+    eventCode: string,
   ): Promise<{ id: string; code: string; name: string; category: string }[]> {
     const result = await this.db.query<{
       id: string;
@@ -1124,83 +1197,146 @@ export class ConsultationRepository implements OnModuleInit {
       name: string;
       category: string;
     }>(
-      `SELECT id, code, name, category
-       FROM public.outcome_types
-       WHERE event_id = $1
-       ORDER BY
-         CASE category WHEN 'POSITIVE' THEN 0 WHEN 'NEUTRAL' THEN 1
-                       WHEN 'NEGATIVE' THEN 2 WHEN 'ESCALATION' THEN 3 ELSE 4 END,
-         name`,
-      [eventId],
+      `SELECT co.code AS id, co.code, co.name, co.category
+       FROM dinc_metadata.v_event_call_outcome_resolved v
+       JOIN dinc_metadata.call_outcome co ON co.code = v.outcome_code AND co.is_active
+       WHERE v.event_code = $1
+       ORDER BY v.display_order`,
+      [eventCode],
     );
     return result.rows;
   }
 
-  /** Resolves one outcome type (validates the worker's selection), or null. */
-  async findOutcomeType(
-    outcomeTypeId: string,
-  ): Promise<{ id: string; code: string; name: string; category: string; event_id: string } | null> {
-    const result = await this.db.query<{
-      id: string;
-      code: string;
-      name: string;
-      category: string;
-      event_id: string;
-    }>(
-      `SELECT id, code, name, category, event_id
-       FROM public.outcome_types WHERE id = $1 LIMIT 1`,
-      [outcomeTypeId],
+  /** Resolves one call outcome by code (validates the worker's selection). */
+  async findOutcomeByCode(
+    code: string,
+  ): Promise<{ code: string; name: string; category: string } | null> {
+    const result = await this.db.query<{ code: string; name: string; category: string }>(
+      `SELECT code, name, category FROM dinc_metadata.call_outcome
+       WHERE code = $1 AND is_active LIMIT 1`,
+      [code],
     );
     return result.rows[0] ?? null;
   }
 
-  /** Next call attempt number for an activity (1-based). */
+  /**
+   * The resolved call-outcome rule for a programme × outcome
+   * (dinc_metadata.v_call_outcome_rule_resolved: programme-specific overrides ALL).
+   */
+  async findOutcomeRule(
+    programmeCode: string,
+    outcomeCode: string,
+  ): Promise<{ next_action: string; followup_delay_days: number | null; priority: string | null } | null> {
+    const result = await this.db.query<{
+      next_action: string;
+      followup_delay_days: number | null;
+      priority: string | null;
+    }>(
+      `SELECT next_action, followup_delay_days, priority
+       FROM dinc_metadata.v_call_outcome_rule_resolved
+       WHERE programme_code = $1 AND outcome_code = $2
+       LIMIT 1`,
+      [programmeCode, outcomeCode],
+    );
+    return result.rows[0] ?? null;
+  }
+
+  /** Next call attempt number for an event instance (1-based). */
   async nextAttemptNumber(activityId: string): Promise<number> {
     const result = await this.db.query<{ n: number }>(
-      `SELECT count(*)::int AS n FROM public.contact_outcomes WHERE worklist_item_id = $1`,
+      `SELECT count(*)::int AS n FROM dinc_runtime.call_log WHERE event_instance_id = $1`,
       [activityId],
     );
     return (result.rows[0]?.n ?? 0) + 1;
   }
 
-  /** Logs a contact attempt against the activity. */
-  async insertContactOutcome(input: {
-    activityId: string;
-    contactType: string;
-    attemptNumber: number;
+  /**
+   * THE Step-7 transactional write (DatabaseService.withTransaction — full
+   * rollback on any failure):
+   *
+   *   1. dinc_runtime.call_log        — the phone interaction, with the chosen
+   *      metadata outcome code; called_by resolved from the JWT username to the
+   *      app_user uuid (NULL when unknown).
+   *   2. dinc_runtime.outcome_response — one row per answered template field
+   *      (activity_instance_id + field_id + response_value). Multiple attempts
+   *      are allowed by design (latest-wins is a query rule, per the DB design).
+   *   3. dinc_runtime.followup_task    — only when the programme's resolved
+   *      call-outcome rule says CREATE_FOLLOWUP: due = today + delay, priority
+   *      from the rule, assignee inherited from the event instance.
+   *
+   * dinc_metadata is only ever read. Returns the call_log id (the consultation
+   * record identity) and whether a follow-up was raised.
+   */
+  async saveConsultation(input: {
+    enrolmentId: string;
+    eventInstanceId: string;
+    activityInstanceId: string | null;
+    outcomeCode: string;
     notes: string | null;
-    contactedBy: string | null;
-  }): Promise<void> {
-    await this.db.query(
-      `INSERT INTO public.contact_outcomes
-         (worklist_item_id, contact_type, attempt_number, notes, contacted_by)
-       VALUES ($1, $2, $3, $4, $5)`,
-      [input.activityId, input.contactType, input.attemptNumber, input.notes, input.contactedBy],
-    );
-  }
+    recordedByUsername: string | null;
+    responses: OutcomeResponseInput[];
+    followup: { delayDays: number; priority: string } | null;
+    assignedTo: string | null;
+  }): Promise<{ callLogId: string; followupTaskId: string | null; responsesWritten: number }> {
+    return this.db.withTransaction(async (tx) => {
+      const call = await tx.query<{ call_log_id: string }>(
+        `INSERT INTO dinc_runtime.call_log
+           (enrolment_id, event_instance_id, outcome_code, called_at, called_by, notes)
+         VALUES ($1, $2, $3, now(),
+                 (SELECT user_id FROM dinc_security.app_user WHERE username = $4 LIMIT 1),
+                 $5)
+         RETURNING call_log_id`,
+        [
+          input.enrolmentId,
+          input.eventInstanceId,
+          input.outcomeCode,
+          input.recordedByUsername,
+          input.notes,
+        ],
+      );
+      const callLogId = call.rows[0].call_log_id;
 
-  /** Stores the clinical observation/outcome record; returns its id. */
-  async insertOutcomeRecord(input: {
-    activityId: string;
-    templateId: string;
-    outcomeTypeId: string;
-    data: unknown;
-    recordedBy: string | null;
-  }): Promise<string> {
-    const result = await this.db.query<{ id: string }>(
-      `INSERT INTO public.outcome_records
-         (worklist_item_id, template_id, outcome_type_id, data, recorded_by)
-       VALUES ($1, $2, $3, $4::jsonb, $5)
-       RETURNING id`,
-      [
-        input.activityId,
-        input.templateId,
-        input.outcomeTypeId,
-        JSON.stringify(input.data ?? {}),
-        input.recordedBy,
-      ],
-    );
-    return result.rows[0].id;
+      let responsesWritten = 0;
+      if (input.activityInstanceId && input.responses.length > 0) {
+        const values: string[] = [];
+        const params: unknown[] = [];
+        let p = 1;
+        for (const r of input.responses) {
+          values.push(
+            `($${p++}, $${p++}, $${p++}, now(), (SELECT user_id FROM dinc_security.app_user WHERE username = $${p++} LIMIT 1))`,
+          );
+          params.push(input.activityInstanceId, r.fieldId, r.value, input.recordedByUsername);
+        }
+        const written = await tx.query(
+          `INSERT INTO dinc_runtime.outcome_response
+             (activity_instance_id, field_id, response_value, recorded_at, recorded_by)
+           VALUES ${values.join(', ')}`,
+          params,
+        );
+        responsesWritten = written.rowCount ?? input.responses.length;
+      }
+
+      let followupTaskId: string | null = null;
+      if (input.followup) {
+        const ft = await tx.query<{ followup_task_id: string }>(
+          `INSERT INTO dinc_runtime.followup_task
+             (call_log_id, enrolment_id, due_date, priority, status, assigned_to)
+           VALUES ($1, $2, CURRENT_DATE + $3::int, $4, 'OPEN', $5)
+           ON CONFLICT ON CONSTRAINT uq_ft_call_log DO NOTHING
+           RETURNING followup_task_id`,
+          [
+            callLogId,
+            input.enrolmentId,
+            input.followup.delayDays,
+            input.followup.priority,
+            input.assignedTo,
+          ],
+        );
+        followupTaskId = ft.rows[0]?.followup_task_id ?? null;
+      }
+
+      return { callLogId, followupTaskId, responsesWritten };
+    });
   }
 
   // ── Consultation Responses (Milestone 25A, Step 2) ──────────────────────────
@@ -1384,58 +1520,59 @@ export class ConsultationRepository implements OnModuleInit {
    * context/timeline.
    */
 
-  /** A patient's chronological journey: enrollments and their activities. */
+  /** A patient's chronological journey: enrolments and their event instances. */
   async findTimeline(citizenId: string): Promise<TimelineRow[]> {
     const result = await this.db.query<TimelineRow>(
       `SELECT * FROM (
          SELECT 'ENROLLMENT'::text AS kind,
-                e.id::text AS id,
-                COALESCE(p.name, 'Enrollment') AS title,
-                p.name AS program,
-                e.status AS status,
-                COALESCE(e.start_date::timestamptz, e.created_at) AS date,
+                pe.enrolment_id::text AS id,
+                COALESCE(pr.programme_name, 'Enrollment') AS title,
+                pr.programme_name AS program,
+                pe.status AS status,
+                COALESCE(pe.registration_date::timestamptz, pe.created_at) AS date,
                 NULL::text AS outcome,
                 NULL::text AS priority,
-                e.created_at AS sort_at
-           FROM public.enrollments e
-           LEFT JOIN public.programs p ON p.id = e.program_id
-           WHERE e.citizen_id = $1
+                pe.created_at AS sort_at
+           FROM dinc_runtime.programme_enrolment pe
+           LEFT JOIN dinc_metadata.programme pr ON pr.programme_id = pe.programme_id
+           WHERE pe.patient_id = $1
          UNION ALL
          SELECT 'ACTIVITY'::text AS kind,
-                w.id::text AS id,
-                COALESCE(ev.name, 'Activity') AS title,
-                p.name AS program,
-                w.status AS status,
-                COALESCE(w.outcome_recorded_at, w.due_date::timestamptz, w.created_at) AS date,
+                ei.event_instance_id::text AS id,
+                COALESCE(e.event_name, 'Activity') AS title,
+                pr.programme_name AS program,
+                CASE ei.status WHEN 'ACTIVE' THEN 'PENDING' ELSE ei.status END AS status,
+                COALESCE(ei.completed_at, ei.due_date::timestamptz, ei.created_at) AS date,
                 (
-                  SELECT COALESCE(orr.data ->> 'outcomeName', orr.data ->> 'consultationStatus')
-                  FROM public.outcome_records orr
-                  WHERE orr.worklist_item_id = w.id
-                  ORDER BY orr.recorded_at DESC
+                  SELECT co.name
+                  FROM dinc_runtime.call_log cl
+                  JOIN dinc_metadata.call_outcome co ON co.code = cl.outcome_code
+                  WHERE cl.event_instance_id = ei.event_instance_id
+                  ORDER BY cl.called_at DESC
                   LIMIT 1
                 ) AS outcome,
-                w.priority AS priority,
-                w.created_at AS sort_at
-           FROM public.worklist_items w
-           JOIN public.enrollments e ON e.id = w.enrollment_id
-           LEFT JOIN public.events ev ON ev.id = w.event_id
-           LEFT JOIN public.programs p ON p.id = COALESCE(w.program_id, e.program_id)
-           WHERE e.citizen_id = $1
+                COALESCE(ei.priority, 'NORMAL') AS priority,
+                ei.created_at AS sort_at
+           FROM dinc_runtime.event_instance ei
+           JOIN dinc_runtime.programme_enrolment pe ON pe.enrolment_id = ei.enrolment_id
+           LEFT JOIN dinc_metadata.event e ON e.event_id = ei.event_id
+           LEFT JOIN dinc_metadata.programme pr ON pr.programme_id = pe.programme_id
+           WHERE pe.patient_id = $1
          UNION ALL
-         -- Care-plan completion marker (M33): one entry when the enrollment
-         -- reached COMPLETED, dated by the status change (updated_at).
+         -- Care-plan completion marker (M33): one entry when the enrolment
+         -- reached COMPLETED/EXITED, dated by exited_at when recorded.
          SELECT 'COMPLETION'::text,
-                e.id::text || ':completed',
+                pe.enrolment_id::text || ':completed',
                 'Care plan completed',
-                p.name,
-                e.status,
-                e.updated_at,
+                pr.programme_name,
+                pe.status,
+                COALESCE(pe.exited_at, pe.registration_date::timestamptz),
                 NULL::text,
                 NULL::text,
-                e.updated_at
-           FROM public.enrollments e
-           LEFT JOIN public.programs p ON p.id = e.program_id
-           WHERE e.citizen_id = $1 AND e.status = 'COMPLETED'
+                COALESCE(pe.exited_at, pe.created_at)
+           FROM dinc_runtime.programme_enrolment pe
+           LEFT JOIN dinc_metadata.programme pr ON pr.programme_id = pe.programme_id
+           WHERE pe.patient_id = $1 AND pe.status = 'COMPLETED'
        ) feed
        ORDER BY date ASC NULLS LAST, sort_at ASC
        LIMIT 200`,
@@ -1466,48 +1603,62 @@ export class ConsultationRepository implements OnModuleInit {
       generated_note: string | null;
     }>(
       `SELECT
-         w.id                AS activity_id,
-         COALESCE(ev.name, 'Activity')
+         ei.event_instance_id AS activity_id,
+         COALESCE(e.event_name, 'Activity')
                              AS event_name,
-         p.name              AS program,
-         COALESCE(w.outcome_recorded_at,
-                  w.due_date::timestamptz,
-                  w.created_at)  AS date,
-         w.status            AS activity_status,
-         ot.name             AS outcome_name,
-         ot.category         AS outcome_category,
-         orr.data ->> 'clinicalNotes'
-                             AS clinical_notes,
-         orr.data ->> 'remarks'
-                             AS remarks,
-         orr.recorded_by     AS recorded_by,
-         orr.data            AS clinical_data,
+         pr.programme_name   AS program,
+         COALESCE(ei.completed_at,
+                  ei.due_date::timestamptz,
+                  ei.created_at)  AS date,
+         CASE ei.status WHEN 'ACTIVE' THEN 'PENDING' ELSE ei.status END
+                             AS activity_status,
+         co.name             AS outcome_name,
+         co.category         AS outcome_category,
+         cl.notes            AS clinical_notes,
+         NULL::text          AS remarks,
+         u.username          AS recorded_by,
+         resp.clinical_data  AS clinical_data,
          cn.generated_note   AS generated_note
-       FROM public.worklist_items w
-       JOIN public.enrollments e ON e.id = w.enrollment_id
-       LEFT JOIN public.events ev ON ev.id = w.event_id
-       LEFT JOIN public.programs p
-         ON p.id = COALESCE(w.program_id, e.program_id)
+       FROM dinc_runtime.event_instance ei
+       JOIN dinc_runtime.programme_enrolment pe ON pe.enrolment_id = ei.enrolment_id
+       LEFT JOIN dinc_metadata.event e ON e.event_id = ei.event_id
+       LEFT JOIN dinc_metadata.programme pr ON pr.programme_id = pe.programme_id
        LEFT JOIN LATERAL (
-         SELECT id, outcome_type_id, data, recorded_by
-         FROM public.outcome_records
-         WHERE worklist_item_id = w.id
-         ORDER BY recorded_at DESC
+         SELECT call_log_id, outcome_code, called_by, notes, called_at
+         FROM dinc_runtime.call_log
+         WHERE event_instance_id = ei.event_instance_id
+         ORDER BY called_at DESC
          LIMIT 1
-       ) orr ON true
-       LEFT JOIN public.outcome_types ot ON ot.id = orr.outcome_type_id
+       ) cl ON true
+       LEFT JOIN dinc_metadata.call_outcome co ON co.code = cl.outcome_code
+       LEFT JOIN dinc_security.app_user u ON u.user_id = cl.called_by
+       LEFT JOIN LATERAL (
+         -- Latest response per field across the event's activity instances,
+         -- projected as { field_label: value } for the history panel.
+         SELECT jsonb_object_agg(x.field_label, x.response_value) AS clinical_data
+         FROM (
+           SELECT DISTINCT ON (r.field_id)
+                  f.field_label, r.response_value
+           FROM dinc_runtime.outcome_response r
+           JOIN dinc_runtime.activity_instance ai
+             ON ai.activity_instance_id = r.activity_instance_id
+           JOIN dinc_metadata.outcome_template_field f ON f.field_id = r.field_id
+           WHERE ai.event_instance_id = ei.event_instance_id
+           ORDER BY r.field_id, r.recorded_at DESC
+         ) x
+       ) resp ON true
        LEFT JOIN LATERAL (
          SELECT generated_note
          FROM dinc_app.consultation_notes
-         WHERE worklist_item_id = w.id AND status = 'FINAL'
+         WHERE worklist_item_id = ei.event_instance_id AND status = 'FINAL'
          ORDER BY created_at DESC
          LIMIT 1
        ) cn ON true
-       WHERE e.citizen_id = $1
-         AND orr.id IS NOT NULL
-       ORDER BY COALESCE(w.outcome_recorded_at,
-                         w.due_date::timestamptz,
-                         w.created_at) DESC NULLS LAST
+       WHERE pe.patient_id = $1
+         AND cl.call_log_id IS NOT NULL
+       ORDER BY COALESCE(ei.completed_at,
+                         ei.due_date::timestamptz,
+                         ei.created_at) DESC NULLS LAST
        LIMIT 15`,
       [citizenId],
     );
@@ -1522,7 +1673,7 @@ export class ConsultationRepository implements OnModuleInit {
       clinicalNotes: row.clinical_notes,
       remarks: row.remarks,
       recordedBy: row.recorded_by,
-      clinicalData: ConsultationRepository.extractFields(row.clinical_data),
+      clinicalData: ConsultationRepository.asRecord(row.clinical_data),
       generatedNote: row.generated_note,
     }));
   }
@@ -1553,16 +1704,17 @@ export class ConsultationRepository implements OnModuleInit {
       call_count: number;
     }>(
       `SELECT * FROM (
-         -- Enrollment events
+         -- Enrolment events
          SELECT
            'ENROLLMENT'::text                                  AS event_type,
-           e.id::text                                          AS id,
+           pe.enrolment_id::text                               AS id,
            NULL::text                                          AS activity_status,
-           p.name                                              AS program,
-           d.name                                              AS disease,
-           e.status                                            AS enrollment_status,
+           pr.programme_name                                   AS program,
+           cond.condition_code                                 AS disease,
+           pe.status                                           AS enrollment_status,
            NULL::text                                          AS event_name,
-           COALESCE(e.start_date::timestamptz, e.created_at)  AS date,
+           COALESCE(pe.registration_date::timestamptz,
+                    pe.created_at)                             AS date,
            NULL::text                                          AS outcome_name,
            NULL::text                                          AS outcome_category,
            NULL::text                                          AS clinical_notes,
@@ -1571,59 +1723,76 @@ export class ConsultationRepository implements OnModuleInit {
            NULL::jsonb                                         AS clinical_data,
            NULL::text                                          AS recorded_by,
            0::int                                              AS call_count
-         FROM public.enrollments e
-         LEFT JOIN public.programs p  ON p.id = e.program_id
-         LEFT JOIN public.diseases d  ON d.id = e.disease_id
-         WHERE e.citizen_id = $1
+         FROM dinc_runtime.programme_enrolment pe
+         LEFT JOIN dinc_metadata.programme pr ON pr.programme_id = pe.programme_id
+         LEFT JOIN LATERAL (
+           SELECT pc.condition_code FROM dinc_runtime.patient_condition pc
+           WHERE pc.enrolment_id = pe.enrolment_id AND pc.cleared_at IS NULL
+           ORDER BY pc.flagged_at DESC LIMIT 1
+         ) cond ON true
+         WHERE pe.patient_id = $1
 
          UNION ALL
 
-         -- Activity / Consultation events
+         -- Activity / Consultation events (event instances)
          SELECT
-           CASE WHEN orr.id IS NOT NULL THEN 'CONSULTATION' ELSE 'ACTIVITY' END AS event_type,
-           w.id::text                                                             AS id,
-           w.status                                                               AS activity_status,
-           p.name                                                                 AS program,
-           d.name                                                                 AS disease,
-           enr.status                                                             AS enrollment_status,
-           ev.name                                                                AS event_name,
-           COALESCE(w.outcome_recorded_at,
-                    w.due_date::timestamptz,
-                    w.created_at)                                                 AS date,
-           ot.name                                                                AS outcome_name,
-           ot.category                                                            AS outcome_category,
-           orr.data ->> 'clinicalNotes'                                          AS clinical_notes,
-           orr.data ->> 'remarks'                                                AS remarks,
+           CASE WHEN cl.call_log_id IS NOT NULL THEN 'CONSULTATION' ELSE 'ACTIVITY' END AS event_type,
+           ei.event_instance_id::text                                             AS id,
+           CASE ei.status WHEN 'ACTIVE' THEN 'PENDING' ELSE ei.status END        AS activity_status,
+           pr.programme_name                                                      AS program,
+           ei.condition_context                                                   AS disease,
+           pe.status                                                              AS enrollment_status,
+           e.event_name                                                           AS event_name,
+           COALESCE(ei.completed_at,
+                    ei.due_date::timestamptz,
+                    ei.created_at)                                                AS date,
+           co.name                                                                AS outcome_name,
+           co.category                                                            AS outcome_category,
+           cl.notes                                                               AS clinical_notes,
+           NULL::text                                                             AS remarks,
            cn.generated_note                                                      AS generated_note,
-           orr.data                                                               AS clinical_data,
-           orr.recorded_by                                                        AS recorded_by,
-           COALESCE(co.call_count, 0)::int                                       AS call_count
-         FROM public.worklist_items w
-         JOIN  public.enrollments enr ON enr.id = w.enrollment_id
-         LEFT JOIN public.events ev   ON ev.id  = w.event_id
-         LEFT JOIN public.programs p  ON p.id   = COALESCE(w.program_id, enr.program_id)
-         LEFT JOIN public.diseases d  ON d.id   = COALESCE(w.disease_id, enr.disease_id)
+           resp.clinical_data                                                     AS clinical_data,
+           u.username                                                             AS recorded_by,
+           COALESCE(calls.call_count, 0)::int                                    AS call_count
+         FROM dinc_runtime.event_instance ei
+         JOIN  dinc_runtime.programme_enrolment pe ON pe.enrolment_id = ei.enrolment_id
+         LEFT JOIN dinc_metadata.event e ON e.event_id = ei.event_id
+         LEFT JOIN dinc_metadata.programme pr ON pr.programme_id = pe.programme_id
          LEFT JOIN LATERAL (
-           SELECT id, outcome_type_id, data, recorded_by
-           FROM public.outcome_records
-           WHERE worklist_item_id = w.id
-           ORDER BY recorded_at DESC
+           SELECT call_log_id, outcome_code, called_by, notes
+           FROM dinc_runtime.call_log
+           WHERE event_instance_id = ei.event_instance_id
+           ORDER BY called_at DESC
            LIMIT 1
-         ) orr ON true
-         LEFT JOIN public.outcome_types ot ON ot.id = orr.outcome_type_id
+         ) cl ON true
+         LEFT JOIN dinc_metadata.call_outcome co ON co.code = cl.outcome_code
+         LEFT JOIN dinc_security.app_user u ON u.user_id = cl.called_by
+         LEFT JOIN LATERAL (
+           SELECT jsonb_object_agg(x.field_label, x.response_value) AS clinical_data
+           FROM (
+             SELECT DISTINCT ON (r.field_id)
+                    f.field_label, r.response_value
+             FROM dinc_runtime.outcome_response r
+             JOIN dinc_runtime.activity_instance ai
+               ON ai.activity_instance_id = r.activity_instance_id
+             JOIN dinc_metadata.outcome_template_field f ON f.field_id = r.field_id
+             WHERE ai.event_instance_id = ei.event_instance_id
+             ORDER BY r.field_id, r.recorded_at DESC
+           ) x
+         ) resp ON true
          LEFT JOIN LATERAL (
            SELECT generated_note
            FROM dinc_app.consultation_notes
-           WHERE worklist_item_id = w.id AND status = 'FINAL'
+           WHERE worklist_item_id = ei.event_instance_id AND status = 'FINAL'
            ORDER BY created_at DESC
            LIMIT 1
          ) cn ON true
          LEFT JOIN LATERAL (
            SELECT COUNT(*)::int AS call_count
-           FROM public.contact_outcomes
-           WHERE worklist_item_id = w.id
-         ) co ON true
-         WHERE enr.citizen_id = $1
+           FROM dinc_runtime.call_log
+           WHERE event_instance_id = ei.event_instance_id
+         ) calls ON true
+         WHERE pe.patient_id = $1
        ) feed
        ORDER BY date DESC NULLS LAST
        LIMIT 100`,
@@ -1657,7 +1826,7 @@ export class ConsultationRepository implements OnModuleInit {
         clinicalNotes: row.clinical_notes,
         remarks: row.remarks,
         generatedNote: row.generated_note,
-        clinicalData: ConsultationRepository.extractFields(row.clinical_data),
+        clinicalData: ConsultationRepository.asRecord(row.clinical_data),
         recordedBy: row.recorded_by,
         callCount: row.call_count,
         enrollmentStatus: row.enrollment_status,
@@ -1681,30 +1850,26 @@ export class ConsultationRepository implements OnModuleInit {
       event_name: string | null;
       program_name: string | null;
     }>(
-      `SELECT wi.id           AS activity_id,
-              ev.name         AS event_name,
-              p.name          AS program_name
-       FROM public.worklist_items wi
-       JOIN public.enrollments enr ON enr.id = wi.enrollment_id
-       LEFT JOIN public.events ev  ON ev.id  = wi.event_id
-       LEFT JOIN public.programs p ON p.id   = COALESCE(wi.program_id, enr.program_id)
-       WHERE enr.citizen_id = $1
-         AND wi.status IN ('PENDING', 'IN_PROGRESS', 'OVERDUE', 'ESCALATED')
-       ORDER BY wi.due_date ASC NULLS LAST
+      `SELECT ei.event_instance_id AS activity_id,
+              e.event_name         AS event_name,
+              pr.programme_name    AS program_name
+       FROM dinc_runtime.event_instance ei
+       JOIN dinc_runtime.programme_enrolment pe ON pe.enrolment_id = ei.enrolment_id
+       LEFT JOIN dinc_metadata.event e ON e.event_id = ei.event_id
+       LEFT JOIN dinc_metadata.programme pr ON pr.programme_id = pe.programme_id
+       WHERE pe.patient_id = $1
+         AND ei.status = 'ACTIVE'
+       ORDER BY ei.due_date ASC NULLS LAST
        LIMIT 1`,
       [citizenId],
     );
     return result.rows[0] ?? null;
   }
 
-  /** Extracts the structured clinical `fields` sub-object from outcome_records.data. */
-  private static extractFields(data: unknown): Record<string, unknown> | null {
+  /** Narrows a jsonb aggregate to a plain record (or null). */
+  private static asRecord(data: unknown): Record<string, unknown> | null {
     if (!data || typeof data !== 'object' || Array.isArray(data)) return null;
-    const obj = data as Record<string, unknown>;
-    if (obj.fields && typeof obj.fields === 'object' && !Array.isArray(obj.fields)) {
-      return obj.fields as Record<string, unknown>;
-    }
-    return null;
+    return data as Record<string, unknown>;
   }
 
   private static toNoteDto(row: NoteRow): ConsultationNoteDto {
@@ -1719,65 +1884,4 @@ export class ConsultationRepository implements OnModuleInit {
     };
   }
 
-  /**
-   * Normalises template `fields` jsonb into typed defs (tolerant of variants).
-   * The core five attributes are always produced; the richer metadata (M37J)
-   * is passed through verbatim when present so the Outcome Renderer can drive
-   * sections, help text, defaults and conditional rules from configuration
-   * alone. Both snake_case and camelCase keys are accepted in the jsonb.
-   */
-  private static normaliseFields(raw: unknown): ClinicalFieldDef[] {
-    if (!Array.isArray(raw)) return [];
-    const pickString = (obj: Record<string, unknown>, ...keys: string[]) => {
-      for (const k of keys) if (typeof obj[k] === 'string') return obj[k] as string;
-      return undefined;
-    };
-    const pickNumber = (obj: Record<string, unknown>, ...keys: string[]) => {
-      for (const k of keys) if (typeof obj[k] === 'number') return obj[k] as number;
-      return undefined;
-    };
-    return raw
-      .map((f, i) => {
-        const obj = (f ?? {}) as Record<string, unknown>;
-        const def: ClinicalFieldDef = {
-          type: typeof obj.type === 'string' ? obj.type : 'text',
-          label: typeof obj.label === 'string' ? obj.label : `Field ${i + 1}`,
-          options: Array.isArray(obj.options)
-            ? obj.options.filter((o): o is string => typeof o === 'string')
-            : [],
-          required: obj.required === true,
-          sortOrder: pickNumber(obj, 'sort_order', 'sortOrder') ?? i,
-          key: pickString(obj, 'key'),
-          section: pickString(obj, 'section'),
-          sectionOrder: pickNumber(obj, 'section_order', 'sectionOrder'),
-          placeholder: pickString(obj, 'placeholder'),
-          helpText: pickString(obj, 'help_text', 'helpText'),
-          defaultValue:
-            obj.default_value ?? obj.defaultValue ?? undefined,
-          visibleWhen: ConsultationRepository.normaliseCondition(
-            obj.visible_when ?? obj.visibleWhen,
-          ),
-          requiredWhen: ConsultationRepository.normaliseCondition(
-            obj.required_when ?? obj.requiredWhen,
-          ),
-        };
-        return def;
-      })
-      .sort((a, b) => a.sortOrder - b.sortOrder);
-  }
-
-  /** Normalises a conditional-rule object from the template jsonb. */
-  private static normaliseCondition(raw: unknown): FieldCondition | undefined {
-    if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return undefined;
-    const obj = raw as Record<string, unknown>;
-    const field = typeof obj.field === 'string' ? obj.field : undefined;
-    if (!field) return undefined;
-    const cond: FieldCondition = { field };
-    if (typeof obj.equals === 'string') cond.equals = obj.equals;
-    if (Array.isArray(obj.in)) {
-      cond.in = obj.in.filter((v): v is string => typeof v === 'string');
-    }
-    if (typeof obj.truthy === 'boolean') cond.truthy = obj.truthy;
-    return cond;
-  }
 }

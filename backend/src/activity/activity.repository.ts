@@ -286,10 +286,14 @@ export class ActivityRepository {
    *   3. When no incomplete activity remains, the event_instance completes.
    *   4-5. v_schedule_rule_effective is read and dependent events whose
    *      dependency is now satisfied are activated: ONE_TIME rules anchored on
-   *      PREVIOUS_EVENT_COMPLETION, unconditional (no existence_condition),
-   *      default context (no overrides / HIGH_RISK — Step 6B), not already
-   *      instantiated for the enrolment. due = today + offset_days; the
-   *      completed event's assignee is inherited; release stamped.
+   *      PREVIOUS_EVENT_COMPLETION, not already instantiated for the enrolment.
+   *      Since Step 6B this is context-aware: the OVERRIDE row (e.g. HIGH_RISK)
+   *      wins over the BASE row when the enrolment has a matching uncleared
+   *      patient_condition, and auto-evaluable existence conditions (HIGH_RISK,
+   *      FEMALE_ONLY) are honoured; the chosen context is stamped on the
+   *      instance. due = today + effective offset_days; the completed event's
+   *      assignee is inherited; release stamped. RECURRING dependents are the
+   *      scheduler's job (it seeds them on its next sweep).
    *   6. Each newly activated event gets its activity_instance rows: first by
    *      display_order PENDING, the rest LOCKED.
    *
@@ -368,27 +372,44 @@ export class ActivityRepository {
       const created = await tx.query<{ id: string; event_id: string; due_date: Date }>(
         `INSERT INTO dinc_runtime.event_instance
            (enrolment_id, event_id, occurrence_number, status, due_date,
-            activated_at, assigned_to, priority, metadata_release_id)
-         SELECT $1,
+            condition_context, activated_at, assigned_to, priority, metadata_release_id)
+         SELECT DISTINCT ON (v.event_id)
+                $1,
                 v.event_id,
                 1,
                 'ACTIVE',
                 CURRENT_DATE + COALESCE(v.offset_days, 0),
+                v.condition_context,
                 now(),
                 $3,
                 'NORMAL',
                 (SELECT release_version FROM dinc_metadata.metadata_release
                  ORDER BY loaded_at DESC LIMIT 1)
          FROM dinc_metadata.v_schedule_rule_effective v
+         JOIN dinc_runtime.programme_enrolment pe ON pe.enrolment_id = $1
+         JOIN dinc_runtime.patient p ON p.patient_id = pe.patient_id
          WHERE v.dependency_event_code = $2
            AND v.schedule_type = 'ONE_TIME'
            AND v.anchor_type = 'PREVIOUS_EVENT_COMPLETION'
-           AND v.existence_condition IS NULL
-           AND v.condition_context IS NULL
+           -- OVERRIDE context applies only when its condition flag is live
+           AND (v.condition_context IS NULL OR EXISTS (
+                 SELECT 1 FROM dinc_runtime.patient_condition pc
+                 WHERE pc.enrolment_id = $1
+                   AND pc.condition_code = v.condition_context
+                   AND pc.cleared_at IS NULL))
+           -- auto-evaluable existence gates (others stay clinician-initiated)
+           AND (v.existence_condition IS NULL
+                OR (v.existence_condition = 'HIGH_RISK' AND EXISTS (
+                      SELECT 1 FROM dinc_runtime.patient_condition pc
+                      WHERE pc.enrolment_id = $1
+                        AND pc.condition_code = 'HIGH_RISK'
+                        AND pc.cleared_at IS NULL))
+                OR (v.existence_condition = 'FEMALE_ONLY' AND p.sex = 'FEMALE'))
            AND NOT EXISTS (
              SELECT 1 FROM dinc_runtime.event_instance x
              WHERE x.enrolment_id = $1 AND x.event_id = v.event_id
            )
+         ORDER BY v.event_id, (v.condition_context IS NOT NULL) DESC
          RETURNING event_instance_id AS id, event_id, due_date`,
         [evRow.enrolment_id, evRow.event_code, evRow.assigned_to],
       );

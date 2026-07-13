@@ -2,10 +2,12 @@ import { Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { ActivityService } from '../activity/activity.service';
 import { CdseService } from '../cdse/cdse.service';
 import { GuidebooksService } from '../guidebooks/guidebooks.service';
-import { WorkflowEngine } from '../workflow/workflow.engine';
+import { SchedulerService } from '../scheduler/scheduler.service';
 import {
   ConsultationContextRow,
   ConsultationRepository,
+  OutcomeResponseInput,
+  TemplateFieldRow,
 } from './consultation.repository';
 import { SaveConsultationDto } from './dto/save-consultation.dto';
 import {
@@ -22,19 +24,24 @@ import {
 import type { GuidebookDetail } from '../guidebooks/guidebooks.types';
 
 /**
- * Teleconsultation surface. It gathers the consultation context, records the
- * chosen outcome and the clinical observations, and then DELEGATES every workflow
- * decision to the Workflow Rules Engine.
+ * Consultation & Outcome Engine (Step 7 — metadata-driven).
  *
- * Deliberately contains NO workflow logic: there is no `if (outcome === '...')`,
- * no next-activity scheduling and no lifecycle branching here. What happens after
- * an outcome is entirely database-driven via the engine + the `rules` table.
+ * Gathers the consultation context from dinc_metadata/dinc_runtime, records the
+ * phone interaction (dinc_runtime.call_log) and the clinical observations
+ * (dinc_runtime.outcome_response), then lets the METADATA decide what follows:
  *
- * 16A additions:
- * - Guidebook resolution via guide_rules regex matching (program + disease + event).
- * - Returns full GuidebookDetail (with sections) instead of GuidebookRef.
- * - Loads any existing DRAFT note and returns it as `previousNote`.
- * - Persists consultation note alongside the saved outcome record.
+ *  - the programme's resolved call-outcome rule (v_call_outcome_rule_resolved)
+ *    decides whether a follow-up task is raised (CREATE_FOLLOWUP) — created in
+ *    the same transaction as the call log;
+ *  - the template field's `workflow_action` (COMPLETE_ACTIVITY) decides whether
+ *    the current activity_instance completes — executed through the EXISTING
+ *    Step-6A lifecycle (ActivityService.completeActivityInstance: next-activity
+ *    activation, event completion, dependent-event activation), followed by one
+ *    Step-6B scheduler sweep (recurring streams, seeding, overdue follow-ups).
+ *
+ * No workflow logic is duplicated here: there is no `if (outcome === '...')`
+ * branching — every decision is a metadata lookup. The legacy WorkflowEngine
+ * dependency is gone (its own migration is Step 8).
  */
 @Injectable()
 export class ConsultationService {
@@ -45,20 +52,20 @@ export class ConsultationService {
     private readonly activities: ActivityService,
     private readonly cdse: CdseService,
     private readonly guidebooks: GuidebooksService,
-    private readonly workflow: WorkflowEngine,
+    private readonly scheduler: SchedulerService,
   ) {}
 
-  /** Builds the full teleconsultation context for an activity. */
+  /** Builds the full teleconsultation context for an event instance. */
   async getContext(activityId: string): Promise<ConsultationContextDto> {
     const row = await this.requireContext(activityId);
 
-    const [activity, guidebook, template, outcomeTypes, previousNote] = await Promise.all([
+    const [activity, guidebook, template, outcomeOptions, previousNote] = await Promise.all([
       this.activities.getById(activityId),
       this.resolveGuidebook(row),
-      row.outcome_template_id
-        ? this.repo.findTemplate(row.outcome_template_id)
+      row.current_activity_id
+        ? this.repo.findTemplateForActivity(row.current_activity_id)
         : Promise.resolve(null),
-      row.event_id ? this.repo.findOutcomeTypes(row.event_id) : Promise.resolve([]),
+      row.event_code ? this.repo.findOutcomeOptions(row.event_code) : Promise.resolve([]),
       this.repo.findLatestDraftNote(activityId),
     ]);
 
@@ -92,33 +99,27 @@ export class ConsultationService {
       dial: ConsultationService.dial(row.phone),
       guidebook,
       clinicalForm: {
-        templateId: row.outcome_template_id,
+        templateId: template?.templateId ?? null,
         templateName: template?.name ?? null,
-        fields: template?.fields ?? [],
+        fields: template ? ConsultationRepository.toClinicalFieldDefs(template.fields) : [],
       },
-      outcomeOptions: outcomeTypes,
+      outcomeOptions,
       previousNote,
       counsellingSections,
     };
   }
 
   /**
-   * Starts a call: logs the attempt and moves the activity to IN_PROGRESS so the
-   * worklist/dashboard reflect the live consultation. Returns the dial hand-off
-   * (a tel: link today; structured for future VOIP).
+   * Starts a call: returns the dial hand-off and the attempt number (existing
+   * call_log count + 1). Nothing is recorded yet — dinc_runtime.call_log
+   * requires an outcome, which only exists once the consultation is saved.
+   * (The legacy IN_PROGRESS transition is gone: event_instance has no such
+   * state — LOCKED/ACTIVE/COMPLETED per the runtime CHECK constraints.)
    */
   async startCall(activityId: string, user: string | null): Promise<StartCallResultDto> {
+    void user;
     const row = await this.requireContext(activityId);
-
     const attemptNumber = await this.repo.nextAttemptNumber(activityId);
-    await this.repo.insertContactOutcome({
-      activityId,
-      contactType: 'TELECONSULT',
-      attemptNumber,
-      notes: 'Call initiated',
-      contactedBy: user,
-    });
-    await this.activities.transition(activityId, 'IN_PROGRESS');
 
     const activity = await this.activities.getById(activityId);
     if (!activity) throw new NotFoundException('Activity not found.');
@@ -126,14 +127,18 @@ export class ConsultationService {
   }
 
   /**
-   * Saves the consultation: persists the clinical observations + the selected
-   * outcome, then hands off to the Workflow Rules Engine which decides and applies
-   * everything that follows (status change, next activity, retry, referral,
-   * escalation, notifications).
+   * Saves the consultation — the Step-7 metadata-driven recording path:
    *
-   * 16A: if `dto.generatedNote` is present, a FINAL consultation note is inserted
-   * linked to the outcome record. This is supplementary — note failure does not
-   * roll back the clinical record.
+   *  1. One transaction (repo.saveConsultation): call_log + outcome_response
+   *     rows + (when the outcome rule says CREATE_FOLLOWUP) the followup_task.
+   *  2. Supplementary artefacts that must never roll back the clinical record:
+   *     the FINAL note and the counselling consultation_responses (dinc_app),
+   *     now keyed by the call_log id.
+   *  3. CDSE classification — non-blocking, unchanged.
+   *  4. Lifecycle: when an answered field carries workflow_action
+   *     COMPLETE_ACTIVITY with a truthy value, the current activity_instance is
+   *     completed via the existing Step-6A path, then one Step-6B scheduler
+   *     cycle materialises whatever the schedule metadata implies next.
    */
   async save(
     activityId: string,
@@ -142,115 +147,132 @@ export class ConsultationService {
   ): Promise<SaveConsultationResultDto> {
     const row = await this.requireContext(activityId);
 
-    const outcome = await this.repo.findOutcomeType(dto.outcomeTypeId);
-    if (!outcome || (row.event_id && outcome.event_id !== row.event_id)) {
+    // Validate the outcome against the metadata: it must exist and be offered
+    // for this event (v_event_call_outcome_resolved).
+    const outcome = await this.repo.findOutcomeByCode(dto.outcomeTypeId);
+    const offered = row.event_code
+      ? await this.repo.findOutcomeOptions(row.event_code)
+      : [];
+    if (!outcome || !offered.some((o) => o.code === outcome.code)) {
       throw new NotFoundException('Selected outcome does not apply to this activity.');
     }
 
-    // 1) Persist the clinical record first (never lose documentation).
-    let outcomeRecordId = '';
-    if (row.outcome_template_id) {
-      outcomeRecordId = await this.repo.insertOutcomeRecord({
-        activityId,
-        templateId: row.outcome_template_id,
-        outcomeTypeId: outcome.id,
-        data: {
-          outcomeTypeId: outcome.id,
-          outcomeCode: outcome.code,
-          outcomeName: outcome.name,
-          outcomeCategory: outcome.category,
-          clinicalNotes: dto.clinicalNotes?.trim() || null,
-          remarks: dto.remarks?.trim() || null,
-          fields: dto.clinicalData ?? {},
-          recordedBy: user,
-        },
-        recordedBy: user,
-      });
+    // Resolve the programme's call-outcome rule (metadata decides the follow-up).
+    const rule = row.program_code
+      ? await this.repo.findOutcomeRule(row.program_code, outcome.code)
+      : null;
+
+    // Match submitted clinicalData onto the current activity's template fields.
+    const template = row.current_activity_id
+      ? await this.repo.findTemplateForActivity(row.current_activity_id)
+      : null;
+    const { responses, completeActivity } = ConsultationService.matchResponses(
+      template?.fields ?? [],
+      dto.clinicalData ?? {},
+    );
+
+    // 1) The atomic clinical record: call log + responses + rule-driven follow-up.
+    const saved = await this.repo.saveConsultation({
+      enrolmentId: row.enrollment_id,
+      eventInstanceId: activityId,
+      activityInstanceId: row.current_activity_instance_id,
+      outcomeCode: outcome.code,
+      notes: dto.clinicalNotes?.trim() || null,
+      recordedByUsername: user,
+      responses,
+      followup:
+        rule?.next_action === 'CREATE_FOLLOWUP'
+          ? { delayDays: rule.followup_delay_days ?? 7, priority: rule.priority ?? 'NORMAL' }
+          : null,
+      assignedTo: row.assigned_to,
+    });
+
+    // 2) Supplementary: FINAL note (never rolls back the clinical record).
+    if (dto.generatedNote?.trim()) {
+      await this.repo
+        .insertFinalNote(activityId, dto.generatedNote.trim(), saved.callLogId, user)
+        .catch(() => undefined);
     }
 
-    // 2) Persist the generated note as FINAL (if provided by the workspace).
-    if (dto.generatedNote?.trim() && outcomeRecordId) {
-      await this.repo.insertFinalNote(
-        activityId,
-        dto.generatedNote.trim(),
-        outcomeRecordId,
-        user,
-      ).catch(() => {
-        // Note persistence is supplementary: a failure must not roll back the
-        // clinical outcome record which is the authoritative clinical record.
-      });
-    }
-
-    // 2b) Persist explicit consultation_responses — the single source of truth
-    //     (Milestone 25A, Step 2). One row per DISPLAYED counselling question
-    //     (ANSWERED / NOT_ASSESSED). Supplementary to the outcome record: a
-    //     failure must never roll back the authoritative clinical record, and it
-    //     runs ALONGSIDE the existing checkedItemIds dual-read (CDSE unchanged).
-    if (outcomeRecordId && row.citizen_id) {
+    // 2b) Supplementary: explicit counselling responses (dinc_app), keyed by the
+    //     call_log id (the consultation record identity since Step 7).
+    if (row.citizen_id) {
       try {
         const written = await this.repo.persistConsultationResponses({
-          outcomeRecordId,
+          outcomeRecordId: saved.callLogId,
           activityId,
           citizenId: row.citizen_id,
           responses: ConsultationService.toConsultationResponses(dto),
           recordedBy: user,
         });
-        this.logger.log(
-          `[25A] Persisted ${written} consultation_response(s) for activity ${activityId}`,
-        );
+        if (written > 0) {
+          this.logger.log(
+            `Persisted ${written} consultation_response(s) for event instance ${activityId}`,
+          );
+        }
       } catch (err) {
         this.logger.error(
-          `[25A] consultation_responses persistence failed for activity ${activityId}`,
+          `consultation_responses persistence failed for ${activityId}`,
           (err as Error).message,
         );
       }
     }
 
-    // 3) Log the call result alongside the attempt history.
-    const attemptNumber = await this.repo.nextAttemptNumber(activityId);
-    await this.repo.insertContactOutcome({
-      activityId,
-      contactType: 'TELECONSULT',
-      attemptNumber,
-      notes: dto.clinicalNotes?.trim() || outcome.name,
-      contactedBy: user,
-    });
-
-    // 4) Trigger CDSE classification — non-blocking, never fails the save.
+    // 3) CDSE classification — non-blocking, never fails the save.
     void this.cdse.classifyAfterConsultation(
       activityId,
       dto.checkedItemIds ?? [],
       dto.counsellingItemIds ?? [],
     );
 
-    // 5) Hand off ALL workflow decisions to the Workflow Rules Engine.
-    const execution = await this.workflow.execute({
-      activityId,
-      enrollmentId: row.enrollment_id,
-      programId: row.program_id,
-      diseaseId: row.disease_id,
-      eventId: row.event_id,
-      outcomeTypeId: outcome.id,
-      outcomeCategory: outcome.category,
-      recordedBy: user,
-    });
+    // 4) Lifecycle via the EXISTING engines (no duplicated logic): Step-6A
+    //    completion, then one Step-6B scheduler sweep.
+    let nextActivityEventInstanceId: string | null = null;
+    let eventCompleted = false;
+    if (completeActivity && row.current_activity_instance_id) {
+      try {
+        const completion = await this.activities.completeActivityInstance(
+          row.current_activity_instance_id,
+        );
+        eventCompleted = completion.eventCompleted;
+        nextActivityEventInstanceId =
+          completion.activatedEvents[0]?.eventInstanceId ?? null;
+      } catch (err) {
+        this.logger.error(
+          `Activity completion after consultation failed: ${(err as Error).message}`,
+        );
+      }
+      await this.scheduler
+        .runCycle('AUTO')
+        .catch((err) =>
+          this.logger.error(`Post-consultation scheduler cycle failed: ${(err as Error).message}`),
+        );
+    }
 
     const [activity, nextActivity] = await Promise.all([
       this.activities.getById(activityId),
-      execution.nextActivityId
-        ? this.activities.getById(execution.nextActivityId)
+      nextActivityEventInstanceId
+        ? this.activities.getById(nextActivityEventInstanceId)
         : Promise.resolve(null),
     ]);
     if (!activity) throw new NotFoundException('Activity not found.');
 
+    const workflowAction =
+      rule?.next_action ?? (completeActivity ? 'COMPLETE_ACTIVITY' : 'NONE');
     return {
       activity,
       nextActivity,
-      enrollmentStatus: execution.enrollmentStatus ?? row.enrollment_status,
-      outcomeRecordId,
-      workflowAction: execution.action,
-      workflowMessage: execution.message,
-      escalated: execution.escalated,
+      enrollmentStatus: row.enrollment_status,
+      outcomeRecordId: saved.callLogId,
+      workflowAction,
+      workflowMessage: ConsultationService.workflowMessage(
+        outcome.name,
+        workflowAction,
+        saved.followupTaskId !== null,
+        completeActivity,
+        eventCompleted,
+      ),
+      escalated: outcome.category === 'ESCALATION' || rule?.priority === 'URGENT',
     };
   }
 
@@ -271,26 +293,22 @@ export class ConsultationService {
   }
 
   /**
-   * Returns the full Clinical Journey for a citizen: enrollments, activities,
-   * and completed consultations, newest first. Read-only aggregation over
-   * existing tables; no records are created, copied, or modified.
+   * Returns the full Clinical Journey for a citizen: enrolments, event
+   * instances, and completed consultations, newest first. Read-only aggregation;
+   * no records are created, copied, or modified.
    */
   async getClinicalJourney(citizenId: string): Promise<ClinicalJourneyEntryDto[]> {
     return this.repo.findClinicalJourney(citizenId);
   }
 
-  /**
-   * Returns enriched per-activity consultation history for the history panel.
-   * Additive — does not affect the existing timeline endpoint.
-   */
+  /** Enriched per-activity consultation history for the history panel. */
   async getConsultationHistory(citizenId: string): Promise<ConsultationHistoryEntryDto[]> {
     return this.repo.findConsultationHistory(citizenId);
   }
 
   /**
-   * Returns the first pending/active worklist activity for a citizen, or null
-   * when no scheduled consultation exists. Used by the Citizens module to
-   * determine whether to show the "Continue Scheduled" or "Start New" dialog.
+   * Returns the first ACTIVE event instance for a citizen, or null when no
+   * scheduled consultation exists.
    */
   async getActiveActivity(citizenId: string): Promise<ActiveActivityDto | null> {
     const row = await this.repo.findActiveActivity(citizenId);
@@ -321,12 +339,64 @@ export class ConsultationService {
   }
 
   /**
-   * UI adapter (Milestone 25A). Translates the current checkbox questionnaire —
-   * `counsellingItemIds` (all displayed) + `checkedItemIds` (confirmed) — into the
-   * abstract, response-type-agnostic ConsultationResponseInput model the
-   * persistence layer consumes. This is the ONLY place the "checked ⇒ 'YES'"
-   * convention lives; the API contract and frontend behaviour are unchanged.
-   * When richer response types arrive, only this adapter changes.
+   * Matches the submitted clinicalData object onto the template's fields by
+   * field_name (falling back to field_label), producing the outcome_response
+   * inputs. Also evaluates the metadata `workflow_action`: an answered
+   * COMPLETE_ACTIVITY field with a truthy value marks the activity complete.
+   */
+  private static matchResponses(
+    fields: TemplateFieldRow[],
+    clinicalData: Record<string, unknown>,
+  ): { responses: OutcomeResponseInput[]; completeActivity: boolean } {
+    const responses: OutcomeResponseInput[] = [];
+    let completeActivity = false;
+    for (const f of fields) {
+      const raw =
+        clinicalData[f.field_name] !== undefined
+          ? clinicalData[f.field_name]
+          : clinicalData[f.field_label];
+      if (raw === undefined || raw === null || raw === '') continue;
+      const value = typeof raw === 'string' ? raw : JSON.stringify(raw);
+      responses.push({ fieldId: f.field_id, value });
+      if (
+        f.workflow_action === 'COMPLETE_ACTIVITY' &&
+        ConsultationService.isTruthy(raw)
+      ) {
+        completeActivity = true;
+      }
+    }
+    return { responses, completeActivity };
+  }
+
+  private static isTruthy(value: unknown): boolean {
+    if (typeof value === 'boolean') return value;
+    if (typeof value === 'number') return value !== 0;
+    if (typeof value === 'string') {
+      return ['true', 'yes', 'y', '1', 'completed'].includes(value.trim().toLowerCase());
+    }
+    return false;
+  }
+
+  private static workflowMessage(
+    outcomeName: string,
+    action: string,
+    followupCreated: boolean,
+    completedActivity: boolean,
+    eventCompleted: boolean,
+  ): string {
+    const parts = [`Outcome "${outcomeName}" recorded.`];
+    if (completedActivity) {
+      parts.push(eventCompleted ? 'Event completed.' : 'Activity completed.');
+    }
+    if (followupCreated) parts.push('Follow-up task created.');
+    else if (action === 'FOLLOW_PROGRAM_SCHEDULE') parts.push('Programme schedule continues.');
+    return parts.join(' ');
+  }
+
+  /**
+   * UI adapter (Milestone 25A). Translates the checkbox questionnaire —
+   * `counsellingItemIds` (all displayed) + `checkedItemIds` (confirmed) — into
+   * the abstract ConsultationResponseInput model the persistence layer consumes.
    */
   private static toConsultationResponses(
     dto: SaveConsultationDto,
@@ -354,19 +424,20 @@ export class ConsultationService {
   }
 
   /**
-   * Resolves the guidebook for a consultation context using the existing
-   * guide_rules table: each rule holds a regex pattern; the first rule whose
-   * pattern matches the clinical context text (program + code + disease + event)
-   * wins. Returns full GuidebookDetail (with sections), or null when no rule
-   * matches.
+   * Resolves the guidebook for a consultation context. Guidebook reads are
+   * still on legacy tables (their migration is Step 9) — resolution degrades to
+   * null instead of failing the whole context when unavailable.
    */
   private async resolveGuidebook(row: ConsultationContextRow): Promise<GuidebookDetail | null> {
-    const ref = await this.guidebooks.matchByText(ConsultationService.haystack(row));
-    if (!ref) return null;
-    // includeCounselling=false: the workspace renders counselling content
-    // interactively through the wizard (findCounsellingSections) — merging it
-    // into the guide panel's sections would show the same content twice.
-    return this.guidebooks.detail(ref.id, false);
+    try {
+      const ref = await this.guidebooks.matchByText(ConsultationService.haystack(row));
+      if (!ref) return null;
+      // includeCounselling=false: the workspace renders counselling content
+      // interactively through the wizard (findCounsellingSections).
+      return await this.guidebooks.detail(ref.id, false);
+    } catch {
+      return null;
+    }
   }
 
   /** Clinical-context text for guidebook resolution (reuses the matcher). */

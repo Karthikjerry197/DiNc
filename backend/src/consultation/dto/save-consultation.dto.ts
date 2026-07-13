@@ -4,7 +4,7 @@ import {
   IsObject,
   IsOptional,
   IsString,
-  IsUUID,
+  Matches,
   MaxLength,
 } from 'class-validator';
 
@@ -18,7 +18,13 @@ import {
  *   the CDSE can determine which items were NOT addressed.
  */
 export class SaveConsultationDto {
-  @IsUUID('4', { message: 'A valid consultation outcome must be selected.' })
+  /**
+   * Since Step 7 this carries the metadata call-outcome CODE (e.g. SUCCESS,
+   * CALLBACK) — codes are the stable identity of dinc_metadata.call_outcome.
+   * The property name is kept for frontend compatibility.
+   */
+  @IsString()
+  @Matches(/^[A-Z0-9_-]{2,30}$/i, { message: 'A valid consultation outcome must be selected.' })
   outcomeTypeId!: string;
 
   @IsOptional()

@@ -62,18 +62,34 @@ metadata-driven `DiNc` database (schemas `dinc_metadata`, `dinc_runtime`,
 **read-only** (release v1.8); changes occur only via workbook → review → new
 metadata release → deployment.
 
-Status: **Steps 0–5 + 6A complete** — activity lifecycle progression is live:
+Status: **Steps 0–7 complete** — the consultation & outcome engine is live
+(Step 7): the consultation workspace reads its clinical form from
+`dinc_metadata.outcome_template(_field)` (the current activity's 1:1 template)
+and its selectable outcomes from `v_event_call_outcome_resolved` +
+`call_outcome`; saving records the phone interaction in
+`dinc_runtime.call_log` and every answered field in
+`dinc_runtime.outcome_response` in one transaction, raises a
+`followup_task` when the programme's `v_call_outcome_rule_resolved` rule says
+CREATE_FOLLOWUP, and — when a field carrying the metadata `workflow_action`
+COMPLETE_ACTIVITY is answered truthy — completes the activity through the
+Step-6A lifecycle followed by one Step-6B scheduler sweep (no duplicated
+logic). Timeline / consultation-history / clinical-journey / active-activity
+all read from the runtime model. The Step-6B scheduler engine runs a
+transactional sweep per cycle from `v_schedule_rule_effective`: seeds newly
+satisfied rules (registration / birth-date / event-completion anchors,
+HIGH_RISK & FEMALE_ONLY existence gates, HIGH_RISK overrides stamped in
+`condition_context`), continues RECURRING occurrence streams (repeat_count /
+repeat_until_event stop gates), and raises follow-up tasks for overdue events
+via system NIL call logs. Activity lifecycle progression (Step 6A):
 `POST /api/activity-instances/:id/complete` completes an activity, activates
 the next one by display order, auto-completes the event when all are done, and
-activates dependent events from `v_schedule_rule_effective` (ONE_TIME,
-previous-event-completion anchored, unconditional) with their activity
-instances — all in one transaction. Recurring/birth-date/override rules and
-follow-up generation are Step 6B. Registration is metadata-driven: enrolling
+activates dependent events (context-aware since 6B) — all in one transaction.
+Registration is metadata-driven: enrolling
 a patient creates the patient + programme enrolment and instantiates only the
 initially-active events (ONE_TIME, registration-anchored, dependency-free
 schedule rules from `v_schedule_rule_effective`) with their PENDING activity
 instances, stamped with the metadata release. Dependent/recurring events are
-the Step 6 scheduler's job. Additionally — the backend boots against DiNc, authentication
+the scheduler's job. Additionally — the backend boots against DiNc, authentication
 uses `dinc_security.app_user` + `user_credential`, all backend-owned
 operational tables self-provision in `dinc_app`, every programme/event/
 activity metadata read comes from `dinc_metadata` (read-only), patient +
@@ -85,8 +101,9 @@ overdue = past-due PENDING, current activity = first incomplete
 activity instance, follow-up tasks surfaced as FOLLOW_UP items). The old
 program → sub-program → disease → event cascade is shimmed onto the new
 programme → event → activity hierarchy. Roles in DiNc are `ADMIN`,
-`SUPERVISOR`, `CARE_MANAGER`. Writes (registration, enrolment creation,
-activity lifecycle, scheduling) and remaining modules migrate in Steps 5–11.
+`SUPERVISOR`, `CARE_MANAGER`. Remaining: workflow engine on metadata rules
+(Step 8), knowledge & guidebooks reads (Step 9), periphery re-joins (Step 10),
+dashboards & analytics + cutover (Step 11).
 Dev read fixtures: `scripts/dinc_step3_dev_fixtures.sql`,
 `scripts/dinc_step4_dev_fixtures.sql`.
 

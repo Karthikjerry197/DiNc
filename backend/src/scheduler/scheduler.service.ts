@@ -6,7 +6,6 @@ import {
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { SchedulerRegistry } from '@nestjs/schedule';
-import { WorkflowEngine } from '../workflow/workflow.engine';
 import { SchedulerRepository } from './scheduler.repository';
 import {
   SchedulerRunDto,
@@ -15,14 +14,16 @@ import {
 } from './scheduler.types';
 
 /**
- * Scheduler & Automation Engine — decides WHEN workflow actions run.
+ * Metadata-driven Scheduler Engine (Step 6B) — decides WHEN runtime work
+ * materialises, reading only dinc_metadata.v_schedule_rule_effective.
  *
- * On a configurable interval it finds due (overdue, pending) activities and
- * drives each through the EXISTING Workflow Rules Engine using the event's
- * "no response" system outcome. The engine (unchanged) then applies the
- * configured action — retry per retry_config, reschedule, or escalate. The
- * scheduler therefore adds timing/automation without duplicating any workflow or
- * retry logic. Each cycle is recorded as a lightweight run log.
+ * On a configurable interval it runs ONE transactional sweep (see
+ * SchedulerRepository.runSweep): seeds newly satisfied schedule rules
+ * (registration / birth-date / event-completion anchors, overrides and
+ * HIGH_RISK contexts), continues RECURRING occurrence streams, and raises
+ * follow-up tasks for overdue events via the programme's call-outcome rules.
+ * Each cycle is recorded in the existing scheduler_runs log (see
+ * scheduler.types.ts for the counter mapping).
  */
 @Injectable()
 export class SchedulerService implements OnModuleInit, OnModuleDestroy {
@@ -31,20 +32,17 @@ export class SchedulerService implements OnModuleInit, OnModuleDestroy {
 
   private enabled = true;
   private intervalMs = 60_000;
-  private batchLimit = 200;
   private running = false;
 
   constructor(
     private readonly config: ConfigService,
     private readonly registry: SchedulerRegistry,
     private readonly repo: SchedulerRepository,
-    private readonly engine: WorkflowEngine,
   ) {}
 
   onModuleInit(): void {
     this.enabled = (this.config.get<string>('SCHEDULER_ENABLED') ?? 'true') !== 'false';
     this.intervalMs = Number(this.config.get<string>('SCHEDULER_INTERVAL_MS')) || 60_000;
-    this.batchLimit = Number(this.config.get<string>('SCHEDULER_BATCH_LIMIT')) || 200;
 
     if (!this.enabled) {
       this.logger.log('Scheduler disabled (SCHEDULER_ENABLED=false).');
@@ -64,8 +62,9 @@ export class SchedulerService implements OnModuleInit, OnModuleDestroy {
   }
 
   /**
-   * Runs one scheduler cycle: processes all due activities through the engine and
-   * records the run. Guards against overlapping cycles (a long run won't stack).
+   * Runs one scheduler cycle: a single transactional metadata-driven sweep,
+   * then records the run. Guards against overlapping cycles. A sweep failure
+   * rolls back everything it did and is recorded as a failed run.
    */
   async runCycle(trigger: SchedulerTrigger): Promise<SchedulerRunDto> {
     if (this.running) {
@@ -75,46 +74,32 @@ export class SchedulerService implements OnModuleInit, OnModuleDestroy {
     }
     this.running = true;
     const startedAt = new Date();
-    let rulesProcessed = 0;
-    let activitiesCreated = 0;
-    let retries = 0;
-    let escalations = 0;
-    let failures = 0;
-    const errors: string[] = [];
 
-    let due: Awaited<ReturnType<SchedulerRepository['findDueActivities']>> = [];
+    let rulesEvaluated = 0;
+    let seeded = 0;
+    let recurring = 0;
+    let overdueFound = 0;
+    let followups = 0;
+    let failures = 0;
+    let error: string | null = null;
+
     try {
-      due = await this.repo.findDueActivities(this.batchLimit);
-      for (const item of due) {
-        try {
-          const outcome = await this.repo.findNoResponseOutcome(item.event_id);
-          if (!outcome) {
-            failures += 1;
-            continue;
-          }
-          // Reuse the engine: it decides + executes the action for this outcome.
-          const result = await this.engine.execute({
-            activityId: item.activity_id,
-            enrollmentId: item.enrollment_id,
-            programId: item.program_id,
-            diseaseId: item.disease_id,
-            eventId: item.event_id,
-            outcomeTypeId: outcome.id,
-            outcomeCategory: outcome.category,
-            recordedBy: 'SYSTEM_SCHEDULER',
-          });
-          rulesProcessed += 1;
-          if (result.nextActivityId) activitiesCreated += 1;
-          if (result.action === 'RETRY_ACTIVITY') retries += 1;
-          if (result.escalated) escalations += 1;
-        } catch (error) {
-          failures += 1;
-          if (errors.length < 5) errors.push((error as Error).message);
-        }
+      const sweep = await this.repo.runSweep();
+      rulesEvaluated = sweep.rulesEvaluated;
+      seeded = sweep.seeded.length;
+      recurring = sweep.recurring.length;
+      overdueFound = sweep.overdueFound;
+      followups = sweep.followupsCreated;
+      for (const e of [...sweep.seeded, ...sweep.recurring]) {
+        this.logger.log(
+          `created ${e.eventCode} occurrence ${e.occurrence} due ${e.dueDate}` +
+            (e.conditionContext ? ` [${e.conditionContext}]` : ''),
+        );
       }
-    } catch (error) {
-      failures += 1;
-      errors.push((error as Error).message);
+    } catch (err) {
+      failures = 1;
+      error = (err as Error).message;
+      this.logger.error(`Sweep failed (rolled back): ${error}`);
     } finally {
       this.running = false;
     }
@@ -123,17 +108,18 @@ export class SchedulerService implements OnModuleInit, OnModuleDestroy {
       startedAt: startedAt.toISOString(),
       finishedAt: new Date().toISOString(),
       trigger,
-      dueFound: due.length,
-      rulesProcessed,
-      activitiesCreated,
-      retries,
-      escalations,
+      dueFound: overdueFound,
+      rulesProcessed: rulesEvaluated,
+      activitiesCreated: seeded,
+      retries: recurring,
+      escalations: followups,
       failures,
-      error: errors.length ? errors.join(' | ') : null,
+      error,
     });
     this.logger.log(
-      `Scheduler ${trigger} cycle: ${run.dueFound} due, ${run.rulesProcessed} processed, ` +
-        `${run.retries} retries, ${run.escalations} escalations, ${run.failures} failures.`,
+      `Scheduler ${trigger} cycle: ${rulesEvaluated} rules, ${seeded} seeded, ` +
+        `${recurring} recurring, ${overdueFound} overdue, ${followups} follow-ups, ` +
+        `${failures} failures.`,
     );
     return run;
   }
